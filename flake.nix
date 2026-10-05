@@ -11,7 +11,7 @@
         let pkgs = import nixpkgs { inherit system; };
         in {
           default = pkgs.mkShell ({
-            packages = with pkgs; [ rustc cargo rustfmt clippy ];
+            packages = with pkgs; [ rustc cargo rustfmt clippy python3 ];
           } // pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isDarwin {
             # minifb 0.28 hard-codes macOS 10.10 before user CFLAGS.
             # Match the Nix SDK's deployment target so Metal APIs are available.

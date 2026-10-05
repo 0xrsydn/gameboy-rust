@@ -49,7 +49,15 @@ Do not set a Linux cross-compilation target for this validation.
 The [headless ROM suite runner](rom-tests.md) provides explicit checkpoint and assertion results through `--test-suite PATH.json`.
 Its tests verify manifest limits, whole-suite validation, exact step boundaries, ARM/Thumb checkpoints, and register/CPSR/memory checks.
 Additional tests cover DMA/IRQ accounting, HALT/STOP, diagnostic state, case isolation, repeatable JSON output, and failure exit status.
-These original tests validate the runner; they are not independent public hardware-test results.
+These original tests validate the runner. The [public ARM adapter](public-arm-tests.md) is a separate, currently failing compatibility baseline.
+Its preparation tests use only synthetic original bytes and no network:
+
+```sh
+direnv exec . python3 -B -m unittest discover -s tools -p 'test_*.py' -v
+```
+
+They verify pinned URLs, hashes, sizes, checkpoint validation, offline copies, destination safety, and non-overwriting output.
+Compare/status CPU regressions verify saved flags/masks, bank switching, sequential PC/timing, User/System fallback, and atomic diagnostics.
 
 ROM-runner tests use temporary files containing original instructions, without Nintendo assets or a desktop session.
 They check file-size boundaries, bounded reads, short reads, I/O errors, paths, symlinks, and read-only loading.

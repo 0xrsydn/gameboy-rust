@@ -66,6 +66,8 @@ Update this file when a feature lands or a limit is removed.
 - ROM windows with scanline capture, keyboard input, focus-loss release, bounded execution slices, and interactive keypad wake from STOP.
 - Optional ROM-window frame limits and an original input-test ROM generator.
 - Headless JSON ROM suites with per-case checkpoints, register/CPSR/memory assertions, bounded budgets, and structured failure reports.
+- Hash-pinned preparation of the public `jsmolka/gba-tests` ARM ROM, with an explicit failing compatibility baseline.
+- ARM test/compare Rd=15 status restoration, without a PC result write or nominal refill.
 - Little-endian byte, halfword, and word reads/writes.
 - ARM7TDMI word-load rotation, aligned stores, and odd-address halfword-load behavior.
 - Explicit errors for unsupported instructions when their condition passes, and for unsupported memory accesses.
@@ -110,7 +112,8 @@ ROM files can run in bounded terminal mode or a window with the original BIOS re
 ROM windows have no demo-specific startup checks. Input is sampled between bounded execution slices.
 Audio, saves, and external BIOS loading remain unavailable. ROM loading does not establish commercial-game compatibility.
 See [cartridge loading](hardware/cartridge.md) for file limits, step budgets, and exit status.
-The [ROM suite runner](rom-tests.md) currently uses original regression programs, not independent public hardware-test results.
+The [ROM suite runner](rom-tests.md) has original regressions and a [pinned public ARM baseline](public-arm-tests.md).
+The public ARM ROM now gets past its compare/status tests but stops at test 360, a load/writeback base-destination alias.
 It requires known completion addresses and has no debug-port protocol, scripted input, or rendered-image assertions.
 
 Unmapped reads return errors instead of hardware open-bus values.
@@ -121,7 +124,8 @@ Writes to cartridge addresses return errors instead of modeling cartridge hardwa
 
 ## Next steps
 
-1. Adapt the ROM suite runner to pinned public ARM7TDMI test programs and verified result protocols before claiming instruction compatibility.
+1. Implement verified load/writeback alias behavior exposed by public ARM test 360; rerun the pinned suite and fix subsequent failures.
+   Add further public suites only with verified result protocols before claiming instruction compatibility.
 2. Refine nominal timing with a fetch pipeline, Game Pak prefetch, per-access device updates, and verified timer/IRQ delays.
 3. Validate keypad retrigger behavior with hardware tests and add remaining device registers; extend BIOS reset coverage as sound/serial support becomes available.
    Validate STOP entry/wake edges and add external wake sources and remaining DMA device modes.

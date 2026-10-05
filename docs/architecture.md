@@ -13,7 +13,9 @@ The repository is a Cargo workspace with three crates:
 
 | Path | Purpose |
 | --- | --- |
-| `flake.nix`, `flake.lock` | Pinned development environment |
+| `flake.nix`, `flake.lock` | Pinned Rust/Python development environment |
+| `tools/prepare_gba_tests.py`, `tools/gba-tests-arm.lock.json` | Hash-verified public ARM source/ROM preparation and suite generation |
+| `tools/test_prepare_gba_tests.py` | Offline adapter tests using original synthetic data |
 | `.envrc` | Automatic environment loading through direnv |
 | `AGENTS.md` | Short orientation for coding agents: crate map, commands, and where docs live |
 | `docs/` | Project documentation; `docs/hardware/` holds per-subsystem behavior notes |
@@ -24,6 +26,7 @@ The repository is a Cargo workspace with three crates:
 | `crates/gba-core/src/cpu/thumb.rs` | Thumb decoding and execution |
 | `crates/gba-core/src/cpu/status.rs` | Processor modes, register banks, and status transfers |
 | `crates/gba-core/src/cpu/exception.rs` | Reset state, exception entry, and interrupt sampling |
+| `crates/gba-core/src/cpu/compare_psr_tests.rs` | Original Rd=15 test/compare status restoration, flags, bank, and timing regressions |
 | `crates/gba-core/src/cpu/status_tests.rs`, `crates/gba-core/src/cpu/exception_tests.rs` | Status, banking, exception, and return tests |
 | `crates/gba-core/src/cpu/thumb_tests.rs` | Thumb instructions, state switching, and decoder checks |
 | `crates/gba-core/src/cpu/transfer_tests.rs` | Stack, addressing, overlap, empty-list, and swap tests |

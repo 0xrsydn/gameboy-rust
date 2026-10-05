@@ -4,3 +4,5 @@
 *.gba
 *.nds
 *.sav
+__pycache__/
+*.pyc

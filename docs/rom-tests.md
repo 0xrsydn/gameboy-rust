@@ -4,7 +4,8 @@ Use `--test-suite PATH.json` to run repeatable ROM checks without opening a wind
 Each case has a machine-step budget, a completion address, and explicit assertions.
 A timeout never counts as a pass. Existing `--rom ... --steps ...` remains a diagnostic mode, not a test verdict.
 
-This runner currently has regression coverage from original programs, not independent public hardware-test results.
+Original programs cover the runner itself. A [pinned public ARM test](public-arm-tests.md) now provides an independent compatibility baseline.
+That public ROM still fails; passing the runner's unit tests does not mean the external ARM suite passes.
 A passing suite establishes only its specified checkpoints and assertions. It does not establish Emerald compatibility.
 
 ## Run the original smoke suite
@@ -129,7 +130,9 @@ They do not hash ROM contents; record source revisions and file checksums alongs
 
 ## Next validation stage
 
-Select public ARM7TDMI/GBA tests and inspect their source, license, entry assumptions, and result protocol.
+The first public integration is [jsmolka/gba-tests ARM](public-arm-tests.md), with a verified result-register checkpoint and a known failing baseline.
+Fix its next unsupported load/writeback alias case before claiming the full ARM ROM passes.
+For further public ARM7TDMI/GBA tests, inspect their source, license, entry assumptions, and result protocol.
 Pin source revisions and build instructions before comparing emulator changes.
 Adapt suites to verified completion addresses and result locations; do not guess them or treat timeouts as passes.
 Some tests need debug-port logging, input, different firmware behavior, or rendered-image checks that this runner does not support yet.

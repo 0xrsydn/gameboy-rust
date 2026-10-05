@@ -54,7 +54,8 @@ direnv exec . cargo run --locked
 direnv exec . cargo test --locked
 ```
 
-`.envrc` uses the Nix flake to load Rust, Cargo, rustfmt, and Clippy.
+`.envrc` uses the Nix flake to load Rust, Cargo, rustfmt, Clippy, and Python 3.
+Python supports the pinned public-test preparation adapter and its standard-library-only tests.
 `flake.lock` pins the Nix package source. Keep it in version control.
 The first run needs network access to download the development tools and Rust dependencies.
 
