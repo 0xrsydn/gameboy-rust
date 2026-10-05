@@ -50,8 +50,8 @@ Hardware references used for the core:
 - [NanoBoyAdvance keypad implementation](https://github.com/nba-emu/NanoBoyAdvance/blob/master/src/nba/src/hw/keypad/keypad.cc), compared for control access widths; its AND/retrigger behavior differs from the chosen polling model.
 - [mGBA keypad timing issue](https://github.com/mgba-emu/mgba/issues/2490), for frontend frame-based input timing limits.
 - [Tonc hardware interrupts](https://gbadev.net/tonc/interrupts.html), for keypad source enable and IF/IE bit 12.
-- [GBATEK memory mirrors, video byte writes, and unused-memory reads](https://problemkaputt.de/gbatek-gba-unpredictable-things.htm), for unused address ranges, ARM PC+8 open bus, byte lanes, the distinct Thumb region/history rules, and PC-dependent BIOS read protection.
-- [nocash GBA open-bus discussion](https://www.ngemu.com/threads/gba-open-bus.170809/), for the distinction between ARM prefetch and region-dependent Thumb values.
+- [GBATEK memory mirrors, video byte writes, and unused-memory reads](https://problemkaputt.de/gbatek-gba-unpredictable-things.htm), for unused address ranges, ARM PC+8 open bus, byte lanes, the distinct Thumb region/history rules, and PC-dependent BIOS read protection. The Thumb implementation follows its 16-bit-region and BIOS/OAM formulas; IWRAM and region-transition history remain unsupported.
+- [nocash GBA open-bus discussion](https://www.ngemu.com/threads/gba-open-bus.170809/), for ARM prefetch, repeated Thumb halfwords in 16-bit regions, aligned BIOS/OAM words, and history-dependent IWRAM lanes. Its data-load overwrite note prevents treating P+2 as a universal IWRAM rule.
 - [mGBA memory implementation](https://github.com/mgba-emu/mgba/blob/master/src/gba/memory.c), reviewed for `GBALoadBad`, ARM prefetch sourcing, byte/halfword lane selection, and separate DMA/history behavior. Also reviewed its BIOS region-exit prefetch retention and protected-load lane selection.
 - [GBATEK GBA memory map and bus widths](https://problemkaputt.de/gbatek-gba-memory-map.htm).
 - [GBATEK GBA DMA transfers](https://problemkaputt.de/gbatek-gba-dma-transfers.htm).

@@ -238,11 +238,13 @@ fn failed_thumb_steps_keep_previous_history_and_clear_access_context() {
 }
 
 #[test]
-fn outside_thumb_execution_keeps_history_but_does_not_enable_general_open_bus() {
+fn outside_thumb_execution_keeps_bios_history_without_enabling_iwram_open_bus() {
     let mut memory = bus(0x6801, thumb_image(THUMB_ENTRY, BX_R5));
     let mut cpu = enter_thumb(&mut memory, THUMB_ENTRY, true);
     cpu.step(&mut memory).unwrap();
     assert_eq!(protected_word(&mut memory), OTHER);
+    memory.write16(0x0300_0100, 0x6801).unwrap(); // IWRAM needs unmodeled history.
+    cpu.registers[15] = 0x0300_0100;
     cpu.registers[0] = 0x4000;
     let before = cpu.clone();
     assert_eq!(

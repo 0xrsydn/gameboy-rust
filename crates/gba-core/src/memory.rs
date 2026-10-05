@@ -56,14 +56,13 @@ fn vram_index(address: u32) -> usize {
 #[derive(Clone, Copy)]
 struct CpuAccess {
     pc: u32,
-    arm_prefetch: Option<u32>,
-    bios_prefetch: Option<u32>,
+    prefetch: Option<u32>,
 }
 
 /// Work/video/palette RAM, OAM, cartridge ROM, optional BIOS, and supported I/O.
-/// ARM data reads from unused memory return a PC+8 snapshot when available.
-/// Protected BIOS reads retain an ARM PC+8 or aligned Thumb PC+4 word snapshot.
-/// General Thumb open bus, a full fetch pipeline, and DMA bus latches are not modeled.
+/// Unused-memory reads use ARM PC+8 or supported region-dependent Thumb snapshots.
+/// Protected BIOS reads separately retain the snapshot from BIOS execution.
+/// Thumb IWRAM history, a full fetch pipeline, and DMA bus latches are not modeled.
 pub struct Memory {
     external_ram: Vec<u8>,
     internal_ram: Vec<u8>,
@@ -333,25 +332,34 @@ impl Memory {
         debug_assert!(self.cpu_access.is_none());
         // Sample before execution, without data timing or open-bus recursion.
         // Missing lookahead bytes must not fail an instruction that never uses them.
-        let arm_prefetch = match instruction_set {
+        let prefetch = match instruction_set {
             InstructionSet::Arm => self.snapshot_mapped_word(pc.wrapping_add(8)),
-            InstructionSet::Thumb => None,
+            InstructionSet::Thumb => self.snapshot_thumb_prefetch(pc),
         };
-        let bios_prefetch = if pc < BIOS_SIZE as u32 {
-            match instruction_set {
-                InstructionSet::Arm => arm_prefetch,
-                // BIOS drives a full 32-bit word for a Thumb halfword fetch.
-                // Preserve both lanes of the aligned PC+4 word, not a repeated halfword.
-                InstructionSet::Thumb => self.snapshot_mapped_word((pc + 4) & !3),
+        self.cpu_access = Some(CpuAccess { pc, prefetch });
+    }
+
+    fn snapshot_thumb_prefetch(&self, pc: u32) -> Option<u32> {
+        let address = pc.wrapping_add(4);
+        // Region-crossing fetches need pipeline history, not a rule chosen from the old PC.
+        if address >> 24 != pc >> 24 {
+            return None;
+        }
+        match pc >> 24 {
+            // BIOS and OAM drive a full word even for a halfword instruction fetch.
+            0x00 | 0x07 => self.snapshot_mapped_word(address & !3),
+            // These 16-bit regions repeat the fetched halfword in both word lanes.
+            0x02 | 0x05 | 0x06 | 0x08..=0x0d => {
+                let half = u16::from_le_bytes([
+                    self.read_mapped_byte(address).ok()?,
+                    self.read_mapped_byte(address + 1).ok()?,
+                ]);
+                Some(u32::from(half) * 0x0001_0001)
             }
-        } else {
-            None
-        };
-        self.cpu_access = Some(CpuAccess {
-            pc,
-            arm_prefetch,
-            bios_prefetch,
-        });
+            // IWRAM needs the previous bus value, including intervening data loads/DMA.
+            // Unsupported code regions must not manufacture an open-bus snapshot.
+            _ => None,
+        }
     }
 
     fn snapshot_mapped_word(&self, address: u32) -> Option<u32> {
@@ -369,7 +377,7 @@ impl Memory {
             if succeeded && access.pc < BIOS_SIZE as u32 {
                 // Commit only successful instruction snapshots under our diagnostic policy.
                 // Missing lookahead invalidates history rather than exposing stale bytes.
-                self.bios_prefetch = access.bios_prefetch;
+                self.bios_prefetch = access.prefetch;
             }
         }
     }
@@ -452,7 +460,7 @@ impl Memory {
                 .ok_or(MemoryError::Unmapped(address));
         }
         if matches!(address, 0x0000_4000..=0x01ff_ffff | 0x1000_0000..=0xffff_ffff) {
-            if let Some(word) = self.cpu_access.and_then(|access| access.arm_prefetch) {
+            if let Some(word) = self.cpu_access.and_then(|access| access.prefetch) {
                 return Ok((word >> ((address & 3) * 8)) as u8);
             }
         }

@@ -47,7 +47,8 @@ Host reads remain raw inspection. CPU data loads outside BIOS select lanes from 
 Snapshots add no data accesses or nominal cycles.
 
 The snapshot does not create a persistent instruction pipeline.
-It does not model refill-time latches, BIOS data-access ordering within an instruction, DMA bus transitions, or general Thumb open bus.
+It does not model refill-time latches, BIOS data-access ordering within an instruction, or DMA bus transitions.
+A subsequent [Thumb open-bus subset](../hardware/cpu.md#thumb-unused-memory-data-reads) adds region-dependent snapshots outside protected BIOS reads.
 At BIOS boundaries, unavailable lookahead invalidates history under the existing diagnostic policy.
 A branch can still succeed; a later protected read reports unknown history rather than exposing stale bytes.
 This boundary policy is conservative, not a hardware claim.
@@ -61,7 +62,7 @@ Original tests in `crates/gba-core/src/cpu/thumb_bios_access_tests.rs` cover:
 - Sequential history, ARM/Thumb transitions, SWI entry, and POP-to-PC exits with RAM stack data.
 - Raw reads inside BIOS and protected reads outside it.
 - The last complete fetch word, unavailable lookahead, and failure retention.
-- Separate host reads, unchanged general Thumb open-bus diagnostics, nominal costs, and device progression.
+- Separate host reads, retained IWRAM Thumb open-bus diagnostics, nominal costs, and device progression.
 
 ## Validation result
 

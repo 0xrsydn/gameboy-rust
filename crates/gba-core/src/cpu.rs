@@ -32,6 +32,8 @@ mod tests;
 #[cfg(test)]
 mod thumb_empty_tests;
 #[cfg(test)]
+mod thumb_open_bus_tests;
+#[cfg(test)]
 mod thumb_tests;
 #[cfg(test)]
 mod timing_tests;

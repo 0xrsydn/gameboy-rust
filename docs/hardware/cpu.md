@@ -97,7 +97,7 @@ Host inspection, ROM-suite memory assertions, instruction fetches, and DMA do no
 
 Limits remain explicit:
 
-- Thumb open bus depends on instruction region, alignment, and prior bus data; it remains unsupported.
+- Thumb open bus uses the supported region rules below. Internal work RAM still needs unmodeled bus history.
 - [BIOS-protected reads](bios.md#cpu-bios-read-protection) use separate retained ARM PC+8 or aligned Thumb PC+4 word snapshots.
 - Unused/write-only I/O reads, DMA latches, and disabled-RAM reads are not modeled here.
 - Missing BIOS, truncated ROM, unsupported I/O, and save-memory accesses retain their existing diagnostics.
@@ -106,6 +106,42 @@ Limits remain explicit:
 
 This subset lets public ARM test 362 complete. That test does not assert the loaded data value.
 Original regressions check the values separately. See [the public ARM result](../public-arm-tests.md).
+
+## Thumb unused-memory data reads
+
+Thumb data reads use the same unused address ranges and lane rules as ARM reads above.
+The snapshot depends on the executing code region. P below is the executing instruction address, not the visible r15 operand.
+
+| Code region | Snapshot |
+| --- | --- |
+| External work RAM, palette RAM, video RAM, all three ROM windows | Halfword at P+4, repeated in both word lanes |
+| BIOS and object attribute memory (OAM) | Full word at `(P+4) & ~3` |
+| Internal work RAM (IWRAM) | Unsupported: one lane depends on previous bus activity |
+| Other code regions | Unsupported |
+
+For BIOS/OAM, aligned instructions expose halfwords at P+4 and P+6.
+Instructions at two-byte-only alignment expose halfwords at P+2 and P+4.
+The two lanes can differ. A universal repeated-halfword rule would be incorrect.
+
+Only the required mapped bytes are sampled. A 16-bit region needs two lookahead bytes, not four.
+Normal memory mirrors apply to these bytes, including physical RAM/video-memory wrap within a mapped region.
+If P+4 crosses a 16 MiB address-region boundary, the snapshot remains unknown.
+This conservative diagnostic policy avoids guessing pipeline behavior during a region transition.
+Missing lookahead or unknown history fails only an unused-memory load; ordinary instructions and mapped loads can still execute.
+
+All loads in one instruction share the snapshot, including block loads and stack loads.
+Normal sign extension, unaligned-load rotation, writeback, register aliases, and PC-load semantics still apply.
+Snapshots add no nominal cycles. Host reads, instruction fetches, DMA, and unsupported stores do not gain fallback behavior.
+Protected BIOS reads use separate retained history, not the current ROM/RAM snapshot.
+
+GBATEK and nocash's [open-bus findings](https://www.ngemu.com/threads/gba-open-bus.170809/) document these region differences.
+IWRAM needs prior bus lanes, including data-load overwrites and possible DMA effects.
+Do not substitute P+2 for that history: it is only the usual case, not a general rule.
+The original Nintendo DS also differs from GBA-family IWRAM behavior; this core targets GBA.
+
+This remains a bounded snapshot implementation, not a pipeline or a complete bus-history model.
+Refill timing, self-modifying code, DMA-to-CPU transitions, IWRAM, unused/write-only I/O, and disabled RAM remain incomplete.
+Original regressions validate the documented formulas. No physical-hardware or independent public Thumb open-bus pass is claimed.
 
 ## Processor status and exceptions
 

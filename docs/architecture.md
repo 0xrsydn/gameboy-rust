@@ -29,6 +29,7 @@ The repository is a Cargo workspace with three crates:
 | `crates/gba-core/src/cpu/load_alias_tests.rs` | Original single-load alias regressions for indexing, banks, widths, alignment, I/O, timing, and diagnostics |
 | `crates/gba-core/src/cpu/bios_access_tests.rs` | Original CPU BIOS protection regressions for retained history, modes, widths, exception returns, and diagnostics |
 | `crates/gba-core/src/cpu/thumb_bios_access_tests.rs` | Thumb BIOS aligned-word snapshots, transitions, load lanes, boundaries, diagnostics, and nominal timing |
+| `crates/gba-core/src/cpu/thumb_open_bus_tests.rs` | Region-dependent Thumb open bus, mirrors, widths, transfers, source boundaries, isolation, and nominal timing |
 | `crates/gba-core/src/cpu/compare_psr_tests.rs` | Original Rd=15 test/compare status restoration, flags, bank, and timing regressions |
 | `crates/gba-core/src/cpu/status_tests.rs`, `crates/gba-core/src/cpu/exception_tests.rs` | Status, banking, exception, and return tests |
 | `crates/gba-core/src/cpu/thumb_tests.rs` | Thumb instructions, state switching, and decoder checks |

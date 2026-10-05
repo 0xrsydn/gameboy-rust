@@ -72,6 +72,7 @@ Update this file when a feature lands or a limit is removed.
 - The original BIOS exposes documented boot, SoftReset, SWI, and IRQ protected-read words through its actual exit layout.
 - ARM test/compare Rd=15 status restoration, without a PC result write or nominal refill.
 - ARM unused-memory data reads return a PC+8 word snapshot, with normal byte lanes and load rotation.
+- Thumb unused-memory reads use repeated PC+4 halfwords in 16-bit code regions and aligned PC+4 words in BIOS/OAM.
 - Little-endian byte, halfword, and word reads/writes.
 - ARM7TDMI word-load rotation, aligned stores, and odd-address halfword-load behavior.
 - Explicit errors for unsupported instructions when their condition passes, and for unsupported memory accesses.
@@ -130,7 +131,8 @@ Other public suites remain unverified. These results do not establish full CPU o
 The runner requires known completion addresses and has no debug-port protocol, scripted input, or rendered-image assertions.
 
 ARM data reads from unused address ranges use a bounded [PC+8 open-bus snapshot](hardware/cpu.md#arm-unused-memory-data-reads).
-This is not a fetch pipeline. General Thumb, DMA, and unused/write-only I/O open bus remain unmodeled.
+Thumb reads use [region-dependent snapshots](hardware/cpu.md#thumb-unused-memory-data-reads) where the documented value needs no prior bus history.
+This is not a fetch pipeline. Thumb IWRAM, region-crossing fetches, DMA, and unused/write-only I/O open bus remain unsupported.
 BIOS protection uses separate retained BIOS fetch snapshots as described in [BIOS behavior](hardware/bios.md#cpu-bios-read-protection).
 Host inspection and instruction fetches remain strict. Other unmapped reads return errors.
 Reads beyond the supplied cartridge bytes also return errors.
@@ -140,7 +142,8 @@ Writes to cartridge addresses return errors instead of modeling cartridge hardwa
 
 ## Next steps
 
-1. Extend general open-bus support with documented Thumb region/alignment rules and explicit limits for history-dependent cases.
+1. Add validated prior-bus history for Thumb IWRAM open bus, including data-load overwrites and DMA transitions.
+   Keep unknown history diagnostic until those interactions have independent coverage.
    Validate BIOS snapshots with independent hardware tests before claiming exact refill or data-access history.
    The desktop runner still uses only the original BIOS. Keep protected reads image-derived for all supplied images.
 2. Refine nominal timing with a fetch pipeline, Game Pak prefetch, per-access device updates, and verified timer/IRQ delays.
