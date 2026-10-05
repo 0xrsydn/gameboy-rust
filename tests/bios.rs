@@ -12,6 +12,8 @@ const DEST: u32 = 0x0201_0000;
 const CALLBACK: u32 = 0x0300_0100;
 const ROM_DATA: u32 = ROM_START + 13 * 4;
 
+#[path = "bios/angles.rs"]
+mod angles;
 #[path = "bios/arithmetic.rs"]
 mod arithmetic;
 #[path = "bios/bit_unpack.rs"]
@@ -223,7 +225,7 @@ fn vblank_wait_halts_dispatches_irq_and_returns_through_original_code() {
 
 #[test]
 fn unsupported_services_fail_at_an_explicit_instruction_trap() {
-    for service in [0, 1, 3, 9, 0x0a, 0x19, 0xff] {
+    for service in [0, 1, 3, 0x0d, 0x0e, 0x0f, 0x19, 0xff] {
         let (mut machine, _) = call(service, false, [0, 0, 0]);
         let error = (0..100)
             .find_map(|_| machine.step().err())

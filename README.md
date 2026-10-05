@@ -253,7 +253,7 @@ Verified locally on macOS 15.7.3:
 - Nix system: `aarch64-darwin`.
 - Rust host: `aarch64-apple-darwin`.
 - Release executable: native Mach-O `arm64`, without Rosetta.
-- All 656 tests pass in debug and release builds.
+- All 671 tests pass in debug and release builds.
 - All ten native window smoke tests pass. The mosaic test submits 128 frames; the other nine submit 60 frames each.
 - The eight CPU-driven smoke tests check CPU state, every output pixel, and presentation at VBlank entry.
 - The terminal-only CPU and timer IRQ demos run successfully.
@@ -358,7 +358,7 @@ nix develop -c cargo test
 - Game Pak wait-state control (`WAITCNT`) for all three ROM windows.
 - Sequential/non-sequential data accesses, branch refill costs, and variable multiply timing.
 - Optional caller-supplied 16 KiB BIOS mapping for vector code, without CPU BIOS read protection.
-- Optional original BIOS replacement: minimal boot, IRQ dispatch, interrupt waits, memory copy/fill, integer arithmetic, bit unpacking, LZ77/run-length/Huffman decompression, and differential filters.
+- Optional original BIOS replacement: minimal boot, IRQ dispatch, interrupt waits, memory copy/fill, integer/fixed-point arithmetic, bit unpacking, LZ77/run-length/Huffman decompression, and differential filters.
 - All 16 ARM data-processing operations, with immediate and shifted-register operands.
 - Logical operations: `AND`, `EOR`, `TST`, `TEQ`, `ORR`, `MOV`, `BIC`, and `MVN`.
 - Arithmetic operations: `SUB`, `RSB`, `ADD`, `ADC`, `SBC`, `RSC`, `CMP`, and `CMN`.
@@ -509,6 +509,8 @@ Supported software interrupt services:
 | `0x06` | Div | Signed `r0 / r1`; return quotient in r0, remainder in r1, and quotient magnitude in r3 |
 | `0x07` | DivArm | Div with the incoming numerator and denominator exchanged |
 | `0x08` | Sqrt | Unsigned integer square root of r0; return the rounded-down result in r0 |
+| `0x09` | ArcTan | Signed fixed-point tangent in r0; return a signed angle in r0 |
+| `0x0a` | ArcTan2 | Signed fixed-point X/Y in r0/r1; return the unsigned direction angle in r0 |
 | `0x0b` | CpuSet | `r0`: source; `r1`: destination; `r2`: count, fill, and width control |
 | `0x0c` | CpuFastSet | Word copy/fill in eight-word blocks; round count upward to a multiple of eight |
 | `0x10` | BitUnPack | Expand packed units from r0 to r1 using the descriptor at r2; write complete words |
@@ -525,7 +527,7 @@ ARM code uses `SWI service_number << 16`; Thumb code uses the service number dir
 Only User/System callers are supported. Calls from exception modes return a diagnostic rather than risking nested stack corruption.
 Services preserve CPSR and every caller register except the documented arithmetic outputs.
 This is deterministic behavior, not a claim about undocumented firmware outputs.
-Supervisor stack use is 28 bytes normally and 40 bytes for division.
+Supervisor stack use is 28 bytes normally, including ArcTan. Division and ArcTan2 use 40 bytes.
 CpuFastSet, BitUnPack, all three decompression formats, and differential filters use 60 bytes.
 They do not reproduce the original firmware's internal stack layout or cycle counts.
 
@@ -566,6 +568,30 @@ The result satisfies `root² <= input < (root + 1)²`. Other registers are prese
 Its integer algorithm uses 16 iterations without floating-point calculations.
 Arithmetic services keep IRQ delivery masked until return, without changing IME.
 Device clocks and DMA continue. Instruction costs do not reproduce the original BIOS algorithms' timing.
+
+#### Fixed-point angles
+
+`ArcTan` (`SWI 0x09`) and `ArcTan2` (`SWI 0x0a`) accept signed 16-bit fixed-point inputs with 14 fractional bits.
+An input value of `0x4000` represents 1.0. This format is also called signed Q2.14.
+Inputs must be sign-extended into their 32-bit registers. For example, -1 uses `0xffffffff`, not `0x0000ffff`.
+This subset rejects values outside `-32768..32767` through `bios::INVALID_ARGUMENT_TRAP`, rather than interpreting undocumented wider inputs.
+
+Angles use 65,536 units per full turn. A quarter turn is `0x4000`; a half turn is `0x8000`.
+ArcTan reads the tangent from r0 and returns a sign-extended signed angle in r0.
+For example, tangents +1.0 and -1.0 return +`0x2000` and -`0x2000`, respectively.
+The routine evaluates a fixed-point polynomial using low-32-bit products and arithmetic shifts.
+Negative intermediate results round down. The implementation does not substitute a host floating-point calculation.
+The polynomial has poor accuracy for tangent magnitudes above 1.0; this known limitation is retained.
+
+ArcTan2 reads X from r0 and Y from r1. It returns an unsigned angle in `0..65535` in r0.
+It divides the smaller coordinate magnitude by the larger, then applies the shared polynomial and quadrant correction.
+The signed ratio truncates toward zero and stays within `[-1.0, 1.0]` before polynomial evaluation.
+Axes return exact quarter-turn angles. The zero vector returns zero without division.
+Use ArcTan2 for direction calculations that require all four quadrants.
+
+Both services preserve r1–r14 and the caller's status. Undocumented BIOS scratch-register outputs are not reproduced.
+They execute original ARM instructions and keep CPU IRQ delivery masked until return, without changing IME.
+Device clocks and DMA continue. Exact firmware timing and full hardware compatibility remain unverified.
 
 #### LZ77 decompression
 
@@ -726,7 +752,7 @@ Unsupported SWIs, unsupported exception vectors, and null/misaligned IRQ callbac
 The CPU reports `CpuError::UnsupportedInstruction` with `bios::UNSUPPORTED_TRAP`, rather than silently treating a service as a no-op.
 Invalid arithmetic/decompression arguments use the same CPU error type with the distinct `bios::INVALID_ARGUMENT_TRAP` instruction.
 Prior boot/service steps remain committed on failure.
-Trigonometry, reset services, and STOP remain unimplemented.
+BIOS affine-matrix helpers, reset services, and STOP remain unimplemented.
 This subset is not sufficient for Pokémon Emerald compatibility.
 
 ### Timers, interrupt registers, and the machine clock
@@ -1478,6 +1504,7 @@ Important timing limits:
 | `src/lib.rs` | Core modules and original demo bytes |
 | `src/bios.rs` | Original ARM BIOS image builder, minimal boot, IRQ dispatch, waits, and memory services |
 | `src/bios/arithmetic.rs` | Emitted ARM division and integer-square-root routines |
+| `src/bios/angles.rs` | Emitted ARM ArcTan polynomial, ArcTan2 ratio/quadrant handling, and input validation |
 | `src/bios/lz77.rs` | Emitted ARM LZ77 decoder with byte and halfword output |
 | `src/bios/run_length.rs` | Emitted ARM run-length decoder, header validation, and block bounds |
 | `src/bios/bit_unpack.rs` | Emitted ARM packed-unit expansion, offsets, word stores, and validation |
@@ -1536,6 +1563,7 @@ Important timing limits:
 | `tests/halt.rs` | HALT wake masks, idle timing, BIOS-only writes, DMA progress, and STOP diagnostics |
 | `tests/bios.rs` | ARM/Thumb service calls, copy/fill boundaries, wait races, callback contracts, and boot |
 | `tests/bios/arithmetic.rs` | Arithmetic boundaries, wide-integer references, status restoration, and zero-division diagnostics |
+| `tests/bios/angles.rs` | Fixed-point references, axes/quadrants, rounding, caller flags, stack bounds, DMA, and diagnostics |
 | `tests/bios/lz77.rs` | Token-reference tests, overlaps, output widths, malformed streams, and partial failures |
 | `tests/bios/run_length.rs` | All block controls, mixed streams, output widths, status, diagnostics, DMA, and IRQ masking |
 | `tests/bios/bit_unpack.rs` | Width pairs, bit references, offsets, maximum length, memory boundaries, status, DMA, and diagnostics |
@@ -1608,12 +1636,15 @@ To test the core without building the window dependency:
 direnv exec . cargo test --locked --no-default-features
 ```
 
-This runs 645 core and integration tests; the eleven desktop and command-line tests are excluded.
+This runs 660 core and integration tests; the eleven desktop and command-line tests are excluded.
 
 On Apple Silicon, `file` must report a Mach-O `arm64` executable.
 Do not set a Linux cross-compilation target for this validation.
 
-The default suite has 656 tests.
+The default suite has 671 tests.
+Angle-service tests compare results with wide-integer polynomial and signed-sector references, plus floating-point accuracy checks in supported ranges.
+They cover a dense ArcTan unit-interval grid, sampled full-domain and seeded inputs, axes, quadrant boundaries, signed extremes, and scale invariance.
+Other tests verify all caller flag combinations, User/System masks, non-result registers, stack bounds, repeated calls, diagnostics, and DMA/IRQ progress.
 Huffman tests use an independent tree serializer and path encoder, with expected output taken directly from original symbols.
 They cover every byte/nibble value, maximum tree size and offsets, deep paths across input-word boundaries, and seeded variable-length paths.
 Other tests check 24-bit byte lengths, malformed trees, output packing, truncation, partial failures, source regions, and DMA/IRQ behavior.
@@ -1741,7 +1772,7 @@ These tests do not replace validation against GBA hardware or public hardware te
 
 1. Validate CPU behavior with public ARM7TDMI test programs before claiming instruction compatibility.
 2. Refine nominal timing with a fetch pipeline, Game Pak prefetch, per-access device updates, and verified timer/IRQ delays.
-3. Expand BIOS services with trigonometry and reset functions; add STOP and remaining DMA device modes.
+3. Expand BIOS services with affine-matrix helpers and reset functions; add STOP and remaining DMA device modes.
 4. Replace nominal sprite work limits with verified individual fetch timing; add background fetch timing and per-pixel composition.
 5. Expand graphics, audio, cartridge loading, and saves before testing Emerald compatibility.
 
@@ -1757,7 +1788,7 @@ Hardware references used for the core:
 - [GBATEK BIOS memory-copy services](https://problemkaputt.de/gbatek-bios-memory-copy.htm).
 - [GBATEK BIOS arithmetic services](https://problemkaputt.de/gbatek-bios-arithmetic-functions.htm).
 - [GBATEK BIOS decompression services](https://problemkaputt.de/gbatek-bios-decompression-functions.htm), including BitUnPack descriptor fields, differential-filter headers, Huffman tree layout, and width constraints.
-- [mGBA BIOS service implementation](https://github.com/mgba-emu/mgba/blob/master/src/gba/bios.c), reviewed for BitUnPack ordering/offsets and Huffman tree-size interpretation, input bits, and symbol packing.
+- [mGBA BIOS service implementation](https://github.com/mgba-emu/mgba/blob/master/src/gba/bios.c), reviewed for angle-polynomial coefficients and quadrant conventions, BitUnPack ordering/offsets, and Huffman tree layout and packing.
 - [HALTCNT hardware-access tests](https://github.com/mgba-emu/mgba/issues/2309), for BIOS-only writes and halfword access.
 - [GBATEK display status and IRQs](https://problemkaputt.de/gbatek-lcd-i-o-interrupts-and-status.htm).
 - [GBATEK display dimensions and timings](https://problemkaputt.de/gbatek-lcd-dimensions-and-timings.htm).

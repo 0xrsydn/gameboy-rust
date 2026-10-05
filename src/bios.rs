@@ -1,10 +1,11 @@
 //! Original, optional ARM BIOS replacement. No Nintendo firmware is included.
-//! Supports interrupt waits, integer arithmetic, memory copy/fill, bit unpacking,
+//! Supports interrupt waits, integer/fixed-point arithmetic, memory copy/fill, bit unpacking,
 //! LZ77/run-length/Huffman decoding, and differential filters.
 //! This is a functional subset, not a complete boot ROM or a timing-compatible BIOS.
 
 use std::collections::BTreeMap;
 
+mod angles;
 mod arithmetic;
 mod bit_unpack;
 mod decompression;
@@ -27,7 +28,7 @@ pub const IRQ_FLAGS: u32 = 0x0300_7ff8;
 pub const IRQ_HANDLER: u32 = 0x0300_7ffc;
 /// An intentional undefined instruction used for unsupported SWIs/vectors and invalid IRQ pointers.
 pub const UNSUPPORTED_TRAP: u32 = 0xe7f0_00f0;
-/// A diagnostic trap for division by zero or invalid unpacking, decompression, or filter arguments.
+/// A diagnostic trap for invalid arithmetic or asset-conversion arguments.
 pub const INVALID_ARGUMENT_TRAP: u32 = 0xe7f0_00f1;
 
 /// Start at reset with our optional firmware. Call Machine::step to execute boot.
@@ -121,6 +122,8 @@ pub fn image() -> Vec<u8> {
         (6, "div"),
         (7, "div_arm"),
         (8, "sqrt"),
+        (9, "arctan"),
+        (0x0a, "arctan2"),
         (0x0b, "cpu_set"),
         (0x0c, "cpu_fast_set"),
         (0x10, "bit_unpack"),
@@ -224,6 +227,7 @@ pub fn image() -> Vec<u8> {
     );
 
     arithmetic::emit(&mut a);
+    angles::emit(&mut a);
     bit_unpack::emit(&mut a);
     lz77::emit(&mut a);
     run_length::emit(&mut a);
