@@ -85,10 +85,12 @@ impl Cpu {
                 } else if user_bank {
                     self.user_register(register)
                 } else {
+                    // Stores use one instruction beyond the ordinary operand PC.
+                    // Thumb can store PC here only through an empty register list.
                     let pc_offset = if self.instruction_set == InstructionSet::Arm {
                         12
                     } else {
-                        4
+                        6
                     };
                     self.operand_register(register, pc_offset)
                 };

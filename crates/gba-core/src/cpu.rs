@@ -28,6 +28,8 @@ mod status_tests;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
+mod thumb_empty_tests;
+#[cfg(test)]
 mod thumb_tests;
 #[cfg(test)]
 mod timing_tests;

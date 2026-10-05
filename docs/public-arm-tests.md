@@ -110,7 +110,8 @@ Test 362 checks shifted addressing, writeback, and carry, but does not check the
 Original regressions separately check the returned word, byte lanes, rotation, sign extension, timing, and retained diagnostics.
 See the bounded [ARM open-bus implementation](hardware/cpu.md#arm-unused-memory-data-reads).
 This is a passing result for this pinned ARM ROM, not proof of complete instruction, memory, or timing compatibility.
-No public Thumb, timing, memory, BIOS, graphics, or unsafe suite has been claimed as passing.
+The [pinned public Thumb ROM](public-thumb-tests.md) also passes its verified checkpoint.
+No public timing, memory, BIOS, graphics, or unsafe suite has been claimed as passing.
 These results do not establish Pokémon Emerald compatibility.
 
 ## References

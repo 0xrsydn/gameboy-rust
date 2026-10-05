@@ -65,7 +65,11 @@ They verify loaded-value precedence, preserved flags, unchanged stores, nominal 
 ARM open-bus regressions cover unused-range boundaries, PC+8 source regions, byte lanes, signed/unaligned loads, writeback, and block loads.
 They check branch-target resampling, missing lookahead, skipped conditions, nominal timing, device progress, and retained host/fetch/Thumb/DMA diagnostics.
 The pinned public ARM ROM now reaches its completion checkpoint with r12 = 0 in debug and release builds.
-This does not establish public Thumb, timing, graphics, BIOS, or commercial-game compatibility.
+The pinned public Thumb ROM also reaches its ARM-state checkpoint with r7 = 0 in both builds.
+Empty-list Thumb regressions cover PC+6, all low bases and processor modes, banked stacks, both code alignments, and unaligned data.
+They check one-word writes, 64-byte writeback, ROM windows, the following PC operand, nominal timing, and atomic errors.
+Existing ARM empty-list and Thumb empty-load tests continue to pass. `PUSH {lr}` retains its normal link value.
+These results do not establish public timing, memory, graphics, BIOS, or commercial-game compatibility.
 
 ROM-runner tests use temporary files containing original instructions, without Nintendo assets or a desktop session.
 They check file-size boundaries, bounded reads, short reads, I/O errors, paths, symlinks, and read-only loading.

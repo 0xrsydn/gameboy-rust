@@ -560,7 +560,7 @@ fn empty_thumb_multiple_lists_transfer_pc_with_sixty_four_byte_writeback() {
         cpu.step(&mut memory).unwrap();
         assert_eq!(cpu.registers[0], RAM + 64);
         if instruction == 0xc000 {
-            assert_eq!(memory.read32(RAM).unwrap(), ROM_START + 4);
+            assert_eq!(memory.read32(RAM).unwrap(), ROM_START + 6);
             assert_eq!(cpu.pc(), ROM_START + 2);
         } else {
             assert_eq!(cpu.pc(), ROM_START + 10);
@@ -576,10 +576,10 @@ fn empty_push_pop_follow_arm7_block_transfer_rules() {
     cpu.registers[13] = RAM + 0x100;
     cpu.step(&mut memory).unwrap();
     assert_eq!(cpu.registers[13], RAM + 0xc0);
-    assert_eq!(memory.read32(RAM + 0xc0).unwrap(), ROM_START + 4);
+    assert_eq!(memory.read32(RAM + 0xc0).unwrap(), ROM_START + 6);
     cpu.step(&mut memory).unwrap();
     assert_eq!(cpu.registers[13], RAM + 0x100);
-    assert_eq!(cpu.pc(), ROM_START + 4);
+    assert_eq!(cpu.pc(), ROM_START + 6);
 }
 
 #[test]

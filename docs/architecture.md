@@ -30,6 +30,7 @@ The repository is a Cargo workspace with three crates:
 | `crates/gba-core/src/cpu/compare_psr_tests.rs` | Original Rd=15 test/compare status restoration, flags, bank, and timing regressions |
 | `crates/gba-core/src/cpu/status_tests.rs`, `crates/gba-core/src/cpu/exception_tests.rs` | Status, banking, exception, and return tests |
 | `crates/gba-core/src/cpu/thumb_tests.rs` | Thumb instructions, state switching, and decoder checks |
+| `crates/gba-core/src/cpu/thumb_empty_tests.rs` | Original empty-list stored-PC regressions for banks, alignment, writeback, timing, and diagnostics |
 | `crates/gba-core/src/cpu/transfer_tests.rs` | Stack, addressing, overlap, empty-list, and swap tests |
 | `crates/gba-core/src/cpu/tests.rs` | Condition truth tables and immediate arithmetic tests |
 | `crates/gba-core/src/cpu/instruction_tests.rs` | Register operations, transfers, branches, and edge cases |

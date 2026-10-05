@@ -1,7 +1,7 @@
 # Pinned public Thumb test
 
 The headless runner executes the unmodified Thumb ROM from [jsmolka/gba-tests](https://github.com/jsmolka/gba-tests).
-It currently reaches its result checkpoint but fails test 229 on Darwin arm64 in debug and release builds.
+It now passes its result checkpoint on Darwin arm64 in debug and release builds. The initial test 229 failure is retained below.
 This is an independent compatibility baseline, not complete ARM7TDMI conformance or a hardware measurement.
 
 ## Prepare and run
@@ -67,8 +67,20 @@ Initial integration, before fixing empty-list Thumb stores:
 - The stored PC value is `0x080008be`, but the following PC read expects `0x080008c0`.
 - The public ARM ROM still passes its unchanged checkpoint.
 
-The next CPU task is to verify the empty-list store PC offset and correct it with original regressions.
-Do not change the pinned ROM or weaken the result assertion to pass this test.
+After correcting the empty-list store PC offset:
+
+- Thumb empty-list stores use executing PC+6 instead of PC+4. ARM stores retain PC+12.
+- Test 229 and the later memory tests complete without taking their failure paths.
+- The runner reaches `0x08000934` after 807 successful steps and 4,170 nominal cycles.
+- The CPU is in System/ARM state with CPSR `0x0000001f` and r7 = 0.
+- Debug and release builds exit zero with `reason: checkpoint`, no error, and the result assertion passing.
+- Both public ROMs pass with their original bytes, checkpoint addresses, budgets, and assertions unchanged.
+
+Original regressions reproduce the stored-PC mismatch without public ROM bytes.
+They cover all low base registers, banked stack pointers, code/data alignment, ROM windows, timing, and atomic diagnostics.
+Existing empty-list expectations that incorrectly required PC+4 were corrected; empty loads and ARM stores retain their behavior.
+See [CPU transfer semantics](hardware/cpu.md#instruction-demo-and-execution-rules).
+This proves only the pinned suites' checkpoints and assertions, not complete CPU, bus, or timing compatibility.
 No public timing, memory, BIOS, graphics, or unsafe suite is claimed as passing.
 These results do not establish Pokémon Emerald compatibility.
 

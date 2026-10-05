@@ -38,6 +38,7 @@ Arithmetic operations compute carry and overflow from the arithmetic result, not
 The CPU stores the next instruction address in r15.
 In ARM state, ordinary operand reads add eight bytes. Register-specified shifts use a twelve-byte offset.
 Storing r15 in ARM state also uses a twelve-byte offset.
+Thumb empty-register-list stores use PC plus six; they must not use the ordinary Thumb operand offset.
 Thumb operand reads use PC plus four. Literal loads and PC-relative addresses additionally align down to a word.
 `BX` selects the instruction set; ordinary PC writes keep the current instruction set.
 On ARM7, Thumb `POP {pc}` remains in Thumb even if the loaded address has bit zero clear.
@@ -64,6 +65,13 @@ These alias rules implement ARM7 compatibility behavior, not a recommendation fo
 Block transfers assign the lowest-numbered register to the lowest memory address.
 They align addresses down without rotating loaded words, and preserve low base bits during writeback.
 On ARM7, an empty register list transfers PC but uses a 64-byte span for addressing and writeback.
+Thumb `STMIA Rb!, {}` stores executing PC+6 at the word-aligned base, then adds 64 to the unaligned base.
+The shared empty `PUSH {}` path also stores PC+6, retaining its existing full-descending addressing and 64-byte stack adjustment.
+The stored PC keeps bit 1; neither instruction word-aligns this value. Both stores advance execution by two bytes and preserve flags.
+Empty Thumb loads still align the loaded PC to a halfword and remain in Thumb state.
+`PUSH {lr}` is not an empty list and stores the original link register with a four-byte stack adjustment.
+The PC+6 correction agrees with public Thumb test 229 and mGBA's shared empty-list store path.
+These forms retain nominal single-word access costs and the existing atomic-error policy; exact bus timing remains unverified.
 `LDM` suppresses writeback when the base register is in the list.
 With writeback enabled, `STM` stores the old base only when that register is first in the list.
 Otherwise, `STM` stores the updated base.

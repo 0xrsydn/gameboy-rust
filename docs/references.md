@@ -78,7 +78,8 @@ Hardware references used for the core:
 - [GBATEK Thumb register operations](https://problemkaputt.de/gbatek-thumb-opcodes-register-operations-alu-bx.htm).
 - [GBATEK Thumb loads/stores](https://problemkaputt.de/gbatek-thumb-opcodes-memory-load-store-ldr-str.htm).
 - [GBATEK Thumb address calculation](https://problemkaputt.de/gbatek-thumb-opcodes-memory-addressing-add-pc-sp.htm).
-- [GBATEK Thumb stack and multiple transfers](https://problemkaputt.de/gbatek-thumb-opcodes-memory-multiple-load-store-push-pop-and-ldm-stm.htm).
+- [GBATEK Thumb stack and multiple transfers](https://problemkaputt.de/gbatek-thumb-opcodes-memory-multiple-load-store-push-pop-and-ldm-stm.htm), for empty-list PC transfers and 64-byte writeback.
+- [mGBA Thumb transfer implementation](https://github.com/mgba-emu/mgba/blob/master/src/arm/isa-thumb.c) and [shared memory transfers](https://github.com/mgba-emu/mgba/blob/master/src/gba/memory.c), reviewed for empty STM/PUSH routing and the extra Thumb instruction width on the stored pipeline PC. This supports executing PC+6, rather than an ordinary PC+4 operand read.
 - [GBATEK Thumb jumps and calls](https://problemkaputt.de/gbatek-thumb-opcodes-jumps-and-calls.htm).
 
 Use [GBATEK](https://problemkaputt.de/gbatek.htm) and ARM7TDMI documentation for further hardware work.
