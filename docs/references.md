@@ -60,7 +60,11 @@ Hardware references used for the core:
 - [GBATEK processor registers and modes](https://problemkaputt.de/gbatek-arm-cpu-register-set.htm).
 - [GBATEK status transfers](https://problemkaputt.de/gbatek-arm-opcodes-psr-transfer-mrs-msr.htm).
 - [GBATEK CPU exceptions](https://problemkaputt.de/gbatek-arm-cpu-exceptions.htm).
-- [GBATEK ARM data processing](https://problemkaputt.de/gbatek-arm-opcodes-data-processing-alu.htm).
+- [GBATEK ARM data processing](https://problemkaputt.de/gbatek-arm-opcodes-data-processing-alu.htm), including R15/status notes. Its legacy `{P}` description alone does not establish ARM7 behavior.
+- [mGBA ARM instruction implementation](https://github.com/mgba-emu/mgba/blob/master/src/arm/isa-arm.c), reviewed for Rd=15 test/compare SPSR restoration, User/System fallback, and no result write/refill.
+- [jsmolka/gba-tests](https://github.com/jsmolka/gba-tests/tree/a7113b67e63f83a9b321696ddd7042ccfad6c881), pinned for independent ARM testing. Reviewed its MIT license, startup, result macros, compare/status tests, and load/writeback alias tests.
+- [armwrestler-gba-fixed](https://github.com/destoer/armwrestler-gba-fixed) and [arm7wrestler](https://github.com/Arisotura/arm7wrestler), considered as test sources; not integrated.
+- [SingleStepTests ARM7TDMI](https://github.com/SingleStepTests/ARM7TDMI), considered as an experimental, emulator-generated test source; not integrated.
 - [GBATEK ARM single data transfers](https://problemkaputt.de/gbatek-arm-opcodes-memory-single-data-transfer-ldr-str-pld.htm).
 - [GBATEK memory alignment](https://problemkaputt.de/gbatek-arm-cpu-memory-alignments.htm).
 - [GBATEK multiply instructions](https://problemkaputt.de/gbatek-arm-opcodes-multiply-and-multiply-accumulate-mul-mla.htm).

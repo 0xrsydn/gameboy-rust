@@ -14,6 +14,8 @@ pub use status::Mode;
 mod transfer;
 
 #[cfg(test)]
+mod compare_psr_tests;
+#[cfg(test)]
 mod exception_tests;
 #[cfg(test)]
 mod instruction_tests;

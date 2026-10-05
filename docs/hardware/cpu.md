@@ -70,8 +70,16 @@ Entry selects ARM state, masks interrupt requests (`IRQ`), and branches to the e
 FIQ entry also masks FIQ. Ordinary IRQ entry preserves the FIQ mask.
 `MOVS pc, lr`, `SUBS pc, lr, #offset`, and `LDM` with S and PC restore CPSR from SPSR.
 Return alignment follows the saved instruction state, not target bit zero.
-User/System status returns fail because those modes have no SPSR.
+Result-writing PC status returns fail in User/System modes because those modes have no SPSR.
 An SPSR can contain invalid mode bits, but a return using those bits fails without changing CPU state.
+
+ARM `TST`, `TEQ`, `CMP`, and `CMN` encodings with unused destination bits set to R15 restore CPSR when an SPSR exists.
+These compare/status forms do not write the arithmetic result to PC. Execution continues at the next sequential address.
+In User/System modes, they perform ordinary test/compare flag updates without a mode change.
+Invalid saved modes still produce an atomic diagnostic. Failed conditions do not restore or validate status.
+Nominal timing remains one sequential code access, plus an internal cycle for register-specified shifts; there is no refill cost.
+This fixes the mode-switch expectation in public `jsmolka/gba-tests` ARM test 234 and agrees with mGBA's shared ALU flag handling.
+The interpreter has no fetch pipeline; instruction-state-changing forms and exact pipeline behavior remain hardware-unverified.
 
 Other S-bit block transfers access User registers while using the current mode's base register.
 User-bank writeback, S-bit empty lists, and User-mode S-bit transfers return diagnostics.

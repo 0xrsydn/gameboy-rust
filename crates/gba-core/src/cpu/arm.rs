@@ -69,7 +69,10 @@ impl Cpu {
         if test && !set_flags {
             return Err(self.unsupported(instruction));
         }
-        let restore = if !test && destination == 15 && set_flags {
+        // Test/compare encodings with unused Rd=15 restore SPSR when present,
+        // but do not write PC or refill the pipeline. Without an SPSR they use
+        // ordinary ALU flags. Result-writing PC returns still require an SPSR.
+        let restore = if destination == 15 && set_flags && (!test || self.spsr().is_some()) {
             Some(self.return_status(instruction)?)
         } else {
             None
