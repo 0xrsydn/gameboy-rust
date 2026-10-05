@@ -135,7 +135,10 @@ Wait tests inject an IRQ at 100 different machine-step positions to check the fl
 Other wait tests cover discarded flags, unrelated IRQs, masked/User-mode callers, and callbacks that omit BIOS flag updates.
 HALT tests distinguish wake-up from IRQ delivery, including IME/CPSR masking and ARM/Thumb resume behavior.
 Idle batches are checked against a cycle-by-cycle reference with independent and cascaded timers.
-Tests cover display/DMA wake sources, DMA priority while halted, BIOS-only writes, STOP diagnostics, and frame limits.
+Tests cover display/DMA wake sources, DMA priority while halted, BIOS-only writes, power-state validation, and frame limits.
+STOP tests check zero-cycle idle steps, frozen DMA/timers/display, retained timer phases and captured frames, and live keypad wake.
+They distinguish wake-up from IF latching and test stale requests, interrupt masks, already-held keys, and normal resume ordering.
+ARM/Thumb BIOS Stop tests verify caller preservation. Frame-runner tests check prompt stopped results and unchanged output images.
 The graphics test verifies BIOS VBlank waiting, one IRQ callback per update, and status restoration before each redraw.
 DMA tests cover both widths, all supported address modes, count limits, register masks, enable latches, and repeated transfers.
 Tests verify channel priority/preemption, CPU pausing, display/timer progress, IRQ acknowledgement/return, and WAITCNT costs.

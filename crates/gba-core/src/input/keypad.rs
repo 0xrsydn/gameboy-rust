@@ -20,12 +20,21 @@ impl Keypad {
         self.control
     }
 
+    pub(crate) fn update_stopped_buttons(&mut self, buttons: Buttons) {
+        self.buttons = buttons;
+    }
+
     pub(crate) fn set_buttons(&mut self, buttons: Buttons) -> bool {
         self.buttons = buttons;
         self.sample()
     }
 
     pub(crate) fn write_control(&mut self, value: u16) -> bool {
+        self.update_control(value);
+        self.sample()
+    }
+
+    pub(crate) fn update_control(&mut self, value: u16) {
         let value = value & 0xc3ff;
         let newly_selected = (value & !self.control) & 0x03ff;
         // A newly selected held key must not be hidden by an earlier AND sample.
@@ -33,27 +42,34 @@ impl Keypad {
             *previous &= !newly_selected;
         }
         self.control = value;
-        self.sample()
     }
 
-    fn sample(&mut self) -> bool {
+    /// Live enabled condition for asynchronous STOP wake; no IF/history update.
+    pub(crate) fn wake_condition(&self) -> bool {
         if self.control & 0x4000 == 0 {
             return false;
         }
         let selected = self.control & 0x03ff;
         let pressed = self.buttons.bits();
         let all = self.control & 0x8000 != 0;
-        let matched = if all {
+        if all {
             pressed & selected == selected
         } else {
             pressed & selected != 0
-        };
-        if !matched {
+        }
+    }
+
+    fn sample(&mut self) -> bool {
+        if self.control & 0x4000 == 0 {
+            return false;
+        }
+        if !self.wake_condition() {
             self.last_match = None;
             return false;
         }
+        let pressed = self.buttons.bits();
         let previous = self.last_match.replace(pressed);
-        !all || previous != Some(pressed)
+        self.control & 0x8000 == 0 || previous != Some(pressed)
     }
 }
 

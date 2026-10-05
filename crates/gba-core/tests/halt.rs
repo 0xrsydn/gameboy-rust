@@ -554,40 +554,35 @@ fn halt_store_finishes_and_can_wake_during_its_own_cycles() {
 }
 
 #[test]
-fn stop_diagnostics_validate_entire_write_before_postflg_or_halt_changes() {
-    let mut bus = Memory::new(vec![]).unwrap();
-    for value in [0x80, 0xff] {
-        assert_eq!(
-            bus.write8(HALTCNT, value),
-            Err(MemoryError::UnsupportedStop)
-        );
-        assert_eq!(
-            bus.write16(POSTFLG, u16::from(value) << 8 | 1),
-            Err(MemoryError::UnsupportedStop)
-        );
-        assert_eq!(
-            bus.write32(POSTFLG, u32::from(value) << 8 | 1),
-            Err(MemoryError::UnsupportedStop)
-        );
-        assert_eq!(bus.read32(POSTFLG).unwrap(), 0);
-        assert!(!bus.halted());
-        assert_eq!(bus.cycles(), 0);
+fn stop_writes_support_all_widths_without_becoming_halt() {
+    for value in 0x80..=0xff {
+        for width in [1, 2, 4] {
+            let mut bus = Memory::new(vec![]).unwrap();
+            match width {
+                1 => bus.write8(HALTCNT, value).unwrap(),
+                2 => bus.write16(POSTFLG, u16::from(value) << 8 | 1).unwrap(),
+                _ => bus.write32(POSTFLG, u32::from(value) << 8 | 1).unwrap(),
+            }
+            assert_eq!(bus.read32(POSTFLG).unwrap(), u32::from(width != 1));
+            assert!(bus.stopped());
+            assert!(!bus.halted());
+            assert_eq!(bus.cycles(), 0);
+        }
     }
 }
 
 #[test]
-fn bios_stop_error_preserves_cpu_timing_and_clears_access_context() {
+fn bios_stop_store_finishes_before_freezing_and_access_context_is_cleared() {
     let mut machine = store_machine(0x100, 0xe581_0000, POSTFLG, 0x8001, true);
-    let before = machine.cpu().clone();
-    assert_eq!(
-        machine.step(),
-        Err(MachineError::Cpu(MemoryError::UnsupportedStop.into()))
-    );
-    assert_eq!(machine.cpu(), &before);
-    assert_eq!(machine.cycles(), 0);
-    assert_eq!(machine.last_timing(), StepTiming::default());
-    assert_eq!(machine.memory().read8(POSTFLG).unwrap(), 0);
+    assert_eq!(machine.step().unwrap(), StepKind::Instruction);
+    assert_eq!(machine.cpu().pc(), 0x10c);
+    assert_eq!(machine.cycles(), u64::from(machine.last_timing().total()));
+    assert!(machine.cycles() > 0);
+    assert_eq!(machine.memory().read8(POSTFLG).unwrap(), 1);
+    assert!(machine.stopped());
     assert!(!machine.halted());
+    assert_eq!(machine.step().unwrap(), StepKind::StopIdle);
+    assert_eq!(machine.last_timing(), StepTiming::default());
     // A failed non-BIOS instruction must also clear its access context.
     let mut machine = store_machine(ROM_START, 0xe581_0000, 0x0400_0058, 0, true);
     assert!(machine.step().is_err());
@@ -604,6 +599,7 @@ fn non_bios_stop_write_is_ignored_not_a_diagnostic() {
         assert_eq!(machine.step().unwrap(), StepKind::Instruction);
         assert!(!machine.halted());
         assert_eq!(machine.memory().read32(POSTFLG).unwrap(), 0);
+        assert!(!machine.stopped());
     }
 }
 

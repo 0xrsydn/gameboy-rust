@@ -29,6 +29,7 @@ pub enum GraphicsError {
     Video(VideoError),
     FrameTimeout,
     FrameUnavailable,
+    Stopped,
 }
 
 impl fmt::Display for GraphicsError {
@@ -38,6 +39,7 @@ impl fmt::Display for GraphicsError {
             Self::Dma(error) => write!(f, "{error}"),
             Self::Memory(error) => write!(f, "{error}"),
             Self::Video(error) => write!(f, "{error}"),
+            Self::Stopped => write!(f, "graphics program is in STOP; waiting for host input"),
             Self::FrameUnavailable => write!(f, "no complete scanline frame is available"),
             Self::FrameTimeout => write!(
                 f,
@@ -54,7 +56,7 @@ impl Error for GraphicsError {
             Self::Dma(error) => Some(error),
             Self::Memory(error) => Some(error),
             Self::Video(error) => Some(error),
-            Self::FrameTimeout | Self::FrameUnavailable => None,
+            Self::FrameTimeout | Self::FrameUnavailable | Self::Stopped => None,
         }
     }
 }
@@ -93,6 +95,7 @@ impl GraphicsDemo {
     /// The first call also runs startup under forced blank and primes the VBlank wait.
     /// Emulated CPU code and DMA write display registers, VRAM, and demo state.
     /// Errors retain completed machine steps; the output buffer is not updated.
+    /// STOP returns GraphicsError::Stopped promptly so the caller can supply input.
     pub fn frame(
         &mut self,
         buttons: Buttons,
@@ -123,7 +126,11 @@ impl GraphicsDemo {
                 if steps == FRAME_STEP_LIMIT {
                     return Err(GraphicsError::FrameTimeout);
                 }
-                self.machine.step().map_err(GraphicsError::from)?;
+                if self.machine.step().map_err(GraphicsError::from)?
+                    == gba_core::machine::StepKind::StopIdle
+                {
+                    return Err(GraphicsError::Stopped);
+                }
                 steps += 1;
             }
             steps += self.wait_vblank(FRAME_STEP_LIMIT - steps)?;
@@ -150,6 +157,7 @@ impl GraphicsDemo {
                 FrameRunError::Cpu(error) => GraphicsError::Cpu(error),
                 FrameRunError::Dma(error) => GraphicsError::Dma(error),
                 FrameRunError::StepLimit(_) => GraphicsError::FrameTimeout,
+                FrameRunError::Stopped => GraphicsError::Stopped,
             })
     }
 }
@@ -307,6 +315,28 @@ fn patch_branch(code: &mut [u32], index: usize, target: usize, condition: u32, l
 mod tests {
     use super::*;
     use gba_core::{cpu::Cpu, io::DISPSTAT, memory::Memory};
+
+    #[test]
+    fn stopped_program_reports_promptly_during_startup_and_frame_wait() {
+        for primed in [false, true] {
+            let mut demo =
+                GraphicsDemo::with_program(0xeaff_fffe_u32.to_le_bytes().to_vec()).unwrap();
+            demo.primed = primed;
+            demo.machine
+                .memory_mut()
+                .write8(gba_core::io::HALTCNT, 0x80)
+                .unwrap();
+            let mut output = Framebuffer::default();
+            output.clear(31);
+            let before = output.pixels().to_vec();
+            assert!(matches!(
+                demo.frame(Buttons::default(), &mut output),
+                Err(GraphicsError::Stopped)
+            ));
+            assert_eq!(demo.machine.cycles(), 0);
+            assert_eq!(output.pixels(), before);
+        }
+    }
 
     #[test]
     fn frame_runner_does_not_require_a_ram_counter_update() {

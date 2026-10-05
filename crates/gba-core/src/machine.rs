@@ -19,6 +19,8 @@ pub enum StepKind {
     },
     /// Advance device clocks to the next event while the CPU stays paused.
     HaltIdle,
+    /// System clock is off; no CPU, DMA, or device progress. Supply host input to wake.
+    StopIdle,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -50,6 +52,7 @@ pub enum FrameRunError {
     Cpu(CpuError),
     Dma(DmaError),
     StepLimit(usize),
+    Stopped,
 }
 
 impl fmt::Display for FrameRunError {
@@ -57,6 +60,7 @@ impl fmt::Display for FrameRunError {
         match self {
             Self::Cpu(error) => write!(f, "{error}"),
             Self::Dma(error) => write!(f, "{error}"),
+            Self::Stopped => write!(f, "machine is in STOP; no VBlank can occur until wake-up"),
             Self::StepLimit(limit) => write!(f, "no VBlank entry within {limit} machine steps"),
         }
     }
@@ -67,13 +71,13 @@ impl Error for FrameRunError {
         match self {
             Self::Cpu(error) => Some(error),
             Self::Dma(error) => Some(error),
-            Self::StepLimit(_) => None,
+            Self::StepLimit(_) | Self::Stopped => None,
         }
     }
 }
 
 /// Owns the CPU and memory bus. Use this instead of Cpu::step to advance device
-/// clocks, execute DMA, honor HALT, and deliver interrupts. No audio or STOP yet.
+/// clocks, execute DMA, honor HALT/STOP, and deliver interrupts. No audio yet.
 pub struct Machine {
     cpu: Cpu,
     memory: Memory,
@@ -106,6 +110,10 @@ impl Machine {
         self.memory.halted()
     }
 
+    pub fn stopped(&self) -> bool {
+        self.memory.stopped()
+    }
+
     pub fn cycles(&self) -> u64 {
         self.memory.cycles()
     }
@@ -114,13 +122,17 @@ impl Machine {
     /// Stops at the first instruction, DMA-unit, or HALT-idle boundary after the event.
     /// DMA requested by that event may still be pending. Prior successful
     /// steps remain committed on error or limit exhaustion. Zero steps always fails.
+    /// StopIdle returns FrameRunError::Stopped immediately; no VBlank can advance.
     pub fn run_until_vblank(&mut self, max_steps: usize) -> Result<usize, FrameRunError> {
         let previous = self.memory.display_position().vblanks;
         for steps in 1..=max_steps {
-            self.step().map_err(|error| match error {
+            let kind = self.step().map_err(|error| match error {
                 MachineError::Cpu(error) => FrameRunError::Cpu(error),
                 MachineError::Dma(error) => FrameRunError::Dma(error),
             })?;
+            if kind == StepKind::StopIdle {
+                return Err(FrameRunError::Stopped);
+            }
             if self.memory.display_position().vblanks != previous {
                 return Ok(steps);
             }
@@ -133,11 +145,13 @@ impl Machine {
         self.last_timing
     }
 
-    /// Service one ready DMA unit before sampling IRQ or executing CPU code.
+    /// STOP returns StopIdle with zero timing before DMA, IRQ, or CPU work.
+    /// Otherwise, service one ready DMA unit before sampling IRQ or CPU code.
     /// Lower channel numbers take priority; higher-priority requests can preempt
     /// between units. The CPU and its registers remain paused throughout DMA.
     /// If HALT is still waiting, advance to the next display edge or timer overflow.
-    /// Wake-up ignores IME and CPSR.I; IRQ delivery still respects both masks.
+    /// HALT wakes on IE & IF; STOP wakes on the enabled live keypad condition.
+    /// Both ignore IME and CPSR.I; IRQ delivery still respects both masks.
     /// Sample IRQ before executing the next instruction. GBA devices do not
     /// generate FIQ. IRQ entry consumes a separate step and does not clear IF.
     /// CPU/DMA work uses nominal costs; HALT advances exactly to the next device event.
@@ -146,6 +160,10 @@ impl Machine {
     /// CPU/DMA diagnostics leave CPU, devices, and the clock unchanged for this step.
     /// Row-capture diagnostics are deferred to Memory::present_frame instead.
     pub fn step(&mut self) -> Result<StepKind, MachineError> {
+        if self.memory.stopped() {
+            self.last_timing = StepTiming::default();
+            return Ok(StepKind::StopIdle);
+        }
         if let Some((channel, timing)) = self.memory.step_dma().map_err(MachineError::Dma)? {
             self.last_timing = timing;
             return Ok(StepKind::Dma { channel });
@@ -169,7 +187,7 @@ impl Machine {
                     .map_err(MachineError::Cpu)?,
             )
         };
-        self.memory.advance_cycles(timing.total());
+        self.memory.complete_cpu_step(timing.total());
         self.last_timing = timing;
         Ok(kind)
     }

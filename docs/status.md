@@ -37,7 +37,8 @@ Update this file when a feature lands or a limit is removed.
 - Four direct memory access (DMA) channels, with immediate, VBlank, and visible-line HBlank triggers.
 - Halfword/word DMA, address controls, repeat, channel priority, CPU pausing, and completion IRQs.
 - HALT with enabled-request wake-up, continued device clocks, and bounded idle steps.
-- BIOS-only CPU writes to POSTFLG/HALTCNT, with explicit errors for unsupported STOP mode.
+- BIOS-only CPU writes to POSTFLG/HALTCNT, with HALT and keypad-wake STOP.
+- STOP freezes CPU/DMA/device clocks, retains device phases, and reports a stopped frame runner without spinning.
 - Machine execution to the next VBlank event, with a configurable step limit.
 - CPU/device stepping with nominal ARM7 instruction costs and memory wait states.
 - Game Pak wait-state control (`WAITCNT`) for all three ROM windows.
@@ -98,6 +99,7 @@ Individual fetch timing, hardware-accurate work cutoffs, video-bus contention, a
 There is no sound or cartridge save support.
 Mapped I/O covers DMA, timers, interrupts, WAITCNT, display control/status, background control/scroll/affine registers, window/effect registers, KEYINPUT/KEYCNT, POSTFLG, and HALTCNT.
 Keypad IRQs use a documented polling model; hardware retrigger edges and asynchronous input timing remain unverified.
+STOP implements keypad wake only. Serial/Game Pak wake sources, oscillator restart delays, and exact wake timing remain unimplemented or unverified.
 The presentation framebuffer is separate from emulated video RAM.
 All named graphics demos connect desktop input and rendering to the emulated CPU. The default display test remains host-generated.
 The executable does not accept ROM files yet.
@@ -113,7 +115,7 @@ Writes to cartridge addresses return errors instead of modeling cartridge hardwa
 1. Validate CPU behavior with public ARM7TDMI test programs before claiming instruction compatibility.
 2. Refine nominal timing with a fetch pipeline, Game Pak prefetch, per-access device updates, and verified timer/IRQ delays.
 3. Validate keypad retrigger behavior with hardware tests and add remaining device registers; extend BIOS reset coverage as sound/serial support becomes available.
-   Add STOP and remaining DMA device modes with verified timing and wake-up behavior.
+   Validate STOP entry/wake edges and add external wake sources and remaining DMA device modes.
 4. Replace nominal sprite work limits with verified individual fetch timing; add background fetch timing and per-pixel composition.
 5. Expand graphics, audio, cartridge loading, and saves before testing Emerald compatibility.
 

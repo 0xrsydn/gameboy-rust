@@ -29,7 +29,7 @@ The repository is a Cargo workspace with three crates:
 | `crates/gba-core/src/cpu/tests.rs` | Condition truth tables and immediate arithmetic tests |
 | `crates/gba-core/src/cpu/instruction_tests.rs` | Register operations, transfers, branches, and edge cases |
 | `crates/gba-core/src/memory.rs` | Memory mapping, I/O routing, write validation, and device clock |
-| `crates/gba-core/src/io.rs` | I/O registers, timers, HALT wake-up, next-event bounds, and IRQ latches |
+| `crates/gba-core/src/io.rs` | I/O registers, timers, HALT/STOP wake-up, next-event bounds, and IRQ latches |
 | `crates/gba-core/src/display.rs` | Display clock, scanline status, comparison edges, and display IRQ events |
 | `crates/gba-core/src/dma.rs` | DMA registers, internal pointers, trigger state, priority, and completion IRQs |
 | `crates/gba-core/src/machine.rs` | Timed CPU/DMA/device stepping and IRQ delivery |
@@ -102,7 +102,9 @@ The repository is a Cargo workspace with three crates:
 | `crates/gba-core/tests/sprites/affine.rs` | Affine matrices, drawing areas, signed sampling, shared groups, and floating-point reference tests |
 | `crates/gba-core/tests/display.rs` | Display boundaries, register masks, IRQ handlers, and VBlank frame execution |
 | `crates/gba-core/tests/dma.rs` | DMA widths, latches, priority, triggers, IRQs, timing, errors, and CPU integration |
-| `crates/gba-core/tests/halt.rs` | HALT wake masks, idle timing, BIOS-only writes, DMA progress, and STOP diagnostics |
+| `crates/gba-core/tests/stop.rs` | STOP clock gating, live keypad wake, retained DMA/device phases, frame-runner results, and access rules |
+| `crates/gba-core/tests/bios/stop.rs` | ARM/Thumb Stop calls, caller preservation, keypad wake, and stopped frame running |
+| `crates/gba-core/tests/halt.rs` | HALT wake masks, idle timing, BIOS-only power writes, DMA progress, and validation |
 | `crates/gba-core/tests/bios.rs` | ARM/Thumb service calls, copy/fill boundaries, wait races, callback contracts, and boot |
 | `crates/gba-core/tests/bios/ram_reset.rs` | Selective RAM boundaries, flag combinations, I/O reset, display rendering, DMA/timer latches, and diagnostics |
 | `crates/gba-core/tests/bios/reset.rs` | All restart flags, exact RAM boundaries, CPU banks, restart execution, device continuity, and IRQ masking |

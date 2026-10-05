@@ -24,13 +24,11 @@ pub enum MemoryError {
     Unaligned(u32),
     RomTooLarge(usize),
     InvalidBiosSize(usize),
-    UnsupportedStop,
 }
 
 impl fmt::Display for MemoryError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::UnsupportedStop => write!(f, "HALTCNT STOP mode is not implemented"),
             Self::Unmapped(address) => write!(f, "unmapped memory at {address:#010x}"),
             Self::ReadOnly(address) => write!(f, "read-only memory at {address:#010x}"),
             Self::Unaligned(address) => write!(f, "unaligned memory access at {address:#010x}"),
@@ -104,15 +102,28 @@ impl Memory {
         Ok(memory)
     }
 
-    /// Total supplied clock cycles, wrapping at u64::MAX. Reads/writes alone
-    /// consume no cycles. Machine stepping or the caller must advance time.
+    /// Total elapsed emulated clock cycles, wrapping at u64::MAX. Reads/writes
+    /// alone consume no cycles. STOP discards externally supplied clock advances.
     pub fn cycles(&self) -> u64 {
         self.cycles
     }
 
     /// Advance devices and optional row capture. Multiple unserviced DMA requests
-    /// coalesce. No CPU or DMA work is executed by this method.
+    /// coalesce. No CPU or DMA work is executed by this method. STOP freezes all
+    /// progress: supplied cycles are ignored until an external wake condition.
     pub fn advance_cycles(&mut self, cycles: u32) {
+        if !self.stopped() {
+            self.advance_running_cycles(cycles);
+        }
+    }
+
+    /// Finish the instruction/IRQ entry that started while running. A STOP store
+    /// still pays its full nominal cost before later steps freeze the system.
+    pub(crate) fn complete_cpu_step(&mut self, cycles: u32) {
+        self.advance_running_cycles(cycles);
+    }
+
+    fn advance_running_cycles(&mut self, cycles: u32) {
         if cycles != 0 && !self.sprite_pipeline.started {
             // Synthetic reset begins on row0, with no preceding row227 to prepare it.
             self.prepare_sprite_row(0);
@@ -296,6 +307,11 @@ impl Memory {
         self.io.halted()
     }
 
+    /// Whether STOP is waiting for an enabled live keypad wake condition.
+    pub fn stopped(&self) -> bool {
+        self.io.stopped()
+    }
+
     pub(crate) fn next_event_cycles(&self) -> u32 {
         self.io.next_event_cycles()
     }
@@ -325,8 +341,8 @@ impl Memory {
     }
 
     /// Replace the current pressed-button state. This does not advance time.
-    /// Sample KEYCNT and latch a matching keypad IRQ immediately, without cycles.
-    /// This can wake HALT; CPU IRQ delivery occurs on a later Machine::step.
+    /// While running, sample KEYCNT and latch a matching IRQ without cycles.
+    /// This can wake HALT. In STOP, input can wake the system without setting IF.
     pub fn set_buttons(&mut self, buttons: Buttons) {
         self.io.set_buttons(buttons);
     }
@@ -414,7 +430,7 @@ impl Memory {
         address: u32,
         bytes: [u8; N],
     ) -> Result<(), MemoryError> {
-        let index = self.validate_write(address, &bytes)?;
+        let index = self.write_index::<N>(address)?;
         self.record_access(
             address,
             match N {
@@ -473,22 +489,6 @@ impl Memory {
         Ok(())
     }
 
-    fn validate_write<const N: usize>(
-        &self,
-        address: u32,
-        bytes: &[u8; N],
-    ) -> Result<usize, MemoryError> {
-        let index = self.write_index::<N>(address)?;
-        if self.can_write_power_control() {
-            for (offset, byte) in bytes.iter().enumerate() {
-                if address + offset as u32 == HALTCNT && byte & 0x80 != 0 {
-                    return Err(MemoryError::UnsupportedStop);
-                }
-            }
-        }
-        Ok(index)
-    }
-
     fn write_index<const N: usize>(&self, address: u32) -> Result<usize, MemoryError> {
         if address & (N as u32 - 1) != 0 {
             return Err(MemoryError::Unaligned(address));
@@ -519,8 +519,8 @@ impl Memory {
     /// leave a partial block store. This is not a model of hardware data aborts.
     /// Mapped I/O reads currently have no side effects; writes cannot fail after validation.
     pub(crate) fn write_words(&mut self, writes: &[(u32, u32)]) -> Result<(), MemoryError> {
-        for &(address, value) in writes {
-            self.validate_write(address, &value.to_le_bytes())?;
+        for &(address, _) in writes {
+            self.write_index::<4>(address)?;
         }
         for &(address, value) in writes {
             // The map cannot change between validation and these writes.

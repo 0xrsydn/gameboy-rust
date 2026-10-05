@@ -39,7 +39,7 @@ Run `direnv exec . cargo run --locked -- --help` to list every demo and smoke te
 | [docs/architecture.md](docs/architecture.md) | Crate boundaries and a file-by-file map |
 | [docs/hardware/cpu.md](docs/hardware/cpu.md) | ARM/Thumb execution rules, modes, exceptions, and timing |
 | [docs/hardware/bios.md](docs/hardware/bios.md) | The original BIOS replacement and each supported service |
-| [docs/hardware/timers-irq.md](docs/hardware/timers-irq.md) | Timers, interrupt registers, HALT, and power control |
+| [docs/hardware/timers-irq.md](docs/hardware/timers-irq.md) | Timers, interrupt registers, HALT/STOP, and power control |
 | [docs/hardware/dma.md](docs/hardware/dma.md) | DMA channels, triggers, and timing |
 | [docs/hardware/display-timing.md](docs/hardware/display-timing.md) | Display clock, status, IRQs, and scanline capture |
 | [docs/hardware/video.md](docs/hardware/video.md) | Backgrounds, sprites, mosaic, windows, color effects, and input |

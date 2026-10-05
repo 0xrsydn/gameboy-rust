@@ -1,9 +1,10 @@
-# Timers, interrupts, and HALT
+# Timers, interrupts, HALT, and STOP
 
 ## Timers, interrupt registers, and the machine clock
 
 `Machine::new(cpu, memory)` combines the CPU and memory bus.
-`Machine::step()` first services one ready DMA data unit, keeping the CPU paused.
+`Machine::step()` first checks STOP and returns `StopIdle` with zero timing if the system is still stopped.
+Otherwise it services one ready DMA data unit, keeping the CPU paused.
 If HALT is waiting and no DMA is ready, it advances device clocks to the next event without executing CPU code.
 Otherwise, it samples the IRQ line, including the CPU's interrupt mask, then enters IRQ mode or executes one instruction.
 Each successful step advances display and timer clocks by its nominal cost.
@@ -13,6 +14,7 @@ IRQ entry is a separate step; the vector instruction runs on the following step.
 A device event during a step can trigger IRQ entry once no DMA is ready and CPU masks allow delivery.
 Bus writes take effect before the step's device-clock update.
 `StepKind::Dma { channel }` identifies a DMA unit. `StepKind::HaltIdle` identifies one bounded HALT clock advance.
+`StepKind::StopIdle` identifies a stopped system with no clock progress.
 The other step kinds remain `Instruction` and `IrqEntry`.
 `MachineError::Cpu` and `MachineError::Dma` identify the source of a diagnostic.
 Failed steps do not advance the clock or partially change CPU or device state. Earlier successful steps remain committed.
@@ -23,14 +25,15 @@ Reads observe register state before that batch.
 Writes, including timer start/stop and IF acknowledgement, take effect before the entire batch.
 This does not reproduce bus-access timing within an instruction or IRQ synchronization delays.
 
-`Cpu::step` remains a CPU-only API. It does not honor HALT, execute DMA, advance device clocks, or sample device IRQs.
+`Cpu::step` remains a CPU-only API. It does not honor HALT/STOP, execute DMA, advance device clocks, or sample device IRQs.
 `Cpu::step_timed` executes the same operation and returns `StepTiming`, without advancing devices.
 `Machine::step` uses that result to advance device clocks. Failed steps preserve the previous timing result.
-`Memory::advance_cycles(n)` advances device clocks, latches DMA requests, and updates HALT wake-up state.
+`Memory::advance_cycles(n)` advances device clocks, latches DMA requests, and updates HALT wake-up state while not stopped.
+In STOP, it ignores supplied cycles and leaves device phases and captured frames unchanged.
 It does not execute CPU instructions or DMA units.
 Multiple unserviced DMA requests coalesce; bulk clock advances do not replay every missed transfer.
 Reads and writes alone consume no cycles.
-`Memory::cycles()` and `Machine::cycles()` report the supplied cycle total as a wrapping 64-bit counter.
+`Memory::cycles()` and `Machine::cycles()` report elapsed emulated clocks as a wrapping 64-bit counter, excluding stopped time.
 
 Mapped input/output (I/O) registers:
 
@@ -45,7 +48,7 @@ Mapped input/output (I/O) registers:
 | `0x04000204` | WAITCNT | Configures first/second ROM access wait states; unused bits read as zero |
 | `0x04000208` | IME | Bit zero gates IRQ delivery; other bits read as zero |
 | `0x04000300` | POSTFLG | Bit-zero post-boot flag; CPU writes require BIOS execution |
-| `0x04000301` | HALTCNT | Write-only low-power control; HALT supported, STOP returns a diagnostic |
+| `0x04000301` | HALTCNT | Write-only low-power control; HALT and keypad-wake STOP supported |
 
 Timers count at supplied clock rates divided by 1, 64, 256, or 1024.
 Timers 1–3 can instead count the preceding timer's overflows. Timer 0 ignores count-up selection.
@@ -63,7 +66,7 @@ Byte, halfword, and word accesses are supported for this register subset.
 
 Timer startup delays and shared prescaler phase are not modeled.
 The provisional timer model resets its private prescaler phase on enable or clock-source changes.
-Audio events, STOP, and interrupt sources other than timers, display events, DMA completion, and keypad input are not implemented.
+Audio events and interrupt sources other than timers, display events, DMA completion, and keypad input are not implemented.
 
 `--timer-demo` executes original ARM code that configures Timer 0, IE, and IME.
 The timer overflows after 16 supplied cycles and enters the original handler through vector `0x18`.
@@ -96,7 +99,7 @@ The original BIOS IntrWait can consume keypad events through the normal IRQ call
 
 ### Sampling policy and limits
 
-The current functional model follows mGBA's polling behavior, not a verified hardware edge detector:
+While the system clock runs, the functional model follows mGBA's polling behavior, not a verified hardware edge detector:
 
 - Each `Memory::set_buttons` call samples the input, including repeated identical values.
 - Each successful write touching KEYCNT samples after the complete register update.
@@ -113,7 +116,7 @@ Host input calls consume no emulated cycles and do not modify CPU registers.
 They can wake HALT immediately; `Machine::step` subsequently samples the IRQ line.
 The desktop demos currently supply frame-based input snapshots.
 Physical key-event timing, switch bounce, exact hardware retrigger rules, and synchronization delays remain unverified.
-STOP still returns a diagnostic; this change does not implement STOP wake-up.
+STOP uses a separate live-condition wake path described below, without latching IF or updating this polling history.
 
 Byte writes merge with the untouched KEYCNT byte.
 Halfword writes, and word writes at KEYINPUT, evaluate the final KEYCNT value once.
@@ -156,10 +159,45 @@ HALTCNT reads return zero as a placeholder, not hardware open-bus behavior.
 The reserved bytes at `0x04000302..0x04000303` read zero and ignore writes.
 Byte, halfword, and word writes are supported; a halfword/word at POSTFLG also writes HALTCNT.
 
-STOP requests from BIOS code or host setup return `MemoryError::UnsupportedStop` before any write commits.
-This prevents STOP from silently behaving like HALT while its clock-gating and wake sources are absent.
-Multi-byte and block-store diagnostics preserve POSTFLG, HALT state, CPU registers, and the current step's clock.
-CPU-only stepping can record a HALT request but does not enforce the pause. Use `Machine::step()` for device integration.
+Multi-byte and block-store diagnostics preserve POSTFLG, power state, CPU registers, and the current step's clock.
+CPU-only stepping can record HALT/STOP but does not enforce either pause. Use `Machine::step()` for device integration.
+
+## STOP with keypad wake-up
+
+Writing HALTCNT with bit 7 set requests STOP. Bits 0–6 are ignored.
+The instruction that writes STOP finishes and pays its full nominal cycle cost.
+Later machine steps perform no CPU fetch, DMA transfer, timer tick, or display update.
+`StepKind::StopIdle` reports zero timing; it does not represent elapsed host wall time.
+`Memory::stopped()` and `Machine::stopped()` report this state. The corresponding `halted()` methods return false in STOP.
+
+A matching live keypad condition wakes STOP when KEYCNT bit 14 and IE bit 12 are enabled.
+The same selected-button OR/AND logic applies, including the empty-mask behavior.
+IME and CPSR.I do not gate wake-up in this functional model.
+A matching condition already present at entry prevents a sustained stop.
+Stale IF flags alone cannot wake STOP, including an old keypad request.
+Timer, display, and DMA requests cannot wake STOP.
+
+An input sample supplied while stopped updates KEYINPUT and the wake condition without setting IF.
+It does not consume the normal running-state keypad polling history.
+This follows GBATEK's note that IF is not set while the system clock is stopped.
+Existing IF bits remain unchanged. After wake-up, an old pending enabled IRQ may still be delivered.
+A later running-state input sample follows the normal keypad IRQ policy.
+Host/debug writes to IE or KEYCNT can also satisfy the wake condition; stopped CPU code cannot execute such writes.
+
+After wake-up, ready DMA again takes priority, then IRQ delivery or CPU execution resumes.
+Timer prescaler phases, display position, RAM, and completed captured frames are retained, not reset.
+STOP does not automatically set forced blank or clear DISPCNT.
+Software can force blank before STOP if it wants the displayed image disabled.
+
+`Machine::run_until_vblank` returns `FrameRunError::Stopped` on a stopped idle step rather than exhausting the step limit.
+A zero step limit still returns `StepLimit(0)`.
+The demo frame runner maps this to `GraphicsError::Stopped`, including during startup, without changing its output image.
+A host can supply input and retry after wake-up.
+The current desktop demos do not enter STOP; the frontend does not yet provide a general game-sleep screen.
+
+Only keypad wake-up is implemented. General-purpose serial and Game Pak wake sources require their missing external devices.
+Oscillator restart delays, exact entry/wake edges, and hardware-specific IF behavior remain unverified.
+There is no host-thread sleep, wall-clock accounting, or audio clock implementation.
 
 The graphics demo now uses the optional original BIOS replacement's VBlankIntrWait service.
 Its IRQ callback acknowledges VBlank and updates the BIOS RAM flag before the service returns.

@@ -35,7 +35,7 @@ Window smoke tests (`--*-smoke-test`) need a logged-in desktop session. Details 
 | --- | --- |
 | ARM/Thumb instructions, modes, exceptions, timing | [docs/hardware/cpu.md](docs/hardware/cpu.md) |
 | BIOS services (SWI) | [docs/hardware/bios.md](docs/hardware/bios.md) |
-| Timers, IE/IF/IME, HALT | [docs/hardware/timers-irq.md](docs/hardware/timers-irq.md) |
+| Timers, IE/IF/IME, HALT/STOP | [docs/hardware/timers-irq.md](docs/hardware/timers-irq.md) |
 | DMA | [docs/hardware/dma.md](docs/hardware/dma.md) |
 | VCOUNT/DISPSTAT, HBlank/VBlank, row capture | [docs/hardware/display-timing.md](docs/hardware/display-timing.md) |
 | Backgrounds, sprites, mosaic, windows, blending, input | [docs/hardware/video.md](docs/hardware/video.md) |

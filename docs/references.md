@@ -5,9 +5,9 @@ External sources consulted while implementing the emulator. Add new sources here
 Hardware references used for the core:
 
 - [GBATEK ARM instruction cycle times](https://problemkaputt.de/gbatek-arm-cpu-instruction-cycle-times.htm).
-- [GBATEK GBA system control and WAITCNT](https://problemkaputt.de/gbatek-gba-system-control.htm).
+- [GBATEK GBA system control and WAITCNT](https://problemkaputt.de/gbatek-gba-system-control.htm), including HALTCNT power-mode selection.
 - [GBATEK BIOS reset functions](https://problemkaputt.de/gbatek-bios-reset-functions.htm), for SoftReset state and restart selection, plus RegisterRamReset flags, RAM bounds, and forced blank.
-- [GBATEK BIOS halt functions](https://problemkaputt.de/gbatek-bios-halt-functions.htm), for wait contracts and STOP differences.
+- [GBATEK BIOS halt functions](https://problemkaputt.de/gbatek-bios-halt-functions.htm), for wait contracts, STOP clock gating, allowed wake sources, and the clock-off IF note.
 - [GBATEK BIOS function calling conventions](https://problemkaputt.de/gbatek-bios-functions.htm).
 - [GBATEK BIOS memory-copy services](https://problemkaputt.de/gbatek-bios-memory-copy.htm).
 - [GBATEK BIOS rotation/scaling services](https://problemkaputt.de/gbatek-bios-rotation-scaling-functions.htm), for record layouts, angle units, and output strides.

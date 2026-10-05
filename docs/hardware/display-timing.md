@@ -32,6 +32,8 @@ Hardware IRQ synchronization delays and display bus contention are not modeled.
 
 `Machine::run_until_vblank(max_steps)` executes through the next line-160 entry, even if already in VBlank.
 It returns at the first instruction, DMA-unit, or HALT-idle boundary after that event and reports the number of machine steps.
+A stopped idle step returns `FrameRunError::Stopped` because STOP freezes the display clock.
+STOP retains the current display phase and captured frame; elapsed host time does not create emulated scanlines.
 DMA requested by that VBlank event can still be pending; this method does not wait for a redraw or DMA completion.
 A zero or exhausted step limit returns `FrameRunError::StepLimit`.
 CPU and DMA diagnostics return `FrameRunError::Cpu` and `FrameRunError::Dma`, respectively.

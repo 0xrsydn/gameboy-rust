@@ -32,6 +32,8 @@ mod ram_reset;
 mod reset;
 #[path = "bios/run_length.rs"]
 mod run_length;
+#[path = "bios/stop.rs"]
+mod stop;
 
 fn words(code: &[u32]) -> Vec<u8> {
     code.iter().flat_map(|word| word.to_le_bytes()).collect()
@@ -231,7 +233,7 @@ fn vblank_wait_halts_dispatches_irq_and_returns_through_original_code() {
 
 #[test]
 fn unsupported_services_fail_at_an_explicit_instruction_trap() {
-    for service in [3, 0x0d, 0x19, 0xff] {
+    for service in [0x0d, 0x19, 0xff] {
         let (mut machine, _) = call(service, false, [0, 0, 0]);
         let error = (0..100)
             .find_map(|_| machine.step().err())

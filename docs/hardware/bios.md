@@ -7,7 +7,7 @@ No Nintendo firmware bytes are included.
 A compile-time integer calculation generates the 512-byte sine table at `0x3e00..0x3fff`.
 The image builder checks that code and literal pools do not overlap this table.
 Literal pools follow unconditional branches and stay within each load instruction's address range.
-The CPU executes every instruction through the normal bus, timing, exception, HALT, and DMA paths.
+The CPU executes every instruction through the normal bus, timing, exception, HALT/STOP, and DMA paths.
 There is no host-side interception of SWIs.
 
 Use `bios::boot(rom)` to create a machine at the reset vector with this image mapped.
@@ -35,6 +35,7 @@ Supported software interrupt services:
 | `0x00` | SoftReset | Clear BIOS work RAM and reset CPU registers/stacks; restart in ROM or RAM without returning |
 | `0x01` | RegisterRamReset | r0 selects RAM and supported I/O resets; force blank; reject serial/sound flags |
 | `0x02` | Halt | Wait for `IE & IF`; preserve IME and caller registers |
+| `0x03` | Stop | Freeze system clocks until an enabled live keypad condition wakes the system; preserve caller state |
 | `0x04` | IntrWait | `r0`: discard old selected flags when nonzero; `r1`: flags to wait for |
 | `0x05` | VBlankIntrWait | IntrWait with discard enabled and the VBlank flag selected |
 | `0x06` | Div | Signed `r0 / r1`; return quotient in r0, remainder in r1, and quotient magnitude in r3 |
@@ -87,6 +88,21 @@ Sources below `0x02000000`, or ranges with a wrapping end address, return withou
 Other invalid accesses use normal memory diagnostics. Earlier successful writes remain committed if a later instruction fails.
 These copy services keep CPU IRQ delivery masked until return; device clocks and DMA continue throughout.
 BIOS bus protection, exact firmware timing, undocumented side effects, and nested service calls remain incomplete.
+
+## Stop
+
+`Stop` (`SWI 0x03`) executes an original ARM byte store of `0x80` to HALTCNT.
+It uses the common 28-byte Supervisor frame and restores caller registers/status after wake-up.
+It leaves IE, IME, KEYCNT, and DISPCNT unchanged.
+Configure KEYCNT and IE bit 12 before calling; no matching wake source means the system stays stopped.
+The caller can force blank separately before entering STOP.
+Both ARM and Thumb User/System callers are supported.
+
+A keypad wake does not set IF in the stopped-clock model.
+The BIOS resumes its return sequence without requiring an IRQ callback or BIOS IRQ-flag update.
+Ready DMA and previously pending IRQs follow the ordinary machine scheduling rules after wake-up.
+See [STOP behavior and limits](timers-irq.md#stop-with-keypad-wake-up).
+Serial/Game Pak wake-up and exact oscillator restart timing are not implemented.
 
 ## SoftReset
 
@@ -429,5 +445,5 @@ Unsupported SWIs, unsupported exception vectors, and null/misaligned IRQ callbac
 The CPU reports `CpuError::UnsupportedInstruction` with `bios::UNSUPPORTED_TRAP`, rather than silently treating a service as a no-op.
 Invalid arithmetic/decompression arguments use the same CPU error type with the distinct `bios::INVALID_ARGUMENT_TRAP` instruction.
 Prior boot/service steps remain committed on failure.
-RegisterRamReset serial/sound flags, HardReset, and STOP remain unimplemented.
+RegisterRamReset serial/sound flags, HardReset, and serial/Game Pak STOP wake-up remain unimplemented.
 This subset is not sufficient for Pokémon Emerald compatibility.

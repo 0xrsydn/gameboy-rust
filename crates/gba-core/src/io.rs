@@ -123,6 +123,14 @@ impl Timer {
     }
 }
 
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+enum PowerState {
+    #[default]
+    Running,
+    Halt,
+    Stop,
+}
+
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub(crate) struct Io {
     timers: [Timer; 4],
@@ -142,7 +150,7 @@ pub(crate) struct Io {
     display: Display,
     dma: Dma,
     postflg: bool,
-    halted: bool,
+    power: PowerState,
 }
 
 impl Io {
@@ -264,9 +272,12 @@ impl Io {
             IME if address & 1 == 0 => self.master_enable = value & 1 != 0,
             POSTFLG if address == POSTFLG => self.postflg = value & 1 != 0,
             POSTFLG => {
-                // The bus has already rejected STOP and enforced CPU write access.
-                debug_assert_eq!(value & 0x80, 0);
-                self.halted = true;
+                // The bus has enforced BIOS-only CPU access. Low seven bits are ignored.
+                self.power = if value & 0x80 == 0 {
+                    PowerState::Halt
+                } else {
+                    PowerState::Stop
+                };
             }
             _ => {} // Unused I/O bytes ignore writes.
         }
@@ -274,13 +285,23 @@ impl Io {
     }
 
     pub(crate) fn halted(&self) -> bool {
-        self.halted
+        self.power == PowerState::Halt
+    }
+
+    pub(crate) fn stopped(&self) -> bool {
+        self.power == PowerState::Stop
     }
 
     fn wake_if_requested(&mut self) {
-        // Wake-up ignores IME and CPSR.I. It does not acknowledge IF.
-        if self.enable & self.pending != 0 {
-            self.halted = false;
+        // Both wake paths ignore IME and CPSR.I and leave IF unchanged.
+        // STOP uses the live keypad condition, not a stale IF latch.
+        let wake = match self.power {
+            PowerState::Running => false,
+            PowerState::Halt => self.enable & self.pending != 0,
+            PowerState::Stop => self.enable & (1 << 12) != 0 && self.keypad.wake_condition(),
+        };
+        if wake {
+            self.power = PowerState::Running;
         }
     }
 
@@ -298,7 +319,10 @@ impl Io {
     }
 
     pub(crate) fn set_buttons(&mut self, buttons: Buttons) {
-        if self.keypad.set_buttons(buttons) {
+        if self.stopped() {
+            // System clock is off: update wake inputs without latching IF/history.
+            self.keypad.update_stopped_buttons(buttons);
+        } else if self.keypad.set_buttons(buttons) {
             self.pending |= 1 << 12;
         }
         self.wake_if_requested();
@@ -318,8 +342,12 @@ impl Io {
                 touched = true;
             }
         }
-        if touched && self.keypad.write_control(control) {
-            self.pending |= 1 << 12;
+        if touched {
+            if self.stopped() {
+                self.keypad.update_control(control);
+            } else if self.keypad.write_control(control) {
+                self.pending |= 1 << 12;
+            }
         }
         self.wake_if_requested();
     }

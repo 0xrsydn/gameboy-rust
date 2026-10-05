@@ -39,7 +39,8 @@ Clearing enable manually cancels a waiting or active transfer.
 
 DMA0 has highest priority, followed by DMA1, DMA2, and DMA3.
 A higher-priority request can interrupt a lower-priority transfer between data units.
-The CPU remains paused while any channel is ready; display and timer clocks continue.
+While the system clock runs, the CPU remains paused while any channel is ready; display and timer clocks continue.
+STOP freezes DMA before transfer selection, including diagnostics, and retains pending transfer state until wake-up.
 Completion with local IRQ enable latches IF bits 8–11, independently of IE, IME, and CPSR.I.
 CPU delivery waits until no DMA is ready. IRQ entry does not acknowledge IF.
 

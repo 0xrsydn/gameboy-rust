@@ -126,6 +126,7 @@ pub fn image() -> Vec<u8> {
         (0, "soft_reset"),
         (1, "register_ram_reset"),
         (2, "halt"),
+        (3, "stop"),
         (4, "intr_wait"),
         (5, "vblank_wait"),
         (6, "div"),
@@ -151,6 +152,12 @@ pub fn image() -> Vec<u8> {
         a.branch(0, target);
     }
     a.branch(14, "unsupported");
+
+    a.label("stop");
+    a.literal(1, HALTCNT);
+    a.emit(0xe3a0_0080); // MOV r0,#STOP
+    a.emit(0xe5c1_0000); // STRB r0,[r1]; enters STOP after this instruction
+    a.branch(14, "return");
 
     a.label("halt");
     a.literal(1, HALTCNT);
