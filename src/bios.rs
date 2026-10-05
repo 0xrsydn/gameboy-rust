@@ -1,5 +1,5 @@
 //! Original, optional ARM BIOS replacement. No Nintendo firmware is included.
-//! Supports interrupt waits, integer/fixed-point arithmetic, affine matrices,
+//! Supports SoftReset, interrupt waits, integer/fixed-point arithmetic, affine matrices,
 //! memory copy/fill, bit unpacking, LZ77/run-length/Huffman decoding, and differential filters.
 //! This is a functional subset, not a complete boot ROM or a timing-compatible BIOS.
 
@@ -13,6 +13,7 @@ mod decompression;
 mod differential;
 mod huffman;
 mod lz77;
+mod reset;
 mod run_length;
 
 use crate::{
@@ -46,8 +47,10 @@ pub fn boot(rom: Vec<u8>) -> Result<Machine, MemoryError> {
 /// Build a deterministic 16 KiB image from original ARM instructions and a
 /// mathematically generated sine table. No Nintendo firmware bytes are included.
 /// SWIs use bits 16–23 of the ARM immediate, or the Thumb immediate byte.
-/// Services support User/System callers and preserve caller status. Registers
-/// other than each arithmetic service's documented outputs are preserved.
+/// Services support User/System callers. Returning services preserve caller status
+/// and registers other than each arithmetic service's documented outputs.
+/// SoftReset instead clears BIOS work RAM, resets specified CPU banks, and enters
+/// ROM or RAM in ARM System mode with IRQ masked. It does not reset devices.
 /// IRQ callbacks must preserve r4–r11, acknowledge IF, update IRQ_FLAGS for wait
 /// services, and return with BX lr. Nested IRQs and SWIs from callbacks are unsupported.
 /// Service routines use the Supervisor stack; exact firmware stack layout and
@@ -118,6 +121,7 @@ pub fn image() -> Vec<u8> {
     a.emit(0x01a0_c82c); // MOVEQ r12,r12,LSR #16
     a.emit(0xe20c_c0ff); // AND r12,r12,#0xff
     for (number, target) in [
+        (0, "soft_reset"),
         (2, "halt"),
         (4, "intr_wait"),
         (5, "vblank_wait"),
@@ -233,6 +237,7 @@ pub fn image() -> Vec<u8> {
     // The preceding routine ends with an unconditional branch. Place a literal
     // pool here so reset/dispatcher loads stay within ARM's 4 KiB reach.
     a.flush_literals();
+    reset::emit(&mut a);
     arithmetic::emit(&mut a);
     affine::emit(&mut a);
     angles::emit(&mut a);

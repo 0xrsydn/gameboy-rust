@@ -26,6 +26,8 @@ mod differential;
 mod huffman;
 #[path = "bios/lz77.rs"]
 mod lz77;
+#[path = "bios/reset.rs"]
+mod reset;
 #[path = "bios/run_length.rs"]
 mod run_length;
 
@@ -227,7 +229,7 @@ fn vblank_wait_halts_dispatches_irq_and_returns_through_original_code() {
 
 #[test]
 fn unsupported_services_fail_at_an_explicit_instruction_trap() {
-    for service in [0, 1, 3, 0x0d, 0x19, 0xff] {
+    for service in [1, 3, 0x0d, 0x19, 0xff] {
         let (mut machine, _) = call(service, false, [0, 0, 0]);
         let error = (0..100)
             .find_map(|_| machine.step().err())
