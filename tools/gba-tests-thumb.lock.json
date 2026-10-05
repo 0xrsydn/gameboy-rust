@@ -1,0 +1,66 @@
+{
+  "repository": "jsmolka/gba-tests",
+  "revision": "a7113b67e63f83a9b321696ddd7042ccfad6c881",
+  "license": "MIT",
+  "rom": "thumb/thumb.gba",
+  "completion_pc": "0x08000934",
+  "result_register": 7,
+  "files": {
+    "LICENSE": {
+      "sha256": "b59a9ed235d76752c977f04116bc72155a14af48176bdbf50d7e5c29fca35aa7",
+      "bytes": 1070
+    },
+    "README.md": {
+      "sha256": "488f50d9d9031c88cea4161fad69f6460209dd54d965645fa45cf5e972cc9062",
+      "bytes": 434
+    },
+    "thumb/thumb.asm": {
+      "sha256": "090a6bb08b3813e2da9adef9705368d5c292bd563aeada82189f93b5b16e0f6e",
+      "bytes": 790
+    },
+    "thumb/thumb.gba": {
+      "sha256": "b5cb2291df4ab314b31c598acd9bff2ccfa0b38efff29daadfe97422ce369b67",
+      "bytes": 3680
+    },
+    "thumb/arithmetic.asm": {
+      "sha256": "3da934b2b05f208c6ddea8617fa281845db09816b4e4c050990a2e0c0c82724f",
+      "bytes": 4990
+    },
+    "thumb/branches.asm": {
+      "sha256": "69c6ce873b68beebcf1cea49a057ebc360d1539c8c112d607563757ed7414f60",
+      "bytes": 1766
+    },
+    "thumb/logical.asm": {
+      "sha256": "f3c70c79867ec57f0826f727246650ba12d1156085eb4e0678deed5177343f46",
+      "bytes": 2436
+    },
+    "thumb/memory.asm": {
+      "sha256": "250b5b0e4a616f2b836d8fe525df4092936a5992f8b2143c7784cdbe42a84e03",
+      "bytes": 10357
+    },
+    "thumb/shifts.asm": {
+      "sha256": "cc7c8395c5e9abbb220f47af507d9256378a8186a0514b4c73add1dc12db5e70",
+      "bytes": 5018
+    },
+    "lib/constants.inc": {
+      "sha256": "b4dd3f4760ac1ae7e99cdc7e255f8220eed666e1ab821b150561db58e5d3b7ea",
+      "bytes": 900
+    },
+    "lib/macros.inc": {
+      "sha256": "25b0ff553c4ca99d76ec82c8c9db874e25d6eed58e2e69fa27f1a0fe7a8c46d4",
+      "bytes": 2864
+    },
+    "lib/header.asm": {
+      "sha256": "e9d1e8c7b6382eeb1b7059423ec365e32911f702eadfa51804a2119438a87357",
+      "bytes": 1720
+    },
+    "lib/text.asm": {
+      "sha256": "77e579d6cf0db182fd24e8d420c8c0a81592d78197e8fb06accc8bcfb43db17e",
+      "bytes": 2288
+    },
+    "lib/glyphs.asm": {
+      "sha256": "538beb37f40b1fd56beed9253e0e9eab25444c748adba7440a2093f49e3cbcc9",
+      "bytes": 2545
+    }
+  }
+}

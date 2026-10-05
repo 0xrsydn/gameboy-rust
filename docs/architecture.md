@@ -14,7 +14,7 @@ The repository is a Cargo workspace with three crates:
 | Path | Purpose |
 | --- | --- |
 | `flake.nix`, `flake.lock` | Pinned Rust/Python development environment |
-| `tools/prepare_gba_tests.py`, `tools/gba-tests-arm.lock.json` | Hash-verified public ARM source/ROM preparation and suite generation |
+| `tools/prepare_gba_tests.py`, `tools/gba-tests-{arm,thumb}.lock.json` | Hash-verified public ARM/Thumb source/ROM preparation and suite generation |
 | `tools/test_prepare_gba_tests.py` | Offline adapter tests using original synthetic data |
 | `.envrc` | Automatic environment loading through direnv |
 | `AGENTS.md` | Short orientation for coding agents: crate map, commands, and where docs live |

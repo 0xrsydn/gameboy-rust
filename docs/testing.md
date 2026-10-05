@@ -50,13 +50,15 @@ The [headless ROM suite runner](rom-tests.md) provides explicit checkpoint and a
 Its tests verify manifest limits, whole-suite validation, exact step boundaries, ARM/Thumb checkpoints, and register/CPSR/memory checks.
 Additional tests cover DMA/IRQ accounting, HALT/STOP, diagnostic state, case isolation, repeatable JSON output, and failure exit status.
 These original tests validate the runner. The [public ARM adapter](public-arm-tests.md) provides a separate passing checkpoint result for its pinned ROM.
-Its preparation tests use only synthetic original bytes and no network:
+The [public Thumb adapter](public-thumb-tests.md) uses a separate lock and r7 assertion after its return to ARM state.
+Preparation tests use only synthetic original bytes and no network:
 
 ```sh
 direnv exec . python3 -B -m unittest discover -s tools -p 'test_*.py' -v
 ```
 
-They verify pinned URLs, hashes, sizes, checkpoint validation, offline copies, destination safety, and non-overwriting output.
+They verify suite selection, pinned URLs, hashes, sizes, checkpoint validation, offline copies, destination safety, and non-overwriting output.
+Thumb cases also verify the return-to-ARM bridge. Command-line tests cover default ARM selection, explicit Thumb selection, and errors.
 Compare/status CPU regressions verify saved flags/masks, bank switching, sequential PC/timing, User/System fallback, and atomic diagnostics.
 Load-alias regressions cover widths, signed/unaligned values, immediate/register offsets, pre/post-indexing, every non-PC register bank, and address wrapping.
 They verify loaded-value precedence, preserved flags, unchanged stores, nominal timing, I/O reads before device progress, deferred IRQ delivery, and atomic errors.

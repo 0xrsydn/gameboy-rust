@@ -4,8 +4,9 @@ Use `--test-suite PATH.json` to run repeatable ROM checks without opening a wind
 Each case has a machine-step budget, a completion address, and explicit assertions.
 A timeout never counts as a pass. Existing `--rom ... --steps ...` remains a diagnostic mode, not a test verdict.
 
-Original programs cover the runner itself. A [pinned public ARM test](public-arm-tests.md) now provides an independent compatibility baseline.
-That public ROM still fails; passing the runner's unit tests does not mean the external ARM suite passes.
+Original programs cover the runner itself. Pinned public [ARM](public-arm-tests.md) and [Thumb](public-thumb-tests.md) ROMs provide independent compatibility results.
+The ARM ROM passes its checkpoint. The Thumb ROM currently reports test 229 as failed.
+Passing the runner's unit tests does not mean an external suite passes.
 A passing suite establishes only its specified checkpoints and assertions. It does not establish Emerald compatibility.
 
 ## Run the original smoke suite
@@ -132,7 +133,8 @@ They do not hash ROM contents; record source revisions and file checksums alongs
 
 The first public integration is [jsmolka/gba-tests ARM](public-arm-tests.md), with a verified result-register checkpoint.
 The pinned ARM ROM now passes this checkpoint on Darwin arm64. Historical failures remain documented.
-Next, integrate a pinned public Thumb suite with a verified result protocol.
+The [pinned Thumb ROM](public-thumb-tests.md) also has a verified checkpoint, but currently fails its r7 assertion at test 229.
+Verify and correct the empty-list store PC value before claiming that suite passes.
 For further public ARM7TDMI/GBA tests, inspect their source, license, entry assumptions, and result protocol.
 Pin source revisions and build instructions before comparing emulator changes.
 Adapt suites to verified completion addresses and result locations; do not guess them or treat timeouts as passes.
