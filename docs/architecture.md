@@ -47,7 +47,8 @@ The repository is a Cargo workspace with three crates:
 | `crates/gba-core/src/dma.rs` | DMA registers, internal pointers, retained channel data, trigger state, priority, and completion IRQs |
 | `crates/gba-core/src/machine.rs` | Timed CPU/DMA/device stepping and IRQ delivery |
 | `crates/gba-core/src/timing.rs` | Bus widths, wait-state costs, and timing breakdowns |
-| `crates/gba-core/src/cpu/timing.rs` | ARM/Thumb cycle summaries and data-access accounting |
+| `crates/gba-core/src/cpu/timing.rs` | ARM/Thumb cycle summaries, nominal DMA resume, and data-access accounting |
+| `crates/gba-core/src/cpu/dma_resume_tests.rs` | One-shot non-sequential DMA resume costs, wait settings, failures, idle, IRQs, and API isolation |
 | `crates/gba-core/src/cpu/timing_tests.rs` | Instruction timing and semantic-equivalence checks |
 | `crates/gba-demos/src/timer_demo.rs` | Original timer-configuration program and IRQ handler |
 | `Cargo.toml` | Workspace members and shared package settings |

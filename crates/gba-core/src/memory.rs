@@ -81,6 +81,8 @@ pub struct Memory {
     io: Io,
     cycles: u64,
     data_timing: Cell<Option<DataTiming>>,
+    // A completed DMA unit breaks the CPU's next nominal code-access sequence.
+    cpu_resume_nonsequential: bool,
     cpu_access: Option<CpuAccess>,
     bios_prefetch: Option<u32>,
     iwram_bus: IwramBus,
@@ -104,6 +106,7 @@ impl Memory {
             io: Io::default(),
             cycles: 0,
             data_timing: Cell::new(None),
+            cpu_resume_nonsequential: false,
             cpu_access: None,
             bios_prefetch: None,
             iwram_bus: IwramBus::default(),
@@ -141,6 +144,8 @@ impl Memory {
     /// Finish the instruction/IRQ entry that started while running. A STOP store
     /// still pays its full nominal cost before later steps freeze the system.
     pub(crate) fn complete_cpu_step(&mut self, cycles: u32) {
+        // IRQ entry consumes the resume too, without executing an instruction.
+        self.cpu_resume_nonsequential = false;
         self.advance_running_cycles(cycles);
     }
 
@@ -341,6 +346,7 @@ impl Memory {
         // queue a second block while the current block is still transferring.
         self.advance_cycles(timing.total());
         self.io.complete_dma_unit(channel, data_latch);
+        self.cpu_resume_nonsequential = true;
         Ok(Some((channel, timing)))
     }
 
@@ -413,6 +419,10 @@ impl Memory {
     }
 
     pub(crate) fn end_cpu_access(&mut self, succeeded: bool, sequential: bool) {
+        if succeeded {
+            // Timed and untimed CPU execution both consume a resume. Errors do not.
+            self.cpu_resume_nonsequential = false;
+        }
         self.iwram_bus.finish(succeeded, sequential);
         if let Some(access) = self.cpu_access.take() {
             if succeeded && access.pc < BIOS_SIZE as u32 {
@@ -484,6 +494,16 @@ impl Memory {
     /// Current Game Pak wait-state control. Prefetch is not implemented.
     pub fn waitcnt(&self) -> u16 {
         self.io.waitcnt()
+    }
+
+    /// Resolve the next nominal code access without consuming pending DMA history.
+    /// Successful instruction/IRQ completion consumes it; host reads and idle do not.
+    pub(crate) fn cpu_code_kind(&self, kind: AccessKind) -> AccessKind {
+        if self.cpu_resume_nonsequential {
+            AccessKind::NonSequential
+        } else {
+            kind
+        }
     }
 
     pub(crate) fn begin_data_timing(&self) {

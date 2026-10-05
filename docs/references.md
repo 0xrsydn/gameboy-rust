@@ -139,6 +139,14 @@ DMA IWRAM continuation research:
 See [the bounded DMA continuation extension](research/iwram-bus-history.md#dma-continuation-extension).
 These source reviews do not establish sub-instruction arbitration, exact CPU resume timing, or hardware conformance.
 
+DMA resume-timing research:
+
+- [NanoBoyAdvance force-nseq-access test at cc3f4a28](https://codeberg.org/nba-emu/hw-test/src/commit/cc3f4a286cdef823980d9b353bd70befc9927d28/dma/force-nseq-access/source/main.c), for equal timer expectations after RAM-source and ROM-source DMA sequences.
+- The pinned NanoBoyAdvance bus and ares DMA/bus implementations above explicitly break sequential CPU access after DMA ownership.
+
+See [non-sequential CPU resume](research/dma-resume-timing.md) for the nominal subset and unmodeled refill/prefetch details.
+The public test was reviewed, not executed. No hardware timing pass is claimed.
+
 Use [GBATEK](https://problemkaputt.de/gbatek.htm) and ARM7TDMI documentation for further hardware work.
 Only use game ROMs that you may lawfully use. Do not commit game ROMs, BIOS files, or game assets.
 The ignore file excludes `roms/`, common game ROM extensions, and save files.

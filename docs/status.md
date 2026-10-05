@@ -37,6 +37,7 @@ Update this file when a feature lands or a limit is removed.
 - Four direct memory access (DMA) channels, with immediate, VBlank, and visible-line HBlank triggers.
 - Halfword/word DMA, address controls, repeat, channel priority, CPU pausing, and completion IRQs.
 - Separate retained DMA channel data, with known-value reuse for blocked sources below work RAM.
+- One-shot non-sequential nominal CPU code timing after successful DMA, including RAM-only transfers.
 - HALT with enabled-request wake-up, continued device clocks, and bounded idle steps.
 - BIOS-only CPU writes to POSTFLG/HALTCNT, with HALT and keypad-wake STOP.
 - STOP freezes CPU/DMA/device clocks, retains device phases, and reports a stopped frame runner without spinning.
@@ -150,7 +151,7 @@ Writes to cartridge addresses return errors instead of modeling cartridge hardwa
 
 ## Next steps
 
-1. Extend bounded IWRAM DMA continuations toward general bus ownership with independent per-access resume tests.
+1. Extend bounded IWRAM DMA history and nominal non-sequential resume timing with independent per-access bus tests.
    General DMA open-bus reads and sub-instruction arbitration remain separate from retained channel data and local IWRAM lanes.
    Keep unknown history diagnostic until fetch ordering and latch ownership have independent coverage.
    Validate BIOS snapshots with independent hardware tests before claiming exact refill or data-access history.

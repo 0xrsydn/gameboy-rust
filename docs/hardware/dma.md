@@ -47,7 +47,10 @@ CPU delivery waits until no DMA is ready. IRQ entry does not acknowledge IF.
 Timing uses independent source and destination bus costs, including WAITCNT and 128 KiB ROM boundaries.
 The first unit uses non-sequential accesses plus two internal cycles. Later units use sequential accesses.
 Each step reports zero code cycles. Overlapping transfers read each unit after the preceding write; they are not bulk host copies.
-Startup scheduling delays, channel-resumption costs, CPU fetch-state effects, and display-bus contention remain unmodeled.
+A successful unit breaks the next nominal CPU code-access sequence, even if DMA accessed only RAM.
+The resumed non-refill instruction uses N code timing once; later instructions return to their normal summaries.
+See [CPU resume timing](cpu.md#nominal-cpu-resume-after-dma) for failure, idle, and refill rules.
+Startup scheduling delays, channel-resumption costs, a full CPU fetch pipeline, and display-bus contention remain unmodeled.
 
 Special timing modes (sound FIFO/video capture), Game Pak DRQ, and prohibited source mode 3 return `DmaError::UnsupportedControl`.
 DMA reads below work RAM reuse known channel data as described below. They never expose BIOS bytes.

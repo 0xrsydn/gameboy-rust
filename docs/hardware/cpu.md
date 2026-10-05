@@ -288,6 +288,24 @@ The writable mask is `0x5fff`; the Game Pak type flag reads as GBA, and the uppe
 A CPU write to WAITCNT does not retroactively change that instruction's code-access cost.
 The new settings apply to subsequent code accesses.
 
+### Nominal CPU resume after DMA
+
+A successful DMA unit marks the next CPU instruction's nominal code access non-sequential.
+This applies even when DMA only accesses RAM. Consecutive units retain one pending resume, not multiple penalties.
+A non-refill instruction uses its normal width and current WAITCNT with N instead of S.
+ARM word accesses retain an S cost for their second halfword.
+Stores and ROM boundaries that already use N do not receive an additional cost.
+
+Successful timed or untimed CPU execution consumes pending resume, including skipped conditions and internal-memory instructions.
+Successful machine IRQ entry also consumes it. Failed CPU/DMA steps preserve it.
+Host access, clock-only advancement, and HALT/STOP idle do not consume it.
+A failed DMA unit cannot create pending resume.
+DMA WAITCNT writes apply before resume; CPU WAITCNT writes still use the previous code-access settings.
+
+Branch and exception refill summaries retain their existing destination-based `1N+2S` costs, without an added resume access.
+The old-PC fetch is not modeled separately. This remains nominal timing, not a per-access pipeline.
+See [the evidence and limitations](../research/dma-resume-timing.md).
+
 Important timing limits:
 
 - Code S/N counts follow instruction summaries, not a simulated fetch pipeline.

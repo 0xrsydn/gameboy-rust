@@ -59,6 +59,7 @@ impl Cpu {
         let width = self.instruction_set.access_width();
         // A WAITCNT store affects subsequent instructions, not this code access.
         let waitcnt = memory.waitcnt();
+        let code_kind = memory.cpu_code_kind(summary.code_kind);
         memory.begin_data_timing();
         let result = self.execute_fetched(instruction, memory);
         let data_cycles = memory.end_data_timing();
@@ -66,7 +67,7 @@ impl Cpu {
         let code_cycles = if summary.refill {
             refill_cycles(waitcnt, self.pc(), self.instruction_set.access_width())
         } else {
-            bus_cycles(waitcnt, pc, width, summary.code_kind)
+            bus_cycles(waitcnt, pc, width, code_kind)
         };
         Ok(StepTiming {
             code_cycles,

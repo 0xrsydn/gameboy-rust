@@ -18,6 +18,8 @@ mod bios_access_tests;
 #[cfg(test)]
 mod compare_psr_tests;
 #[cfg(test)]
+mod dma_resume_tests;
+#[cfg(test)]
 mod exception_tests;
 #[cfg(test)]
 mod instruction_tests;

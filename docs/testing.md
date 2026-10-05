@@ -210,6 +210,9 @@ Original channel-data tests cover word retention, halfword duplication, blocked-
 They check cold/zero history, cancel/re-enable, source-counter crossings, repeats, priority, failed-unit rollback, and BIOS snapshot isolation.
 These tests do not establish general DMA open-bus reads or DMA-to-CPU handoff. See [the research scope](research/dma-data-latches.md).
 Tests verify channel priority/preemption, CPU pausing, display/timer progress, IRQ acknowledgement/return, and WAITCNT costs.
+CPU resume tests cover ARM/Thumb widths, all ROM-window wait settings, one-shot N timing, and RAM-only DMA.
+They check errors, host isolation, mixed timed/untimed APIs, WAITCNT updates, refills, IRQ entry, HALT/STOP, and timer delivery.
+These verify the [nominal resume subset](research/dma-resume-timing.md), not a full fetch pipeline or physical-hardware timing.
 Diagnostic tests check failed-unit isolation, retained earlier transfers, unsupported modes, and CPU block-store atomicity.
 Graphics startup tests verify that DMA3, not CPU stores or host writes, fills every background pixel.
 Display tests cover exact scanline boundaries, line-227 VBlank behavior, all 228 HBlank events, and read-only status fields.
