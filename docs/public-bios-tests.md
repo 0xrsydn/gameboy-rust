@@ -90,7 +90,8 @@ See the [root-cause research](research/bios-readback.md) and [CPU BIOS read-prot
 
 The ARM, Thumb, and memory suites remain separate passing results.
 This BIOS result covers boundary readback values, not complete BIOS services, exact fetch history, or commercial-game compatibility.
-Thumb BIOS execution, full pipeline behavior, and exact firmware timing remain unverified.
+Separate original tests cover bounded [Thumb BIOS snapshots](research/thumb-bios-prefetch.md); this public ROM does not validate that path.
+Full pipeline behavior, physical-hardware Thumb readback, and exact firmware timing remain unverified.
 
 ## References
 

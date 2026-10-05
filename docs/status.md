@@ -43,7 +43,7 @@ Update this file when a feature lands or a limit is removed.
 - CPU/device stepping with nominal ARM7 instruction costs and memory wait states.
 - Game Pak wait-state control (`WAITCNT`) for all three ROM windows.
 - Sequential/non-sequential data accesses, branch refill costs, and variable multiply timing.
-- Optional caller-supplied 16 KiB BIOS mapping, with CPU read protection based on retained ARM BIOS PC+8 snapshots.
+- Optional caller-supplied 16 KiB BIOS mapping, with CPU read protection based on retained ARM PC+8 or aligned Thumb PC+4 words.
 - Optional original BIOS replacement: minimal boot, SoftReset, selective RegisterRamReset, IRQ dispatch, interrupt waits, memory copy/fill, integer/fixed-point arithmetic, affine matrices, bit unpacking, LZ77/run-length/Huffman decompression, and differential filters.
 - All 16 ARM data-processing operations, with immediate and shifted-register operands.
 - Logical operations: `AND`, `EOR`, `TST`, `TEQ`, `ORR`, `MOV`, `BIC`, and `MVN`.
@@ -94,8 +94,10 @@ The reserved ARM condition code `0xF` and Thumb condition code `0xE` return erro
 ARMv5+ extensions such as `BLX`, `BKPT`, and Thumb-2 instructions are not supported.
 The ARMv4T high-register format requires at least one high register; low-to-low forms in that format return errors.
 `LDRT`/`STRT` single-transfer variants and invalid register combinations return errors.
-CPU BIOS reads are protected by the executing address using a bounded ARM prefetch snapshot.
-Thumb BIOS execution and missing lookahead invalidate that history; protected reads with unknown history remain diagnostics.
+CPU BIOS reads are protected by the executing address using bounded ARM and Thumb prefetch snapshots.
+Thumb BIOS execution retains the full word at `(PC+4) & ~3`, not a repeated halfword.
+Missing lookahead invalidates that history; protected reads with unknown history remain diagnostics.
+Exact refill and BIOS data-access ordering remain unmodeled. The Thumb rule has source-based, not physical-hardware validation.
 This is not a full fetch pipeline. The original BIOS reproduces documented boundary readback words, not all firmware side effects.
 Multiply flags N/Z are implemented. Unspecified multiply C/V outputs are preserved deterministically, not hardware-verified.
 Instruction and memory errors are development diagnostics, not emulated CPU exceptions.
@@ -129,7 +131,7 @@ The runner requires known completion addresses and has no debug-port protocol, s
 
 ARM data reads from unused address ranges use a bounded [PC+8 open-bus snapshot](hardware/cpu.md#arm-unused-memory-data-reads).
 This is not a fetch pipeline. General Thumb, DMA, and unused/write-only I/O open bus remain unmodeled.
-BIOS protection uses separate retained ARM BIOS history as described in [BIOS behavior](hardware/bios.md#cpu-bios-read-protection).
+BIOS protection uses separate retained BIOS fetch snapshots as described in [BIOS behavior](hardware/bios.md#cpu-bios-read-protection).
 Host inspection and instruction fetches remain strict. Other unmapped reads return errors.
 Reads beyond the supplied cartridge bytes also return errors.
 Direct memory-bus halfword and word accesses require alignment.
@@ -138,9 +140,9 @@ Writes to cartridge addresses return errors instead of modeling cartridge hardwa
 
 ## Next steps
 
-1. Extend BIOS prefetch history to Thumb execution and validate broader fetch-history behavior with independent tests.
+1. Extend general open-bus support with documented Thumb region/alignment rules and explicit limits for history-dependent cases.
+   Validate BIOS snapshots with independent hardware tests before claiming exact refill or data-access history.
    The desktop runner still uses only the original BIOS. Keep protected reads image-derived for all supplied images.
-   Extend general open-bus support with verified Thumb region/alignment rules and bus history.
 2. Refine nominal timing with a fetch pipeline, Game Pak prefetch, per-access device updates, and verified timer/IRQ delays.
 3. Validate keypad retrigger behavior with hardware tests and add remaining device registers; extend BIOS reset coverage as sound/serial support becomes available.
    Validate STOP entry/wake edges and add external wake sources and remaining DMA device modes.

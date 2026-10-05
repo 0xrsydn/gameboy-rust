@@ -7,6 +7,9 @@ use crate::{
     timing::StepTiming,
 };
 
+#[path = "thumb_bios_access_tests.rs"]
+mod thumb;
+
 const ENTRY: u32 = 0x100;
 const DATA: u32 = 0xf233_80a5;
 const OTHER: u32 = 0x1234_5678;
@@ -222,8 +225,8 @@ fn diagnostic_steps_keep_previous_bios_history_but_skipped_instructions_refresh_
 }
 
 #[test]
-fn thumb_bios_execution_and_missing_lookahead_invalidate_unsupported_history() {
-    for (pc, thumb) in [(0x200, true), (0x3ff8, false), (0x3ffc, false)] {
+fn missing_arm_or_thumb_lookahead_invalidates_unsupported_history() {
+    for (pc, thumb) in [(0x3ffc, true), (0x3ff8, false), (0x3ffc, false)] {
         let mut bios = image();
         word(&mut bios, pc, if thumb { 0x4720 } else { BX_R4 }); // Thumb BX r4 or ARM BX r4
         let mut memory = bus(LDR, bios);

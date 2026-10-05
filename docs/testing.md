@@ -219,9 +219,12 @@ Status tests cover all modes, flag combinations, interrupt masks, field selectio
 Exception tests cover vectors, ARM/Thumb return addresses, nested interrupts, mask priority, and return-state restoration.
 User-bank transfers and failed returns are checked for unintended changes to active and hidden registers.
 Integration tests execute original vector handlers and check optional BIOS mapping boundaries and write protection.
-Original BIOS-access regressions check retained ARM PC+8 data for ARM/Thumb callers, all processor modes, load widths, lanes, and rotation.
+Original BIOS-access regressions check retained ARM PC+8 and aligned Thumb PC+4 words for ARM/Thumb callers.
+They cover all processor modes, load widths, lanes, rotation, both Thumb code alignments, and distinct halfwords.
 They verify direct reads while executing inside BIOS, re-entry, SWI/IRQ returns, host-inspection isolation, and original-boot provenance.
-Unknown history, Thumb BIOS execution, missing lookahead, and diagnostic-step retention have explicit checks.
+Thumb tests cover sequential snapshots, instruction-state transitions, SWI entry, and RAM-backed POP exits.
+Unknown history, last valid fetch words, missing lookahead, and diagnostic-step retention have explicit checks.
+General Thumb unused-memory reads remain diagnostics; supporting Thumb BIOS snapshots does not enable general open bus.
 Protected loads keep normal nominal costs and advance devices only through machine stepping.
 Firmware readback regressions separately verify documented boot, SoftReset, returning SWI, IRQ callback, and IRQ return words.
 They execute ARM/Thumb loads across widths and lanes, check caller state, and trace actual exits to their image data.

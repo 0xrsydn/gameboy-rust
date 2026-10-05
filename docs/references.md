@@ -95,6 +95,15 @@ BIOS protected-read root-cause research:
 
 See [the root-cause analysis and implementation decision](research/bios-readback.md).
 
+Thumb BIOS fetch research:
+
+- [NanoBoyAdvance bus at revision 55b5cf0a](https://github.com/nba-emu/NanoBoyAdvance/blob/55b5cf0ae3d929582ac5bfd486558173502b8354/src/nba/src/bus/bus.cc), for full aligned BIOS latch updates on halfword reads.
+- [NanoBoyAdvance ARM7TDMI loop at the same revision](https://github.com/nba-emu/NanoBoyAdvance/blob/55b5cf0ae3d929582ac5bfd486558173502b8354/src/nba/src/arm/arm7tdmi.hh), for Thumb PC+4 fetch order.
+- [mGBA CPU loop](https://github.com/mgba-emu/mgba/blob/master/src/arm/arm.c), compared with its region-exit retention path; not evidence of exact full-word Thumb BIOS readback.
+- GBATEK's BIOS/OAM Thumb lane table above supports aligned-word sampling, but describes general unused-memory reads.
+
+See [Thumb BIOS prefetch snapshots](research/thumb-bios-prefetch.md) for the inference, implementation limits, and original regressions.
+
 Use [GBATEK](https://problemkaputt.de/gbatek.htm) and ARM7TDMI documentation for further hardware work.
 Only use game ROMs that you may lawfully use. Do not commit game ROMs, BIOS files, or game assets.
 The ignore file excludes `roms/`, common game ROM extensions, and save files.

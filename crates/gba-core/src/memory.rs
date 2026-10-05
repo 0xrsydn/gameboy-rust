@@ -57,12 +57,13 @@ fn vram_index(address: u32) -> usize {
 struct CpuAccess {
     pc: u32,
     arm_prefetch: Option<u32>,
+    bios_prefetch: Option<u32>,
 }
 
 /// Work/video/palette RAM, OAM, cartridge ROM, optional BIOS, and supported I/O.
 /// ARM data reads from unused memory return a PC+8 snapshot when available.
-/// CPU data reads of BIOS from outside BIOS use its retained ARM PC+8 snapshot.
-/// Thumb BIOS prefetch, general Thumb open bus, and DMA bus latches are not modeled.
+/// Protected BIOS reads retain an ARM PC+8 or aligned Thumb PC+4 word snapshot.
+/// General Thumb open bus, a full fetch pipeline, and DMA bus latches are not modeled.
 pub struct Memory {
     external_ram: Vec<u8>,
     internal_ram: Vec<u8>,
@@ -333,17 +334,31 @@ impl Memory {
         // Sample before execution, without data timing or open-bus recursion.
         // Missing lookahead bytes must not fail an instruction that never uses them.
         let arm_prefetch = match instruction_set {
-            InstructionSet::Arm => self.snapshot_arm_prefetch(pc),
+            InstructionSet::Arm => self.snapshot_mapped_word(pc.wrapping_add(8)),
             InstructionSet::Thumb => None,
         };
-        self.cpu_access = Some(CpuAccess { pc, arm_prefetch });
+        let bios_prefetch = if pc < BIOS_SIZE as u32 {
+            match instruction_set {
+                InstructionSet::Arm => arm_prefetch,
+                // BIOS drives a full 32-bit word for a Thumb halfword fetch.
+                // Preserve both lanes of the aligned PC+4 word, not a repeated halfword.
+                InstructionSet::Thumb => self.snapshot_mapped_word((pc + 4) & !3),
+            }
+        } else {
+            None
+        };
+        self.cpu_access = Some(CpuAccess {
+            pc,
+            arm_prefetch,
+            bios_prefetch,
+        });
     }
 
-    fn snapshot_arm_prefetch(&self, pc: u32) -> Option<u32> {
+    fn snapshot_mapped_word(&self, address: u32) -> Option<u32> {
         let mut bytes = [0; 4];
         for (offset, byte) in bytes.iter_mut().enumerate() {
             *byte = self
-                .read_mapped_byte(pc.wrapping_add(8 + offset as u32))
+                .read_mapped_byte(address.wrapping_add(offset as u32))
                 .ok()?;
         }
         Some(u32::from_le_bytes(bytes))
@@ -353,8 +368,8 @@ impl Memory {
         if let Some(access) = self.cpu_access.take() {
             if succeeded && access.pc < BIOS_SIZE as u32 {
                 // Commit only successful instruction snapshots under our diagnostic policy.
-                // Thumb BIOS execution or missing lookahead invalidates the known value.
-                self.bios_prefetch = access.arm_prefetch;
+                // Missing lookahead invalidates history rather than exposing stale bytes.
+                self.bios_prefetch = access.bios_prefetch;
             }
         }
     }

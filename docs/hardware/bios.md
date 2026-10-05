@@ -97,13 +97,15 @@ While executing inside BIOS, ARM and Thumb code can read the mapped image direct
 While executing outside BIOS, both instruction sets read byte lanes from retained BIOS prefetch data instead.
 Normal word rotation, odd-halfword behavior, sign extension, and load timing still apply.
 
-The current interpreter implements a bounded ARM prefetch model:
+The current interpreter implements bounded ARM and Thumb BIOS prefetch snapshots:
 
 - Before an ARM BIOS instruction executes, sample its mapped PC+8 word without charging another data access.
+- Before a Thumb BIOS instruction executes, sample the full mapped word at `(PC+4) & ~3`.
+  BIOS drives a 32-bit word even for a halfword fetch; both distinct lanes are retained.
 - After successful execution, retain that snapshot for later protected reads. Skipped conditional instructions count as successful execution.
-- Instructions outside BIOS do not replace the retained value. Re-entering ARM BIOS code refreshes it.
+- Instructions outside BIOS do not replace the retained value. Re-entering ARM or Thumb BIOS code refreshes it.
 - Diagnostic failures preserve the previous value and clear the CPU access context.
-- Successful Thumb BIOS execution or unavailable PC+8 bytes invalidate the known value. Their fetch history is not yet modeled.
+- Unavailable lookahead bytes invalidate the known value after a successful BIOS instruction.
 - A protected read without known history returns `MemoryError::Unmapped` at the requested bus address, rather than exposing raw BIOS bytes.
 
 The initial history is unknown. Direct cartridge startup with `Cpu::new` does not manufacture boot prefetch data.
@@ -129,7 +131,10 @@ Instruction fetches remain strict mapped reads outside the CPU data-access conte
 BIOS writes remain read-only diagnostics. DMA BIOS sources retain their existing unsupported-source diagnostic.
 Missing BIOS images remain unmapped. The unused-memory ARM open-bus snapshot is separate from this retained BIOS value.
 
-This models neither a persistent fetch pipeline nor exact bus history across Thumb BIOS code and DMA.
+The Thumb rule follows documented BIOS bus lanes and a source comparison with NanoBoyAdvance.
+See [Thumb BIOS prefetch research](../research/thumb-bios-prefetch.md) for evidence, emulator differences, and test scope.
+This models neither a persistent fetch pipeline nor exact refill, BIOS data-access, or DMA bus history.
+The boundary diagnostic policy and precise bus timing remain hardware-unverified.
 Original regressions cover synthetic images, boot, exception returns, access widths, alignment, modes, and diagnostics.
 The [public BIOS ROM](../public-bios-tests.md) passes its unchanged protected-read assertions in debug and release builds.
 This result covers these firmware boundaries, not full BIOS service compatibility.

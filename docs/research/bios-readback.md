@@ -93,6 +93,7 @@ Workspace tests, preparation tests, lint checks, rustdoc, native ROM windows, an
 - Keep synthetic caller-supplied images image-derived, including images with different exit words.
 - Rerun public ARM, Thumb, and memory suites and native Darwin regressions.
 
-This change does not implement a persistent instruction pipeline, Thumb BIOS fetch history, or exact firmware timing.
+The firmware-layout fix did not implement a persistent instruction pipeline, Thumb BIOS fetch history, or exact firmware timing.
+A subsequent [Thumb BIOS snapshot change](thumb-bios-prefetch.md) adds bounded aligned-word history, with separate tests and explicit limits.
 It does not prove complete BIOS compatibility or commercial-game support.
 The public BIOS ROM checks these protected-read values; it is not a comprehensive BIOS service suite.
