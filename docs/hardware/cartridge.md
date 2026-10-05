@@ -1,14 +1,17 @@
-# Cartridge files and terminal execution
+# Cartridge files and execution
 
-The desktop executable can load raw ROM bytes and run a bounded diagnostic session.
+The desktop executable can load raw ROM bytes for terminal diagnostics or window execution.
 This supports original test programs. It does not establish commercial-game compatibility.
 
 ```sh
 direnv exec . cargo run --locked --release -- --rom path/to/original.gba --steps 100000
+direnv exec . cargo run --locked --release -- --rom path/to/original.gba --window
 ```
 
-Both options are required. Their order does not matter.
-`COUNT` must contain decimal digits and be between 1 and 100,000,000 inclusive.
+Supply `--rom PATH` and exactly one execution mode: `--steps COUNT` or `--window`.
+Option order does not matter. Terminal step counts accept decimal digits from 1 through 100,000,000.
+Window mode optionally accepts `--frames COUNT`, from 1 through 100,000, for bounded presentation tests.
+Reject zero, signed numbers, duplicate options, and combinations of terminal and window limits.
 Do not combine ROM mode with demo or help options. Bare file paths are not accepted.
 Quote paths that contain spaces. File extensions do not affect loading.
 
@@ -31,12 +34,12 @@ Reads past supplied cartridge bytes remain explicit memory errors, not open-bus 
 All three Game Pak ROM windows use the same supplied bytes and existing wait-state rules.
 Cartridge writes, save devices, and cartridge peripherals remain unsupported.
 
-The runner calls `bios::boot` with the loaded bytes.
+Both modes call `bios::boot` with the loaded bytes.
 The [original BIOS replacement](bios.md) executes its minimal boot before entering `0x08000000` in ARM System mode.
 There is no command-line option for external BIOS files.
 Unsupported services remain diagnostics. In particular, RegisterRamReset sound/serial flags, including `r0=0xff`, still fail.
 
-## Execution limits and results
+## Terminal execution limits and results
 
 The budget counts successful machine steps, including BIOS boot instructions.
 Each CPU instruction, IRQ entry, DMA unit, or HALT idle batch consumes one step.
@@ -58,7 +61,67 @@ It does not mean the program completed or passed a hardware test.
 Invalid arguments, loading failures, output failures, and emulation diagnostics produce a nonzero exit status.
 For emulation diagnostics, stdout contains the final machine state and stderr contains the core error.
 
-ROM mode has no window, keyboard input, audio, saves, per-step trace, or real-time pacing.
+Terminal mode has no window, keyboard input, or real-time pacing.
 It does not enable frame capture or validate rendered output.
-Use the existing demos for window and input tests.
+
+## Window execution
+
+`--window` opens a native 240×160 window at 4× scale on the main thread.
+The window presents [scanline-captured frames](display-timing.md#scanline-frame-capture) at VBlank entry.
+Capture starts before BIOS boot. It has no demo-specific readiness checks and does not suppress startup images.
+A black buffer appears before the first captured frame.
+The host does not set display registers, initialize game RAM, or draw replacement game graphics.
+
+Controls use the same focus correction and key mapping as the existing demos:
+
+| Host key | GBA button |
+| --- | --- |
+| Arrows | D-pad |
+| Z / X | A / B |
+| Q / W | L / R |
+| Enter | Start |
+| Backspace | Select |
+
+Escape or the window close control ends execution. Enter does not reset the emulator.
+Focus loss releases all buttons but does not pause execution.
+The host samples buttons before each execution slice, including while stopped.
+
+Each slice executes at most 4,096 machine steps or stops at the next VBlank event.
+The host processes window events between slices, not only when a frame completes.
+A separate 400,000-step limit guards progress between VBlank events and persists across slices and STOP waits.
+This limit permits a full frame of one-cycle instructions. It is not a wall-clock deadline.
+HALT continues device clocks and frame publication.
+Normal presentation targets approximately 59.73 frames per second, without frame skipping or accumulated catch-up work.
+Slow hosts can run slower than real time. Host sleeping never advances emulated clocks.
+
+In interactive mode, STOP retains the last image and changes the window title.
+The host continues polling input and window-close events while GBA clocks remain frozen.
+Only keypad conditions configured by the ROM through KEYCNT and IE can wake STOP.
+A key press cannot wake a program that has not enabled a matching wake source.
+
+`--frames COUNT` exits successfully after that many captured frames are submitted to the window.
+It is a presentation limit, not proof that the ROM completed or passed a test.
+STOP before that limit is an error instead of an indefinite wait for physical input.
+Early window closure is also an error in this bounded mode; closure is normal in interactive mode.
+
+CPU, DMA, video, and window errors end the session with a nonzero exit status.
+The terminal report includes captured-frame count and the final machine state; stderr contains the error.
+Rendering errors do not overwrite the last complete framebuffer.
+Reports count captured frames, not idle redraws or window-event updates.
+
+## Try an original ROM
+
+Generate an original headerless input-test file, then open that file through the ROM loader:
+
+```sh
+direnv exec . cargo run --locked --example write_rom_demo -- /tmp/gba-input-demo.gba
+direnv exec . cargo run --locked --release -- --rom /tmp/gba-input-demo.gba --window
+```
+
+The generator refuses to overwrite an existing file. Choose a new path if needed.
+The CPU writes the palette: blue at rest, red while Z is held, and green while Right is held.
+Right takes priority over Z. Other buttons have no visible effect in this small program.
+No game or firmware content is included.
+
+Both ROM modes lack audio, saves, and per-step tracing. Commercial-game compatibility remains unverified and unsupported.
 Only load files that you may lawfully use. Do not commit game ROMs or firmware.

@@ -168,10 +168,112 @@ fn help_describes_terminal_rom_mode_and_existing_cpu_demo_still_runs() {
     let output = command().arg("--help").output().unwrap();
     assert!(output.status.success());
     assert!(stdout(&output).contains("--rom PATH --steps COUNT"));
-    assert!(stdout(&output).contains("no window, input, audio, or saves"));
+    assert!(stdout(&output).contains("--rom PATH --window"));
+    assert!(stdout(&output).contains("ROM modes have no audio or saves"));
     let output = command().arg("--cpu-demo").output().unwrap();
     assert!(output.status.success());
     assert!(stdout(&output).contains("Exception demo"));
+}
+
+#[test]
+fn window_options_and_bad_files_fail_without_opening_a_window() {
+    let fixture = Fixture::new();
+    let missing = fixture.0.join("missing.gba");
+    for extra in [
+        vec!["--steps", "1"],
+        vec!["--frames", "0"],
+        vec!["--frames", "100001"],
+        vec!["--window"],
+        vec!["--help"],
+    ] {
+        let output = command()
+            .arg("--rom")
+            .arg(&missing)
+            .arg("--window")
+            .args(extra)
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(1));
+        assert!(stderr(&output).contains("usage:"));
+        assert!(output.stdout.is_empty());
+    }
+    let output = command()
+        .arg("--rom")
+        .arg(&missing)
+        .arg("--window")
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(1));
+    assert!(stderr(&output).contains("cannot load ROM"));
+    assert!(output.stdout.is_empty());
+}
+
+#[test]
+#[ignore = "requires a logged-in native desktop session"]
+fn native_rom_window_presents_file_bytes_and_reports_stop_cpu_and_video_errors() {
+    use std::{
+        process::Stdio,
+        thread,
+        time::{Duration, Instant},
+    };
+    fn window(path: &Path) -> Output {
+        let mut child = command()
+            .arg("--rom")
+            .arg(path)
+            .args(["--window", "--frames", "3"])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let start = Instant::now();
+        while child.try_wait().unwrap().is_none() {
+            if start.elapsed() > Duration::from_secs(20) {
+                child.kill().unwrap();
+                let output = child.wait_with_output().unwrap();
+                panic!(
+                    "ROM window did not exit: {} {}",
+                    stdout(&output),
+                    stderr(&output)
+                );
+            }
+            thread::sleep(Duration::from_millis(10));
+        }
+        child.wait_with_output().unwrap()
+    }
+    let fixture = Fixture::new();
+    let path = fixture.0.join("original-input.gba");
+    fs::write(&path, gba_demos::input_rom()).unwrap();
+    let output = window(&path);
+    assert!(
+        output.status.success(),
+        "{} {}",
+        stdout(&output),
+        stderr(&output)
+    );
+    assert!(stdout(&output).contains("Captured ROM frames: 3"));
+    assert!(stdout(&output).contains("Result: window frame limit reached"));
+    for (code, error) in [
+        (vec![0xef03_0000, 0xeaff_fffe], "entered STOP"),
+        (vec![0xee00_0000], "instruction"),
+        (
+            vec![0xe3a0_0006, 0xe3a0_1301, 0xe1c1_00b0, 0xeaff_fffe],
+            "6",
+        ),
+    ] {
+        fs::write(
+            &path,
+            code.iter()
+                .flat_map(|word: &u32| word.to_le_bytes())
+                .collect::<Vec<_>>(),
+        )
+        .unwrap();
+        let output = window(&path);
+        assert_eq!(output.status.code(), Some(1), "{}", stdout(&output));
+        assert!(stdout(&output).contains("Result: ROM window diagnostic"));
+        assert!(stdout(&output).contains("Captured ROM frames: 0"));
+        assert!(stdout(&output).contains("PC="));
+        assert!(stderr(&output).contains(error), "{}", stderr(&output));
+    }
 }
 
 #[cfg(unix)]

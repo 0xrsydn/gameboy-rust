@@ -6,12 +6,14 @@ mod bitmap;
 mod effects;
 mod mosaic;
 mod raster;
+mod rom;
 pub use affine::run as run_affine;
 pub use affine_raster::run as run_affine_raster;
 pub use bitmap::run as run_bitmap;
 pub use effects::run as run_effects;
 pub use mosaic::run as run_mosaic;
 pub use raster::run as run_raster;
+pub use rom::run as run_rom;
 
 use std::{
     error::Error,
@@ -54,7 +56,7 @@ fn is_focused(reported_active: bool) -> bool {
     }
 }
 
-fn read_buttons(reported_active: bool, key_down: impl Fn(Key) -> bool) -> Buttons {
+pub(super) fn read_buttons(reported_active: bool, key_down: impl Fn(Key) -> bool) -> Buttons {
     if !is_focused(reported_active) {
         return Buttons::default();
     }

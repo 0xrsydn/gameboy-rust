@@ -62,7 +62,9 @@ Update this file when a feature lands or a limit is removed.
 - `SWP`/`SWPB`, including unaligned word rotation and register aliases.
 - 256 KiB external work RAM and 32 KiB internal work RAM, including mirrors.
 - Read-only cartridge bytes in the three GBA cartridge windows.
-- Raw ROM-file loading for bounded terminal diagnostics, with original BIOS boot and final CPU/step reports.
+- Raw ROM-file loading with original BIOS boot, terminal diagnostics, and final CPU/step reports.
+- ROM windows with scanline capture, keyboard input, focus-loss release, bounded execution slices, and interactive keypad wake from STOP.
+- Optional ROM-window frame limits and an original input-test ROM generator.
 - Little-endian byte, halfword, and word reads/writes.
 - ARM7TDMI word-load rotation, aligned stores, and odd-address halfword-load behavior.
 - Explicit errors for unsupported instructions when their condition passes, and for unsupported memory accesses.
@@ -103,8 +105,9 @@ Keypad IRQs use a documented polling model; hardware retrigger edges and asynchr
 STOP implements keypad wake only. Serial/Game Pak wake sources, oscillator restart delays, and exact wake timing remain unimplemented or unverified.
 The presentation framebuffer is separate from emulated video RAM.
 All named graphics demos connect desktop input and rendering to the emulated CPU. The default display test remains host-generated.
-ROM files can run in bounded terminal mode with the original BIOS replacement.
-This mode has no window, input, audio, saves, or external BIOS option. It does not establish commercial-game compatibility.
+ROM files can run in bounded terminal mode or a window with the original BIOS replacement.
+ROM windows have no demo-specific startup checks. Input is sampled between bounded execution slices.
+Audio, saves, and external BIOS loading remain unavailable. ROM loading does not establish commercial-game compatibility.
 See [cartridge loading](hardware/cartridge.md) for file limits, step budgets, and exit status.
 
 Unmapped reads return errors instead of hardware open-bus values.
@@ -120,7 +123,7 @@ Writes to cartridge addresses return errors instead of modeling cartridge hardwa
 3. Validate keypad retrigger behavior with hardware tests and add remaining device registers; extend BIOS reset coverage as sound/serial support becomes available.
    Validate STOP entry/wake edges and add external wake sources and remaining DMA device modes.
 4. Replace nominal sprite work limits with verified individual fetch timing; add background fetch timing and per-pixel composition.
-5. Connect ROM execution to the window and input; expand audio, cartridge hardware, and saves before testing Emerald compatibility.
+5. Validate more original/public test ROMs through the window; add audio, cartridge hardware, and saves before testing Emerald compatibility.
 
 Keep the emulator core independent of window and audio libraries.
 Treat Nintendo DS support as a separate project phase.

@@ -44,6 +44,7 @@ When row capture is enabled, the clock advances within those steps also render v
 
 `Memory::set_scanline_rendering(true)` enables row capture without changing clocks or hardware registers.
 Capture is disabled by default for CPU-only use. All CPU-driven demo frame runners enable it automatically.
+The ROM window runner enables capture before BIOS boot and presents the first complete frame without demo-specific startup checks.
 Repeatedly enabling capture preserves progress. Disabling it drops captured buffers and availability state.
 
 For each visible line, the renderer composes the row at HBlank entry, cycle 1,006.

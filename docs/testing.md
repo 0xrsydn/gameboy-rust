@@ -23,7 +23,16 @@ file target/release/gameboy-rust
 ./target/release/gameboy-rust --timer-demo
 ```
 
-All ten window smoke tests need an active desktop session. Ordinary tests do not open windows.
+All ten demo window smoke tests need an active desktop session. Ordinary tests do not open windows.
+Run the additional file-backed ROM-window test explicitly in that desktop session:
+
+```sh
+direnv exec . cargo test --locked -p gameboy-rust-desktop --test rom_cli native_rom_window -- --ignored --test-threads=1
+direnv exec . cargo test --locked --release -p gameboy-rust-desktop --test rom_cli native_rom_window -- --ignored --test-threads=1
+```
+
+This opt-in test opens native windows in child processes and checks bounded presentation and STOP/CPU/video diagnostics.
+Each process has a host-side timeout. It does not require or validate physical keyboard presses.
 CPU-driven smoke tests supply scripted buttons; they do not validate physical keyboard events.
 To test the core and demo programs without building the window dependency:
 
@@ -42,7 +51,10 @@ They check file-size boundaries, bounded reads, short reads, I/O errors, paths, 
 CLI tests cover option order, missing/conflicting options, invalid step limits, process exit status, and reports.
 Execution tests cover original ARM/Thumb code, BIOS boot, DMA/IRQ step accounting, HALT budgets, and prompt STOP results.
 Unsupported instructions, truncated code, and DMA errors retain the failure state for inspection.
-See [cartridge execution](hardware/cartridge.md) for usage and limitations.
+ROM-window session tests compare every pixel from an original CPU-written palette with expected colors.
+They check keyboard-to-ROM input, focus loss, repeated STOP polling, keypad wake, HALT progress, and bounded slices.
+Further checks cover frame-budget retention/reset, DMA/IRQ step accounting, video errors, and final reports.
+See [cartridge execution](hardware/cartridge.md) for usage, limitations, and a generated original ROM for manual input testing.
 
 Angle-service tests compare results with wide-integer polynomial and signed-sector references, plus floating-point accuracy checks in supported ranges.
 They cover a dense ArcTan unit-interval grid, sampled full-domain and seeded inputs, axes, quadrant boundaries, signed extremes, and scale invariance.

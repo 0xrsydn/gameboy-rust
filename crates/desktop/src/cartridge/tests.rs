@@ -26,11 +26,79 @@ fn options_require_both_flags_in_either_order() {
                 parse_args(&arguments).unwrap(),
                 Options {
                     path: "original program.gba".into(),
-                    steps: count
+                    mode: Mode::Terminal { steps: count }
                 }
             );
         }
     }
+}
+
+#[test]
+fn window_options_accept_any_order_and_optional_frame_limits() {
+    for arguments in [
+        args(&["--rom", "original.gba", "--window"]),
+        args(&["--window", "--rom", "original.gba"]),
+    ] {
+        assert_eq!(
+            parse_args(&arguments).unwrap().mode,
+            Mode::Window { frames: None }
+        );
+    }
+    for count in [1, MAX_FRAMES] {
+        for arguments in [
+            args(&[
+                "--rom",
+                "original.gba",
+                "--window",
+                "--frames",
+                &count.to_string(),
+            ]),
+            args(&[
+                "--frames",
+                &count.to_string(),
+                "--window",
+                "--rom",
+                "original.gba",
+            ]),
+        ] {
+            assert_eq!(
+                parse_args(&arguments).unwrap().mode,
+                Mode::Window {
+                    frames: Some(count)
+                }
+            );
+        }
+    }
+}
+
+#[test]
+fn window_options_reject_conflicting_modes_and_invalid_frame_limits() {
+    for tail in [
+        vec![],
+        vec!["--window", "--window"],
+        vec!["--frames", "1"],
+        vec!["--window", "--steps", "1"],
+        vec!["--steps", "1", "--frames", "1"],
+        vec!["--window", "--frames"],
+        vec!["--window", "--help"],
+        vec!["--window", "--cpu-demo"],
+        vec!["--window", "--frames", "1", "--frames", "2"],
+    ] {
+        let mut arguments = args(&["--rom", "original.gba"]);
+        arguments.extend(args(&tail));
+        assert!(parse_args(&arguments).is_err(), "{arguments:?}");
+    }
+    for count in ["", "0", "-1", "+1", " 1", "100001", "18446744073709551616"] {
+        assert!(parse_args(&args(&[
+            "--rom",
+            "original.gba",
+            "--window",
+            "--frames",
+            count
+        ]))
+        .is_err());
+    }
+    assert!(parse_args(&args(&["--window"])).is_err());
 }
 
 #[test]

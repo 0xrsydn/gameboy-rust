@@ -39,7 +39,7 @@ The repository is a Cargo workspace with three crates:
 | `crates/gba-demos/src/timer_demo.rs` | Original timer-configuration program and IRQ handler |
 | `Cargo.toml` | Workspace members and shared package settings |
 | `crates/gba-core/src/lib.rs` | Core modules |
-| `crates/gba-demos/src/lib.rs` | Demo modules and original instruction/exception demo bytes |
+| `crates/gba-demos/src/lib.rs` | Demo modules, original instruction/exception bytes, and raw input-test ROM |
 | `crates/gba-core/src/bios.rs` | Original ARM BIOS image builder, minimal boot, IRQ dispatch, waits, and memory services |
 | `crates/gba-core/src/bios/reset.rs` | Emitted ARM SoftReset and selective RegisterRamReset; CPU banks, RAM clearing, and supported device-register resets |
 | `crates/gba-core/src/bios/arithmetic.rs` | Emitted ARM division and integer-square-root routines |
@@ -79,9 +79,13 @@ The repository is a Cargo workspace with three crates:
 | `crates/desktop/src/desktop/mosaic.rs` | Mosaic window and 128-frame independent pixel checks |
 | `crates/desktop/src/desktop/raster.rs` | Raster window and scanline color-band smoke test |
 | `crates/desktop/src/main.rs` | Command-line modes, error exit status, and fixed-length CPU demo |
-| `crates/desktop/src/cartridge.rs` | Read-only ROM files, argument checks, bounded machine execution, and terminal reports |
+| `crates/desktop/src/cartridge.rs` | Read-only ROM files, mode/limit checks, bounded terminal execution, and shared state reports |
+| `crates/desktop/src/cartridge/window.rs` | ROM-window session, bounded slices, capture, STOP/input handling, and progress limits |
+| `crates/desktop/src/cartridge/window/tests.rs` | Original ROM pixels, keyboard mapping, STOP wake, HALT, frame budgets, and diagnostics |
+| `crates/desktop/src/desktop/rom.rs` | Main-thread ROM window, input polling, presentation pacing, and frame-limited exit |
+| `crates/desktop/examples/write_rom_demo.rs` | Non-overwriting export of the original input-test ROM |
 | `crates/desktop/src/cartridge/tests.rs` | ROM options, bounded readers, instruction/DMA/IRQ budgets, HALT/STOP, and diagnostic reports |
-| `crates/desktop/tests/rom_cli.rs` | Process-level loading and exit-status checks using temporary original programs |
+| `crates/desktop/tests/rom_cli.rs` | File loading and exit-status checks; opt-in native ROM-window integration test |
 | `crates/gba-core/tests/core.rs` | CPU integration tests and the complete demo |
 | `crates/gba-core/tests/memory.rs` | Memory widths, alignment, errors, and mirrors |
 | `crates/gba-core/tests/exceptions.rs` | Exception demo, BIOS mapping, and reset-vector execution |

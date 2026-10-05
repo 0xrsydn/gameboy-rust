@@ -6,7 +6,7 @@ The Game Boy Advance (GBA) is the first and currently only system.
 **This cannot run Pokémon Emerald or other commercial games yet.**
 It is an emulator foundation: an ARM7TDMI interpreter, memory bus, timers, DMA, Mode 0–5 video, and an original BIOS replacement.
 The included demos run original ARM test programs through the emulated hardware.
-Raw ROM files can run in bounded terminal sessions. ROM windows, audio, and saves are not implemented.
+Raw ROM files can run in terminal sessions or a window with keyboard input. Audio and saves are not implemented.
 
 ## Layout
 
@@ -28,7 +28,7 @@ direnv exec . cargo test --locked
 
 Arrows scroll, Q rotates, W zooms, Z flips, X changes priority, Enter resets, and Escape exits.
 Run `direnv exec . cargo run --locked -- --help` to list all modes.
-For original ROM files, use `--rom path/to/original.gba --steps 100000`.
+For original ROM files, use `--rom path/to/original.gba --window`, or `--steps 100000` instead of `--window` for terminal diagnostics.
 See [cartridge loading](docs/hardware/cartridge.md) for limits and report meanings.
 
 ## Documentation
@@ -41,7 +41,7 @@ See [cartridge loading](docs/hardware/cartridge.md) for limits and report meanin
 | [docs/testing.md](docs/testing.md) | Validation commands and what the test suites cover |
 | [docs/architecture.md](docs/architecture.md) | Crate boundaries and a file-by-file map |
 | [docs/hardware/cpu.md](docs/hardware/cpu.md) | ARM/Thumb execution rules, modes, exceptions, and timing |
-| [docs/hardware/cartridge.md](docs/hardware/cartridge.md) | Raw ROM loading, bounded terminal execution, and diagnostics |
+| [docs/hardware/cartridge.md](docs/hardware/cartridge.md) | ROM loading, window/input controls, original ROM generator, and diagnostics |
 | [docs/hardware/bios.md](docs/hardware/bios.md) | The original BIOS replacement and each supported service |
 | [docs/hardware/timers-irq.md](docs/hardware/timers-irq.md) | Timers, interrupt registers, HALT/STOP, and power control |
 | [docs/hardware/dma.md](docs/hardware/dma.md) | DMA channels, triggers, and timing |

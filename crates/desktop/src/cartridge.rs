@@ -1,4 +1,6 @@
-//! Host-only raw ROM loading and bounded terminal diagnostics.
+//! Host-only raw ROM loading, execution modes, and diagnostics.
+
+pub mod window;
 
 use std::{
     error::Error,
@@ -15,42 +17,71 @@ use gba_core::{
 };
 
 const MAX_STEPS: u64 = 100_000_000;
-const USAGE: &str = "usage: gameboy-rust --rom PATH --steps COUNT (1..=100000000); do not combine with demo or help options";
+const MAX_FRAMES: u64 = 100_000;
+const USAGE: &str = "usage: gameboy-rust --rom PATH (--steps COUNT | --window [--frames COUNT]); steps: 1..=100000000, frames: 1..=100000; do not combine with demo or help options";
+
+#[derive(Debug, PartialEq, Eq)]
+enum Mode {
+    Terminal { steps: u64 },
+    Window { frames: Option<u64> },
+}
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Options {
     path: PathBuf,
-    steps: u64,
+    mode: Mode,
 }
 
 pub fn parse_args(args: &[OsString]) -> io::Result<Options> {
     let invalid = || io::Error::new(io::ErrorKind::InvalidInput, USAGE);
     let mut path = None;
     let mut steps = None;
-    let mut pairs = args.chunks_exact(2);
-    for pair in &mut pairs {
-        if pair[0] == "--rom" && path.is_none() && !pair[1].is_empty() {
-            path = Some(PathBuf::from(&pair[1]));
-        } else if pair[0] == "--steps" && steps.is_none() {
-            let value = pair[1].to_str().ok_or_else(invalid)?;
+    let mut frames = None;
+    let mut window = false;
+    let mut args = args.iter();
+    while let Some(arg) = args.next() {
+        if arg == "--rom" && path.is_none() {
+            let value = args
+                .next()
+                .filter(|value| !value.is_empty())
+                .ok_or_else(invalid)?;
+            path = Some(PathBuf::from(value));
+        } else if arg == "--window" && !window {
+            window = true;
+        } else if (arg == "--steps" && steps.is_none()) || (arg == "--frames" && frames.is_none()) {
+            let value = args
+                .next()
+                .and_then(|value| value.to_str())
+                .ok_or_else(invalid)?;
             if value.is_empty() || !value.bytes().all(|byte| byte.is_ascii_digit()) {
                 return Err(invalid());
             }
             let count = value.parse::<u64>().map_err(|_| invalid())?;
-            if !(1..=MAX_STEPS).contains(&count) {
+            let max = if arg == "--steps" {
+                MAX_STEPS
+            } else {
+                MAX_FRAMES
+            };
+            if !(1..=max).contains(&count) {
                 return Err(invalid());
             }
-            steps = Some(count);
+            if arg == "--steps" {
+                steps = Some(count);
+            } else {
+                frames = Some(count);
+            }
         } else {
             return Err(invalid());
         }
     }
-    if !pairs.remainder().is_empty() {
-        return Err(invalid());
-    }
+    let mode = match (window, steps, frames) {
+        (false, Some(steps), None) => Mode::Terminal { steps },
+        (true, None, frames) => Mode::Window { frames },
+        _ => return Err(invalid()),
+    };
     Ok(Options {
         path: path.ok_or_else(invalid)?,
-        steps: steps.ok_or_else(invalid)?,
+        mode,
     })
 }
 
@@ -112,6 +143,19 @@ struct Stats {
     halt_idle: u64,
 }
 
+impl Stats {
+    fn record(&mut self, kind: StepKind) {
+        match kind {
+            StepKind::Instruction => self.instructions += 1,
+            StepKind::IrqEntry => self.irq_entries += 1,
+            StepKind::Dma { .. } => self.dma_units += 1,
+            StepKind::HaltIdle => self.halt_idle += 1,
+            StepKind::StopIdle => return,
+        }
+        self.steps += 1;
+    }
+}
+
 #[derive(Debug, PartialEq, Eq)]
 enum Reason {
     StepLimit,
@@ -137,14 +181,10 @@ fn run_bounded(machine: &mut Machine, limit: u64) -> Report {
             break Reason::StepLimit;
         }
         match machine.step() {
-            Ok(StepKind::Instruction) => stats.instructions += 1,
-            Ok(StepKind::IrqEntry) => stats.irq_entries += 1,
-            Ok(StepKind::Dma { .. }) => stats.dma_units += 1,
-            Ok(StepKind::HaltIdle) => stats.halt_idle += 1,
             Ok(StepKind::StopIdle) => break Reason::Stopped,
+            Ok(kind) => stats.record(kind),
             Err(error) => break Reason::Diagnostic(error),
         }
-        stats.steps += 1;
     };
     Report { stats, reason }
 }
@@ -156,7 +196,10 @@ fn write_report(writer: &mut impl Write, machine: &Machine, report: &Report) -> 
         Reason::Diagnostic(_) => "emulation diagnostic",
     };
     writeln!(writer, "Result: {reason}")?;
-    let stats = &report.stats;
+    write_state(writer, machine, &report.stats)
+}
+
+fn write_state(writer: &mut impl Write, machine: &Machine, stats: &Stats) -> io::Result<()> {
     writeln!(
         writer,
         "Steps: {}; instructions: {}; IRQ entries: {}; DMA units: {}; HALT idle: {}",
@@ -193,13 +236,13 @@ pub fn execute(options: Options, writer: &mut impl Write) -> Result<(), Box<dyn 
         writer,
         "Original BIOS replacement; no commercial-game compatibility claim."
     )?;
-    writeln!(
-        writer,
-        "Machine-step limit: {} (includes boot)",
-        options.steps
-    )?;
+    let steps = match options.mode {
+        Mode::Terminal { steps } => steps,
+        Mode::Window { frames } => return crate::desktop::run_rom(bytes, frames, writer),
+    };
+    writeln!(writer, "Machine-step limit: {steps} (includes boot)")?;
     let mut machine = bios::boot(bytes)?;
-    let report = run_bounded(&mut machine, options.steps);
+    let report = run_bounded(&mut machine, steps);
     write_report(writer, &machine, &report)?;
     writer.flush()?;
     if let Reason::Diagnostic(error) = report.reason {

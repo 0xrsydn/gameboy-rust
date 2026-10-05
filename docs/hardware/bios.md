@@ -26,7 +26,7 @@ Minimal boot initializes:
 
 It then enters `0x08000000` in ARM System mode with IRQ/FIQ masks clear.
 It does not reproduce Nintendo's logo, cartridge-header checks, RAM clearing, boot delays, or full hardware initialization.
-The executable can load raw ROM files for [bounded terminal diagnostics](cartridge.md) using this boot sequence.
+The executable can load raw ROM files for [terminal or window execution](cartridge.md) using this boot sequence.
 This does not establish game compatibility or complete BIOS behavior.
 
 Supported software interrupt services:

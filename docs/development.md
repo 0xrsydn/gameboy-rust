@@ -17,12 +17,13 @@ Verified locally on macOS 15.7.3:
 - All ten native window smoke tests pass. The mosaic test submits 128 frames; the other nine submit 60 frames each.
 - The eight CPU-driven smoke tests check CPU state, every output pixel, and presentation at VBlank entry.
 - The terminal-only CPU and timer IRQ demos run successfully.
-- The bounded ROM runner loads original raw programs and reports state without opening a window.
+- The bounded terminal ROM runner loads original raw programs and reports state without opening a window.
+- The native ROM-window test presents a file-backed original program and reports STOP, CPU, and video failures.
 
 These results cover the CPU core, memory, Mode 0–5 snapshots and row capture, input mapping, and desktop windows.
 They do not verify a complete GBA display controller or audio.
 Arrow-key movement in the original host display test was confirmed manually on this Mac.
-The new CPU graphics demo has automated input-mapping tests; its physical keyboard behavior still needs manual confirmation.
+CPU demos and ROM windows have automated input-mapping tests; their physical keyboard behavior still needs manual confirmation.
 
 Enable the direnv hook in your shell if it is not already configured.
 For zsh, add this line to `~/.zshrc`:

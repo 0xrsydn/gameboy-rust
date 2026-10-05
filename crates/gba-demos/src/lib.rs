@@ -10,6 +10,30 @@ pub mod raster_demo;
 pub mod tile_demo;
 pub mod timer_demo;
 
+/// Headerless original ROM for file-loading and window-input tests.
+/// The CPU writes palette entry zero: blue at rest, red for A, green for Right.
+/// Right takes priority. No layer setup or demo-specific host initialization is needed.
+pub fn input_rom() -> Vec<u8> {
+    [
+        0xe3a0_1301_u32, // MOV r1, #0x04000000
+        0xe281_1c01,     // ADD r1, r1, #0x100
+        0xe281_1030,     // ADD r1, r1, #0x30 (KEYINPUT)
+        0xe3a0_2405,     // MOV r2, #0x05000000 (palette)
+        0xe1d1_00b0,     // loop: LDRH r0, [r1]
+        0xe1e0_0000,     // MVN r0, r0 (pressed bits)
+        0xe3a0_3b1f,     // MOV r3, #0x7c00 (blue)
+        0xe310_0001,     // TST r0, #1 (A)
+        0x13a0_301f,     // MOVNE r3, #0x001f (red)
+        0xe310_0010,     // TST r0, #0x10 (Right)
+        0x13a0_3e3e,     // MOVNE r3, #0x03e0 (green)
+        0xe1c2_30b0,     // STRH r3, [r2]
+        0xeaff_fff6,     // B loop
+    ]
+    .into_iter()
+    .flat_map(u32::to_le_bytes)
+    .collect()
+}
+
 /// Steps needed to reach and execute the demo's final self-branch.
 pub const DEMO_STEPS: usize = 40;
 
