@@ -26,9 +26,12 @@ class PreparationTests(unittest.TestCase):
         elif self.suite == "thumb":
             data = struct.pack("<IIHHI", 0xEAFFFFFE, 0xE1A00000, 0xA000, 0x4700, 0xE92D0003)
             pc, result = "0x0800000c", 7
-        else:
+        elif self.suite == "memory":
             data = struct.pack("<III", 0xEAFFFFFE, 0xE1A00000, 0xE92D0003)
             pc, result = "0x08000008", 12
+        else:
+            data = struct.pack("<IIII", 0xEAFFFFFE, 0xE1A00000, 0xE1A00000, 0xE92D0003)
+            pc, result = "0x0800000c", 12
         self.files = {
             self.rom: data,
             "LICENSE": b"Original fixture, not upstream license content.\n",
@@ -192,6 +195,10 @@ class MemoryPreparationTests(PreparationTests):
     suite = "memory"
 
 
+class BiosPreparationTests(PreparationTests):
+    suite = "bios"
+
+
 class SuiteSelectionTests(unittest.TestCase):
     def test_unknown_suite_is_rejected_before_download_or_output(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -210,6 +217,7 @@ class SuiteSelectionTests(unittest.TestCase):
             ("arm", "0x08001d4c", 12),
             ("thumb", "0x08000934", 7),
             ("memory", "0x08000350", 12),
+            ("bios", "0x08000248", 12),
         ]:
             lock = json.loads(adapter.LOCKS[suite].read_text())
             self.assertEqual(lock["repository"], "jsmolka/gba-tests")

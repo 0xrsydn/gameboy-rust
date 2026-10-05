@@ -136,7 +136,8 @@ The first public integration is [jsmolka/gba-tests ARM](public-arm-tests.md), wi
 The pinned ARM ROM now passes this checkpoint on Darwin arm64. Historical failures remain documented.
 The [pinned Thumb ROM](public-thumb-tests.md) also passes its verified r7 checkpoint after the empty-list store correction.
 The [pinned memory ROM](public-memory-tests.md) also passes, without a core change and with explicit coverage limits.
-Next, integrate a pinned public BIOS suite with a verified result protocol.
+The [pinned BIOS read-protection ROM](public-bios-tests.md) reaches its checkpoint but fails test 1 with the original replacement BIOS.
+Its expected values depend on Nintendo firmware. Record that failure rather than changing the assertion or returning guessed constants.
 For further public ARM7TDMI/GBA tests, inspect their source, license, entry assumptions, and result protocol.
 Pin source revisions and build instructions before comparing emulator changes.
 Adapt suites to verified completion addresses and result locations; do not guess them or treat timeouts as passes.

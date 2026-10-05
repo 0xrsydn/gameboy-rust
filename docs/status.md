@@ -69,6 +69,7 @@ Update this file when a feature lands or a limit is removed.
 - Headless JSON ROM suites with per-case checkpoints, register/CPSR/memory assertions, bounded budgets, and structured failure reports.
 - Hash-pinned preparation of public `jsmolka/gba-tests` ARM, Thumb, and memory ROMs, with verified result-register checkpoints.
 - These pinned ROMs pass their checkpoints on Darwin arm64 in debug and release builds; coverage limits remain documented.
+- A pinned public BIOS read-protection ROM has a verified checkpoint and an explicit failing baseline with the original BIOS.
 - ARM test/compare Rd=15 status restoration, without a PC result write or nominal refill.
 - ARM unused-memory data reads return a PC+8 word snapshot, with normal byte lanes and load rotation.
 - Little-endian byte, halfword, and word reads/writes.
@@ -119,6 +120,7 @@ The [ROM suite runner](rom-tests.md) has original regressions and a [pinned publ
 The pinned public ARM ROM passes its result checkpoint in debug and release builds.
 The [pinned public Thumb ROM](public-thumb-tests.md) also passes after correcting its empty-list store PC value.
 The [pinned public memory ROM](public-memory-tests.md) passes without a core change; its video-byte assertions have documented limits.
+The [pinned BIOS read-protection ROM](public-bios-tests.md) fails test 1; it expects Nintendo firmware opcode values.
 Other public suites remain unverified. These results do not establish full CPU or memory compatibility.
 The runner requires known completion addresses and has no debug-port protocol, scripted input, or rendered-image assertions.
 
@@ -132,7 +134,7 @@ Writes to cartridge addresses return errors instead of modeling cartridge hardwa
 
 ## Next steps
 
-1. Add a pinned public BIOS suite with a verified result protocol, then address its first compatibility failure.
+1. Add BIOS read protection based on supplied firmware instructions, not hard-coded values from the public BIOS test.
    Extend open-bus support with verified Thumb region/alignment rules and bus history, rather than a blanket unmapped-read fallback.
 2. Refine nominal timing with a fetch pipeline, Game Pak prefetch, per-access device updates, and verified timer/IRQ delays.
 3. Validate keypad retrigger behavior with hardware tests and add remaining device registers; extend BIOS reset coverage as sound/serial support becomes available.

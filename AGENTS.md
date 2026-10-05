@@ -38,6 +38,7 @@ Window smoke tests (`--*-smoke-test`) need a logged-in desktop session. Details 
 | Pinned public memory tests and video-byte coverage limits | [docs/public-memory-tests.md](docs/public-memory-tests.md) |
 | ROM test suites, assertions, and JSON reports | [docs/rom-tests.md](docs/rom-tests.md) |
 | ROM files, window execution, and terminal diagnostics | [docs/hardware/cartridge.md](docs/hardware/cartridge.md) |
+| Pinned public BIOS read-protection test and firmware limits | [docs/public-bios-tests.md](docs/public-bios-tests.md) |
 | BIOS services (SWI) | [docs/hardware/bios.md](docs/hardware/bios.md) |
 | Timers, IE/IF/IME, HALT/STOP | [docs/hardware/timers-irq.md](docs/hardware/timers-irq.md) |
 | DMA | [docs/hardware/dma.md](docs/hardware/dma.md) |

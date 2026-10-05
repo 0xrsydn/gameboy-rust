@@ -44,6 +44,7 @@ Use `--test-suite suite.json` for [repeatable headless ROM assertions](docs/rom-
 | [docs/public-arm-tests.md](docs/public-arm-tests.md) | Pinned public ARM test, preparation command, results, and limits |
 | [docs/public-thumb-tests.md](docs/public-thumb-tests.md) | Pinned public Thumb test, result protocol, and compatibility baseline |
 | [docs/public-memory-tests.md](docs/public-memory-tests.md) | Pinned public memory test, results, and video-byte coverage limits |
+| [docs/public-bios-tests.md](docs/public-bios-tests.md) | Pinned BIOS read-protection test and firmware-specific failure |
 | [docs/architecture.md](docs/architecture.md) | Crate boundaries and a file-by-file map |
 | [docs/hardware/cpu.md](docs/hardware/cpu.md) | ARM/Thumb execution rules, modes, exceptions, and timing |
 | [docs/hardware/cartridge.md](docs/hardware/cartridge.md) | ROM loading, window/input controls, original ROM generator, and diagnostics |

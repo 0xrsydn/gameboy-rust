@@ -52,6 +52,7 @@ Additional tests cover DMA/IRQ accounting, HALT/STOP, diagnostic state, case iso
 These original tests validate the runner. The [public ARM adapter](public-arm-tests.md) provides a separate passing checkpoint result for its pinned ROM.
 The [public Thumb adapter](public-thumb-tests.md) uses a separate lock and r7 assertion after its return to ARM state.
 The [public memory adapter](public-memory-tests.md) uses its own lock and an ARM-state r12 checkpoint.
+The [public BIOS adapter](public-bios-tests.md) also uses an ARM-state r12 checkpoint, but currently reports test 1 as failed.
 Preparation tests use only synthetic original bytes and no network:
 
 ```sh
@@ -59,7 +60,7 @@ direnv exec . python3 -B -m unittest discover -s tools -p 'test_*.py' -v
 ```
 
 They verify suite selection, pinned URLs, hashes, sizes, checkpoint validation, offline copies, destination safety, and non-overwriting output.
-Thumb cases also verify the return-to-ARM bridge. Command-line tests cover default ARM selection, explicit Thumb/memory selection, and errors.
+Thumb cases also verify the return-to-ARM bridge. Command-line tests cover default ARM selection, explicit Thumb/memory/BIOS selection, and errors.
 Compare/status CPU regressions verify saved flags/masks, bank switching, sequential PC/timing, User/System fallback, and atomic diagnostics.
 Load-alias regressions cover widths, signed/unaligned values, immediate/register offsets, pre/post-indexing, every non-PC register bank, and address wrapping.
 They verify loaded-value precedence, preserved flags, unchanged stores, nominal timing, I/O reads before device progress, deferred IRQ delivery, and atomic errors.
