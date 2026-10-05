@@ -1,0 +1,9 @@
+[package]
+name = "gba-core"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dev-dependencies]
+# Integration tests exercise the core through the original demo programs.
+gba-demos = { path = "../gba-demos" }

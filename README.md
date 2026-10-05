@@ -1,8 +1,11 @@
-# gba-rust
+# gameboy-rust
 
-A small Game Boy Advance (GBA) emulator foundation written in Rust.
-The core has no external Rust dependencies when built with `--no-default-features`.
-The default `desktop` feature adds minifb for a native window.
+Game Boy family emulation in Rust. The Game Boy Advance (GBA) is the first and currently only system.
+This is a small GBA emulator foundation, organized as a Cargo workspace:
+
+- `crates/gba-core`: the platform-independent emulator, with no external Rust dependencies.
+- `crates/gba-demos`: original test programs that drive the core.
+- `crates/desktop`: the native window frontend, built on minifb. It provides the `gameboy-rust` executable.
 
 **This cannot run Pokémon Emerald or other games yet.**
 The CPU-driven demos run original ARM code through emulated video RAM.
@@ -279,7 +282,7 @@ From this project directory:
 direnv allow
 cargo run
 cargo test
-cargo fmt --check
+cargo fmt --all --check
 cargo clippy --all-targets -- -D warnings
 ```
 
@@ -303,7 +306,7 @@ The flake sets Darwin-only `CFLAGS` to correct two minifb 0.28 native-build issu
 
 Build through direnv or `nix develop` so these settings apply.
 The window runs on the main thread, as required by macOS AppKit.
-`src/desktop.rs` also corrects the inverted macOS focus result in minifb 0.28.0.
+`crates/desktop/src/desktop.rs` also corrects the inverted macOS focus result in minifb 0.28.0.
 The dependency is pinned to that exact version. Review this workaround before upgrading minifb.
 Intel macOS and Linux desktop builds are not verified.
 
@@ -477,7 +480,7 @@ Neither constructor provides Nintendo BIOS services or initializes BIOS-managed 
 
 ### Optional original BIOS replacement
 
-`src/bios.rs` builds a deterministic 16 KiB image from original ARM instructions and mathematically generated data.
+`crates/gba-core/src/bios.rs` builds a deterministic 16 KiB image from original ARM instructions and mathematically generated data.
 No Nintendo firmware bytes are included.
 A compile-time integer calculation generates the 512-byte sine table at `0x3e00..0x3fff`.
 The image builder checks that code and literal pools do not overlap this table.
@@ -1632,100 +1635,102 @@ Important timing limits:
 | --- | --- |
 | `flake.nix`, `flake.lock` | Pinned development environment |
 | `.envrc` | Automatic environment loading through direnv |
-| `src/cpu.rs` | Registers, flags, instruction-set state, and stepping |
-| `src/cpu/arm.rs` | ARM decoding, data processing, transfers, branches, and multiply |
-| `src/cpu/alu.rs` | Shared arithmetic and barrel shifter |
-| `src/cpu/transfer.rs` | Shared ARM/Thumb block transfers and ARM swaps |
-| `src/cpu/thumb.rs` | Thumb decoding and execution |
-| `src/cpu/status.rs` | Processor modes, register banks, and status transfers |
-| `src/cpu/exception.rs` | Reset state, exception entry, and interrupt sampling |
-| `src/cpu/status_tests.rs`, `src/cpu/exception_tests.rs` | Status, banking, exception, and return tests |
-| `src/cpu/thumb_tests.rs` | Thumb instructions, state switching, and decoder checks |
-| `src/cpu/transfer_tests.rs` | Stack, addressing, overlap, empty-list, and swap tests |
-| `src/cpu/tests.rs` | Condition truth tables and immediate arithmetic tests |
-| `src/cpu/instruction_tests.rs` | Register operations, transfers, branches, and edge cases |
-| `src/memory.rs` | Memory mapping, I/O routing, write validation, and device clock |
-| `src/io.rs` | I/O registers, timers, HALT wake-up, next-event bounds, and IRQ latches |
-| `src/display.rs` | Display clock, scanline status, comparison edges, and display IRQ events |
-| `src/dma.rs` | DMA registers, internal pointers, trigger state, priority, and completion IRQs |
-| `src/machine.rs` | Timed CPU/DMA/device stepping and IRQ delivery |
-| `src/timing.rs` | Bus widths, wait-state costs, and timing breakdowns |
-| `src/cpu/timing.rs` | ARM/Thumb cycle summaries and data-access accounting |
-| `src/cpu/timing_tests.rs` | Instruction timing and semantic-equivalence checks |
-| `src/timer_demo.rs` | Original timer-configuration program and IRQ handler |
-| `src/lib.rs` | Core modules and original demo bytes |
-| `src/bios.rs` | Original ARM BIOS image builder, minimal boot, IRQ dispatch, waits, and memory services |
-| `src/bios/reset.rs` | Emitted ARM SoftReset and selective RegisterRamReset; CPU banks, RAM clearing, and supported device-register resets |
-| `src/bios/arithmetic.rs` | Emitted ARM division and integer-square-root routines |
-| `src/bios/affine.rs` | Emitted ARM background/sprite matrix services, range checks, and generated sine table |
-| `src/bios/angles.rs` | Emitted ARM ArcTan polynomial, ArcTan2 ratio/quadrant handling, and input validation |
-| `src/bios/lz77.rs` | Emitted ARM LZ77 decoder with byte and halfword output |
-| `src/bios/run_length.rs` | Emitted ARM run-length decoder, header validation, and block bounds |
-| `src/bios/bit_unpack.rs` | Emitted ARM packed-unit expansion, offsets, word stores, and validation |
-| `src/bios/decompression.rs` | Shared emitted byte/halfword output routine for decompression and byte differential filters |
-| `src/bios/differential.rs` | Emitted ARM byte/halfword differential filters, modular accumulation, and validation |
-| `src/bios/huffman.rs` | Emitted ARM Huffman tree traversal, symbol packing, word output, and validation |
-| `src/video.rs` | Presentation buffer, RGB555 conversion, and Mode 0–5 composition |
-| `src/video/affine.rs` | Programmed registers, internal scanline origins, and tiled/bitmap sampling |
-| `src/video/windows.rs` | Persistent vertical window edge flags and constant-time clock advancement |
-| `src/video/windows/horizontal.rs` | Horizontal comparator flags, per-column history, and bounded bulk advancement |
-| `src/video/mosaic.rs` | Live vertical mosaic phase and constant-time counter transitions |
-| `src/video/capture.rs` | Drawing/completed frame buffers, row completeness, and deferred render diagnostics |
-| `src/video/sprites.rs` | Sprite index preparation, priority metadata, mosaic, late palette lookup, and composition |
-| `src/video/sprites/pipeline.rs` | Two prepared row buffers, cycle40 events, and bounded capture-disabled advancement |
-| `src/video/sprites/budget.rs` | Nominal per-row work allowance, partial canvas prefixes, and independent arithmetic tests |
-| `src/input.rs` | Platform-independent GBA button state |
-| `src/graphics_demo.rs` | Original ARM bitmap program and shared bounded frame runner |
-| `src/tile_demo.rs` | Original ARM tile/sprite program, palettes, tiles, maps, and OAM image |
-| `src/affine_demo.rs` | Shared ARM background program builder and Mode 2 assets |
-| `src/affine_raster_demo.rs` | CPU-driven HBlank DMA affine distortion demo |
-| `src/bitmap_demo.rs` | Mode 4/5 demo runners, palettes, and original two-page images |
-| `src/effects_demo.rs` | CPU-driven window and color-effects demo runner |
-| `src/mosaic_demo.rs` | CPU-driven background/sprite mosaic demo runner |
-| `src/raster_demo.rs` | Original ARM HBlank DMA raster program and color table |
-| `src/video/effects.rs` | Region masks and RGB555 alpha/brightness arithmetic |
-| `src/desktop.rs` | Native window, display test, and keyboard controls |
-| `src/desktop/affine.rs` | Affine background window and smoke-test pixel checks |
-| `src/desktop/affine_raster.rs` | Affine raster window and every-pixel smoke checks |
-| `src/desktop/bitmap.rs` | Mode 4/5 windows and page-flipping smoke-test pixel checks |
-| `src/desktop/effects.rs` | Window/effects demo and independent smoke-test pixel checks |
-| `src/desktop/mosaic.rs` | Mosaic window and 128-frame independent pixel checks |
-| `src/desktop/raster.rs` | Raster window and scanline color-band smoke test |
-| `src/main.rs` | Command-line modes and fixed-length CPU demo |
-| `tests/core.rs` | CPU integration tests and the complete demo |
-| `tests/memory.rs` | Memory widths, alignment, errors, and mirrors |
-| `tests/exceptions.rs` | Exception demo, BIOS mapping, and reset-vector execution |
-| `tests/timers.rs` | Timer rules, interrupt registers, and a cycle-by-cycle reference |
-| `tests/machine.rs` | Device IRQ entry/return, clock policy, and I/O failure atomicity |
-| `tests/timing.rs` | WAITCNT fields, bus costs, and timer/IRQ timing integration |
-| `tests/graphics.rs` | Video memory, rendering, KEYINPUT, and CPU-driven graphics integration |
-| `tests/tiles.rs` | Mode 0 registers, maps, palettes, composition, diagnostics, and CPU tile/sprite demo |
-| `tests/affine_backgrounds.rs` | Affine registers, maps, transforms, bitmap sampling, composition, and CPU demo |
-| `tests/affine_tracking.rs` | Internal origins, mid-frame writes, reloads, mosaic, DMA, and affine raster demo |
-| `tests/bitmap_modes.rs` | Mode 4/5 pages, formats, transforms, transparency, sprites, and CPU demos |
-| `tests/effects.rs`, `tests/effects/` | Window masks, color arithmetic, target selection, OBJ effects, DMA, and CPU demo |
-| `tests/window_tracking.rs`, `tests/window_tracking/` | Vertical/horizontal edges, mid-line writes, hidden positions, DMA, masks, and capture independence |
-| `tests/mosaic.rs`, `tests/mosaic/` | Mosaic sizes, sampling, transparent metadata, windows, DMA, and CPU demo |
-| `tests/mosaic_tracking.rs` | Size changes, counter wrap, text/affine/OBJ sampling, DMA, and frame resets |
-| `tests/scanlines.rs`, `tests/scanlines/` | Capture boundaries, mid-frame changes, DMA ordering, diagnostics, and raster program |
-| `tests/sprites.rs` | OAM, DMA, sprite sizes, mapping, palettes, flips, clipping, priorities, and diagnostics |
-| `tests/sprite_pipeline.rs` | Preparation boundaries, OAM/VRAM history, late palette/effects, DMA, row0, and diagnostics |
-| `tests/sprite_budget.rs` | Regular/affine costs, clipping policy, truncation, inspection, bit5 sampling, DMA, and diagnostics |
-| `tests/sprites/affine.rs` | Affine matrices, drawing areas, signed sampling, shared groups, and floating-point reference tests |
-| `tests/display.rs` | Display boundaries, register masks, IRQ handlers, and VBlank frame execution |
-| `tests/dma.rs` | DMA widths, latches, priority, triggers, IRQs, timing, errors, and CPU integration |
-| `tests/halt.rs` | HALT wake masks, idle timing, BIOS-only writes, DMA progress, and STOP diagnostics |
-| `tests/bios.rs` | ARM/Thumb service calls, copy/fill boundaries, wait races, callback contracts, and boot |
-| `tests/bios/ram_reset.rs` | Selective RAM boundaries, flag combinations, I/O reset, display rendering, DMA/timer latches, and diagnostics |
-| `tests/bios/reset.rs` | All restart flags, exact RAM boundaries, CPU banks, restart execution, device continuity, and IRQ masking |
-| `tests/bios/arithmetic.rs` | Arithmetic boundaries, wide-integer references, status restoration, and zero-division diagnostics |
-| `tests/bios/affine.rs` | Matrix/origin references, all angle phases, strides, live rendering, register preservation, and diagnostics |
-| `tests/bios/angles.rs` | Fixed-point references, axes/quadrants, rounding, caller flags, stack bounds, DMA, and diagnostics |
-| `tests/bios/lz77.rs` | Token-reference tests, overlaps, output widths, malformed streams, and partial failures |
-| `tests/bios/run_length.rs` | All block controls, mixed streams, output widths, status, diagnostics, DMA, and IRQ masking |
-| `tests/bios/bit_unpack.rs` | Width pairs, bit references, offsets, maximum length, memory boundaries, status, DMA, and diagnostics |
-| `tests/bios/differential.rs` | Round trips, wraparound, output widths, large lengths, partial failures, status, DMA, and diagnostics |
-| `tests/bios/huffman.rs` | Independent path encoding, tree bounds, packing, large lengths, partial failures, status, and DMA |
+| `crates/gba-core/src/cpu.rs` | Registers, flags, instruction-set state, and stepping |
+| `crates/gba-core/src/cpu/arm.rs` | ARM decoding, data processing, transfers, branches, and multiply |
+| `crates/gba-core/src/cpu/alu.rs` | Shared arithmetic and barrel shifter |
+| `crates/gba-core/src/cpu/transfer.rs` | Shared ARM/Thumb block transfers and ARM swaps |
+| `crates/gba-core/src/cpu/thumb.rs` | Thumb decoding and execution |
+| `crates/gba-core/src/cpu/status.rs` | Processor modes, register banks, and status transfers |
+| `crates/gba-core/src/cpu/exception.rs` | Reset state, exception entry, and interrupt sampling |
+| `crates/gba-core/src/cpu/status_tests.rs`, `crates/gba-core/src/cpu/exception_tests.rs` | Status, banking, exception, and return tests |
+| `crates/gba-core/src/cpu/thumb_tests.rs` | Thumb instructions, state switching, and decoder checks |
+| `crates/gba-core/src/cpu/transfer_tests.rs` | Stack, addressing, overlap, empty-list, and swap tests |
+| `crates/gba-core/src/cpu/tests.rs` | Condition truth tables and immediate arithmetic tests |
+| `crates/gba-core/src/cpu/instruction_tests.rs` | Register operations, transfers, branches, and edge cases |
+| `crates/gba-core/src/memory.rs` | Memory mapping, I/O routing, write validation, and device clock |
+| `crates/gba-core/src/io.rs` | I/O registers, timers, HALT wake-up, next-event bounds, and IRQ latches |
+| `crates/gba-core/src/display.rs` | Display clock, scanline status, comparison edges, and display IRQ events |
+| `crates/gba-core/src/dma.rs` | DMA registers, internal pointers, trigger state, priority, and completion IRQs |
+| `crates/gba-core/src/machine.rs` | Timed CPU/DMA/device stepping and IRQ delivery |
+| `crates/gba-core/src/timing.rs` | Bus widths, wait-state costs, and timing breakdowns |
+| `crates/gba-core/src/cpu/timing.rs` | ARM/Thumb cycle summaries and data-access accounting |
+| `crates/gba-core/src/cpu/timing_tests.rs` | Instruction timing and semantic-equivalence checks |
+| `crates/gba-demos/src/timer_demo.rs` | Original timer-configuration program and IRQ handler |
+| `Cargo.toml` | Workspace members and shared package settings |
+| `crates/gba-core/src/lib.rs` | Core modules |
+| `crates/gba-demos/src/lib.rs` | Demo modules and original instruction/exception demo bytes |
+| `crates/gba-core/src/bios.rs` | Original ARM BIOS image builder, minimal boot, IRQ dispatch, waits, and memory services |
+| `crates/gba-core/src/bios/reset.rs` | Emitted ARM SoftReset and selective RegisterRamReset; CPU banks, RAM clearing, and supported device-register resets |
+| `crates/gba-core/src/bios/arithmetic.rs` | Emitted ARM division and integer-square-root routines |
+| `crates/gba-core/src/bios/affine.rs` | Emitted ARM background/sprite matrix services, range checks, and generated sine table |
+| `crates/gba-core/src/bios/angles.rs` | Emitted ARM ArcTan polynomial, ArcTan2 ratio/quadrant handling, and input validation |
+| `crates/gba-core/src/bios/lz77.rs` | Emitted ARM LZ77 decoder with byte and halfword output |
+| `crates/gba-core/src/bios/run_length.rs` | Emitted ARM run-length decoder, header validation, and block bounds |
+| `crates/gba-core/src/bios/bit_unpack.rs` | Emitted ARM packed-unit expansion, offsets, word stores, and validation |
+| `crates/gba-core/src/bios/decompression.rs` | Shared emitted byte/halfword output routine for decompression and byte differential filters |
+| `crates/gba-core/src/bios/differential.rs` | Emitted ARM byte/halfword differential filters, modular accumulation, and validation |
+| `crates/gba-core/src/bios/huffman.rs` | Emitted ARM Huffman tree traversal, symbol packing, word output, and validation |
+| `crates/gba-core/src/video.rs` | Presentation buffer, RGB555 conversion, and Mode 0–5 composition |
+| `crates/gba-core/src/video/affine.rs` | Programmed registers, internal scanline origins, and tiled/bitmap sampling |
+| `crates/gba-core/src/video/windows.rs` | Persistent vertical window edge flags and constant-time clock advancement |
+| `crates/gba-core/src/video/windows/horizontal.rs` | Horizontal comparator flags, per-column history, and bounded bulk advancement |
+| `crates/gba-core/src/video/mosaic.rs` | Live vertical mosaic phase and constant-time counter transitions |
+| `crates/gba-core/src/video/capture.rs` | Drawing/completed frame buffers, row completeness, and deferred render diagnostics |
+| `crates/gba-core/src/video/sprites.rs` | Sprite index preparation, priority metadata, mosaic, late palette lookup, and composition |
+| `crates/gba-core/src/video/sprites/pipeline.rs` | Two prepared row buffers, cycle40 events, and bounded capture-disabled advancement |
+| `crates/gba-core/src/video/sprites/budget.rs` | Nominal per-row work allowance, partial canvas prefixes, and independent arithmetic tests |
+| `crates/gba-core/src/input.rs` | Platform-independent GBA button state |
+| `crates/gba-demos/src/graphics_demo.rs` | Original ARM bitmap program and shared bounded frame runner |
+| `crates/gba-demos/src/tile_demo.rs` | Original ARM tile/sprite program, palettes, tiles, maps, and OAM image |
+| `crates/gba-demos/src/affine_demo.rs` | Shared ARM background program builder and Mode 2 assets |
+| `crates/gba-demos/src/affine_raster_demo.rs` | CPU-driven HBlank DMA affine distortion demo |
+| `crates/gba-demos/src/bitmap_demo.rs` | Mode 4/5 demo runners, palettes, and original two-page images |
+| `crates/gba-demos/src/effects_demo.rs` | CPU-driven window and color-effects demo runner |
+| `crates/gba-demos/src/mosaic_demo.rs` | CPU-driven background/sprite mosaic demo runner |
+| `crates/gba-demos/src/raster_demo.rs` | Original ARM HBlank DMA raster program and color table |
+| `crates/gba-core/src/video/effects.rs` | Region masks and RGB555 alpha/brightness arithmetic |
+| `crates/desktop/src/desktop.rs` | Native window, display test, and keyboard controls |
+| `crates/desktop/src/desktop/affine.rs` | Affine background window and smoke-test pixel checks |
+| `crates/desktop/src/desktop/affine_raster.rs` | Affine raster window and every-pixel smoke checks |
+| `crates/desktop/src/desktop/bitmap.rs` | Mode 4/5 windows and page-flipping smoke-test pixel checks |
+| `crates/desktop/src/desktop/effects.rs` | Window/effects demo and independent smoke-test pixel checks |
+| `crates/desktop/src/desktop/mosaic.rs` | Mosaic window and 128-frame independent pixel checks |
+| `crates/desktop/src/desktop/raster.rs` | Raster window and scanline color-band smoke test |
+| `crates/desktop/src/main.rs` | Command-line modes and fixed-length CPU demo |
+| `crates/gba-core/tests/core.rs` | CPU integration tests and the complete demo |
+| `crates/gba-core/tests/memory.rs` | Memory widths, alignment, errors, and mirrors |
+| `crates/gba-core/tests/exceptions.rs` | Exception demo, BIOS mapping, and reset-vector execution |
+| `crates/gba-core/tests/timers.rs` | Timer rules, interrupt registers, and a cycle-by-cycle reference |
+| `crates/gba-core/tests/machine.rs` | Device IRQ entry/return, clock policy, and I/O failure atomicity |
+| `crates/gba-core/tests/timing.rs` | WAITCNT fields, bus costs, and timer/IRQ timing integration |
+| `crates/gba-core/tests/graphics.rs` | Video memory, rendering, KEYINPUT, and CPU-driven graphics integration |
+| `crates/gba-core/tests/tiles.rs` | Mode 0 registers, maps, palettes, composition, diagnostics, and CPU tile/sprite demo |
+| `crates/gba-core/tests/affine_backgrounds.rs` | Affine registers, maps, transforms, bitmap sampling, composition, and CPU demo |
+| `crates/gba-core/tests/affine_tracking.rs` | Internal origins, mid-frame writes, reloads, mosaic, DMA, and affine raster demo |
+| `crates/gba-core/tests/bitmap_modes.rs` | Mode 4/5 pages, formats, transforms, transparency, sprites, and CPU demos |
+| `crates/gba-core/tests/effects.rs`, `crates/gba-core/tests/effects/` | Window masks, color arithmetic, target selection, OBJ effects, DMA, and CPU demo |
+| `crates/gba-core/tests/window_tracking.rs`, `crates/gba-core/tests/window_tracking/` | Vertical/horizontal edges, mid-line writes, hidden positions, DMA, masks, and capture independence |
+| `crates/gba-core/tests/mosaic.rs`, `crates/gba-core/tests/mosaic/` | Mosaic sizes, sampling, transparent metadata, windows, DMA, and CPU demo |
+| `crates/gba-core/tests/mosaic_tracking.rs` | Size changes, counter wrap, text/affine/OBJ sampling, DMA, and frame resets |
+| `crates/gba-core/tests/scanlines.rs`, `crates/gba-core/tests/scanlines/` | Capture boundaries, mid-frame changes, DMA ordering, diagnostics, and raster program |
+| `crates/gba-core/tests/sprites.rs` | OAM, DMA, sprite sizes, mapping, palettes, flips, clipping, priorities, and diagnostics |
+| `crates/gba-core/tests/sprite_pipeline.rs` | Preparation boundaries, OAM/VRAM history, late palette/effects, DMA, row0, and diagnostics |
+| `crates/gba-core/tests/sprite_budget.rs` | Regular/affine costs, clipping policy, truncation, inspection, bit5 sampling, DMA, and diagnostics |
+| `crates/gba-core/tests/sprites/affine.rs` | Affine matrices, drawing areas, signed sampling, shared groups, and floating-point reference tests |
+| `crates/gba-core/tests/display.rs` | Display boundaries, register masks, IRQ handlers, and VBlank frame execution |
+| `crates/gba-core/tests/dma.rs` | DMA widths, latches, priority, triggers, IRQs, timing, errors, and CPU integration |
+| `crates/gba-core/tests/halt.rs` | HALT wake masks, idle timing, BIOS-only writes, DMA progress, and STOP diagnostics |
+| `crates/gba-core/tests/bios.rs` | ARM/Thumb service calls, copy/fill boundaries, wait races, callback contracts, and boot |
+| `crates/gba-core/tests/bios/ram_reset.rs` | Selective RAM boundaries, flag combinations, I/O reset, display rendering, DMA/timer latches, and diagnostics |
+| `crates/gba-core/tests/bios/reset.rs` | All restart flags, exact RAM boundaries, CPU banks, restart execution, device continuity, and IRQ masking |
+| `crates/gba-core/tests/bios/arithmetic.rs` | Arithmetic boundaries, wide-integer references, status restoration, and zero-division diagnostics |
+| `crates/gba-core/tests/bios/affine.rs` | Matrix/origin references, all angle phases, strides, live rendering, register preservation, and diagnostics |
+| `crates/gba-core/tests/bios/angles.rs` | Fixed-point references, axes/quadrants, rounding, caller flags, stack bounds, DMA, and diagnostics |
+| `crates/gba-core/tests/bios/lz77.rs` | Token-reference tests, overlaps, output widths, malformed streams, and partial failures |
+| `crates/gba-core/tests/bios/run_length.rs` | All block controls, mixed streams, output widths, status, diagnostics, DMA, and IRQ masking |
+| `crates/gba-core/tests/bios/bit_unpack.rs` | Width pairs, bit references, offsets, maximum length, memory boundaries, status, DMA, and diagnostics |
+| `crates/gba-core/tests/bios/differential.rs` | Round trips, wraparound, output widths, large lengths, partial failures, status, DMA, and diagnostics |
+| `crates/gba-core/tests/bios/huffman.rs` | Independent path encoding, tree bounds, packing, large lengths, partial failures, status, and DMA |
 
 ## Deliberate limits
 
@@ -1765,35 +1770,36 @@ Writes to cartridge addresses return errors instead of modeling cartridge hardwa
 Run native macOS validation from the project directory:
 
 ```sh
-direnv exec . cargo fmt --check
+direnv exec . cargo fmt --all --check
 direnv exec . cargo clippy --locked --all-targets -- -D warnings
 direnv exec . cargo test --locked
 direnv exec . cargo test --locked --release
 direnv exec . cargo build --locked --release
-file target/release/gba-rust
-./target/release/gba-rust --smoke-test
-./target/release/gba-rust --graphics-smoke-test
-./target/release/gba-rust --tile-smoke-test
-./target/release/gba-rust --affine-smoke-test
-./target/release/gba-rust --affine-raster-smoke-test
-./target/release/gba-rust --bitmap4-smoke-test
-./target/release/gba-rust --bitmap5-smoke-test
-./target/release/gba-rust --effects-smoke-test
-./target/release/gba-rust --mosaic-smoke-test
-./target/release/gba-rust --raster-smoke-test
-./target/release/gba-rust --cpu-demo
-./target/release/gba-rust --timer-demo
+file target/release/gameboy-rust
+./target/release/gameboy-rust --smoke-test
+./target/release/gameboy-rust --graphics-smoke-test
+./target/release/gameboy-rust --tile-smoke-test
+./target/release/gameboy-rust --affine-smoke-test
+./target/release/gameboy-rust --affine-raster-smoke-test
+./target/release/gameboy-rust --bitmap4-smoke-test
+./target/release/gameboy-rust --bitmap5-smoke-test
+./target/release/gameboy-rust --effects-smoke-test
+./target/release/gameboy-rust --mosaic-smoke-test
+./target/release/gameboy-rust --raster-smoke-test
+./target/release/gameboy-rust --cpu-demo
+./target/release/gameboy-rust --timer-demo
 ```
 
 All ten window smoke tests need an active desktop session. Ordinary tests do not open windows.
 CPU-driven smoke tests supply scripted buttons; they do not validate physical keyboard events.
-To test the core without building the window dependency:
+To test the core and demo programs without building the window dependency:
 
 ```sh
-direnv exec . cargo test --locked --no-default-features
+direnv exec . cargo test --locked -p gba-core -p gba-demos
 ```
 
-This runs 709 core and integration tests; the eleven desktop and command-line tests are excluded.
+This runs 709 core, demo, and integration tests; the eleven desktop and command-line tests are excluded.
+The core's integration tests use `gba-demos` as a development dependency.
 
 On Apple Silicon, `file` must report a Mach-O `arm64` executable.
 Do not set a Linux cross-compilation target for this validation.

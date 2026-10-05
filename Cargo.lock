@@ -141,10 +141,26 @@ dependencies = [
 ]
 
 [[package]]
-name = "gba-rust"
+name = "gameboy-rust-desktop"
 version = "0.1.0"
 dependencies = [
+ "gba-core",
+ "gba-demos",
  "minifb",
+]
+
+[[package]]
+name = "gba-core"
+version = "0.1.0"
+dependencies = [
+ "gba-demos",
+]
+
+[[package]]
+name = "gba-demos"
+version = "0.1.0"
+dependencies = [
+ "gba-core",
 ]
 
 [[package]]

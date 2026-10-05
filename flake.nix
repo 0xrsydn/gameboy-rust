@@ -1,5 +1,5 @@
 {
-  description = "A minimal GBA emulator written in Rust";
+  description = "Game Boy family emulation in Rust, starting with the GBA";
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 

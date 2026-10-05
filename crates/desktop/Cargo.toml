@@ -1,0 +1,15 @@
+[package]
+name = "gameboy-rust-desktop"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "gameboy-rust"
+path = "src/main.rs"
+
+[dependencies]
+gba-core = { path = "../gba-core" }
+gba-demos = { path = "../gba-demos" }
+# Pinned because src/desktop.rs corrects a macOS focus bug in this version.
+minifb = { version = "=0.28.0", default-features = false, features = ["x11"] }
