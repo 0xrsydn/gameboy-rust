@@ -1,9 +1,11 @@
 //! Original, optional ARM BIOS replacement. No Nintendo firmware is included.
 //! Supports interrupt waits and memory copy/fill.
+//! Includes integer arithmetic services.
 //! This is a functional subset, not a complete boot ROM or a timing-compatible BIOS.
 
 use std::collections::BTreeMap;
 
+mod arithmetic;
 
 use crate::{
     cpu::Cpu,
@@ -110,6 +112,9 @@ pub fn image() -> Vec<u8> {
         (2, "halt"),
         (4, "intr_wait"),
         (5, "vblank_wait"),
+        (6, "div"),
+        (7, "div_arm"),
+        (8, "sqrt"),
         (0x0b, "cpu_set"),
         (0x0c, "cpu_fast_set"),
     ] {
@@ -203,6 +208,7 @@ pub fn image() -> Vec<u8> {
         ["copy_halfword", "half_loop", "half_fill", "half_fill_loop"],
     );
 
+    arithmetic::emit(&mut a);
 
     a.label("return");
     a.emit(0xe10f_3000); // MRS r3,CPSR

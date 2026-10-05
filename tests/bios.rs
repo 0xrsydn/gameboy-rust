@@ -12,6 +12,8 @@ const DEST: u32 = 0x0201_0000;
 const CALLBACK: u32 = 0x0300_0100;
 const ROM_DATA: u32 = ROM_START + 13 * 4;
 
+#[path = "bios/arithmetic.rs"]
+mod arithmetic;
 
 fn words(code: &[u32]) -> Vec<u8> {
     code.iter().flat_map(|word| word.to_le_bytes()).collect()
