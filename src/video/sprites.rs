@@ -1,6 +1,8 @@
 //! Regular and affine OBJ sampling.
 //! Individual fetch timing and OAM contention are not modeled.
 
+pub(crate) mod pipeline;
+
 use super::{halfword, Pixel, VideoError, WIDTH};
 
 const SIZES: [[(usize, usize); 4]; 3] = [
