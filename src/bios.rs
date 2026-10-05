@@ -2,6 +2,7 @@
 //! Supports interrupt waits and memory copy/fill.
 //! Includes integer arithmetic services.
 //! Includes LZ77 decoding.
+//! Includes run-length decoding.
 //! This is a functional subset, not a complete boot ROM or a timing-compatible BIOS.
 
 use std::collections::BTreeMap;
@@ -9,6 +10,7 @@ use std::collections::BTreeMap;
 mod arithmetic;
 mod decompression;
 mod lz77;
+mod run_length;
 
 use crate::{
     cpu::Cpu,
@@ -122,6 +124,8 @@ pub fn image() -> Vec<u8> {
         (0x0c, "cpu_fast_set"),
         (0x11, "lz_wram"),
         (0x12, "lz_vram"),
+        (0x14, "rl_wram"),
+        (0x15, "rl_vram"),
     ] {
         a.emit(0xe35c_0000 | number); // CMP r12,#service
         a.branch(0, target);
@@ -215,6 +219,7 @@ pub fn image() -> Vec<u8> {
 
     arithmetic::emit(&mut a);
     lz77::emit(&mut a);
+    run_length::emit(&mut a);
     decompression::emit_writer(&mut a);
 
     a.label("return");

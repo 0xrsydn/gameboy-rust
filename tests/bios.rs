@@ -16,6 +16,8 @@ const ROM_DATA: u32 = ROM_START + 13 * 4;
 mod arithmetic;
 #[path = "bios/lz77.rs"]
 mod lz77;
+#[path = "bios/run_length.rs"]
+mod run_length;
 
 fn words(code: &[u32]) -> Vec<u8> {
     code.iter().flat_map(|word| word.to_le_bytes()).collect()
