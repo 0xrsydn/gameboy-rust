@@ -253,7 +253,7 @@ Verified locally on macOS 15.7.3:
 - Nix system: `aarch64-darwin`.
 - Rust host: `aarch64-apple-darwin`.
 - Release executable: native Mach-O `arm64`, without Rosetta.
-- All 618 tests pass in debug and release builds.
+- All 635 tests pass in debug and release builds.
 - All ten native window smoke tests pass. The mosaic test submits 128 frames; the other nine submit 60 frames each.
 - The eight CPU-driven smoke tests check CPU state, every output pixel, and presentation at VBlank entry.
 - The terminal-only CPU and timer IRQ demos run successfully.
@@ -358,7 +358,7 @@ nix develop -c cargo test
 - Game Pak wait-state control (`WAITCNT`) for all three ROM windows.
 - Sequential/non-sequential data accesses, branch refill costs, and variable multiply timing.
 - Optional caller-supplied 16 KiB BIOS mapping for vector code, without CPU BIOS read protection.
-- Optional original BIOS replacement: minimal boot, IRQ dispatch, interrupt waits, memory copy/fill, integer arithmetic, bit unpacking, and LZ77/run-length decompression.
+- Optional original BIOS replacement: minimal boot, IRQ dispatch, interrupt waits, memory copy/fill, integer arithmetic, bit unpacking, LZ77/run-length decompression, and differential filters.
 - All 16 ARM data-processing operations, with immediate and shifted-register operands.
 - Logical operations: `AND`, `EOR`, `TST`, `TEQ`, `ORR`, `MOV`, `BIC`, and `MVN`.
 - Arithmetic operations: `SUB`, `RSB`, `ADD`, `ADC`, `SBC`, `RSC`, `CMP`, and `CMN`.
@@ -516,13 +516,16 @@ Supported software interrupt services:
 | `0x12` | LZ77UnCompVram | Decompress from r0 to r1 with buffered halfword writes |
 | `0x14` | RLUnCompWram | Expand run-length data from r0 to r1 with byte writes |
 | `0x15` | RLUnCompVram | Expand run-length data from r0 to r1 with buffered halfword writes |
+| `0x16` | Diff8bitUnFilterWrite8bit | Reconstruct 8-bit samples from r0 to r1 with byte writes |
+| `0x17` | Diff8bitUnFilterWrite16bit | Reconstruct 8-bit samples from r0 to r1 with buffered halfword writes |
+| `0x18` | Diff16bitUnFilter | Reconstruct 16-bit samples from r0 to r1 with halfword writes |
 
 ARM code uses `SWI service_number << 16`; Thumb code uses the service number directly.
 Only User/System callers are supported. Calls from exception modes return a diagnostic rather than risking nested stack corruption.
 Services preserve CPSR and every caller register except the documented arithmetic outputs.
 This is deterministic behavior, not a claim about undocumented firmware outputs.
 Supervisor stack use is 28 bytes normally and 40 bytes for division.
-CpuFastSet, BitUnPack, and both decompression formats use 60 bytes.
+CpuFastSet, BitUnPack, both decompression formats, and differential filters use 60 bytes.
 They do not reproduce the original firmware's internal stack layout or cycle counts.
 
 **IRQ callback contract:** install a word-aligned ARM callback address at `0x03007ffc` after boot.
@@ -649,13 +652,42 @@ The service preserves caller registers/status and uses original ARM instructions
 CPU IRQ delivery stays masked until return. IME is unchanged; timers, display clocks, and DMA continue.
 Exact firmware timing and undocumented register outputs remain unmodeled.
 
+#### Differential filters
+
+These services reconstruct samples from stored differences. They do not change the payload size.
+The source at r0 starts with a word-aligned four-byte header:
+
+- Low byte `0x81` selects 8-bit samples; `0x82` selects 16-bit samples.
+- The upper 24 bits specify output length in bytes, including for the 16-bit service.
+- The first payload unit is the first original sample. Each following unit is the difference from the previous sample.
+
+The accumulator starts at zero. Each input unit adds to the accumulator, producing the next output sample.
+Eight-bit samples wrap modulo 256; sixteen-bit samples wrap modulo 65,536. This handles positive and negative differences.
+Sixteen-bit input and output units use little-endian byte order.
+
+`Diff8bitUnFilterWrite8bit` accepts byte-aligned destinations and odd byte counts. It uses ordinary byte stores.
+`Diff8bitUnFilterWrite16bit` buffers pairs of reconstructed bytes, then writes halfwords.
+`Diff16bitUnFilter` reads and writes halfwords directly. Both halfword-output variants require even destination addresses and byte counts.
+Use separate source and output buffers. Overlapping buffers and firmware quirks for odd halfword-output sizes are not supported.
+
+Invalid header types/unit sizes, source alignment, protected sources, output alignment/size, and wrapping address ranges reach `bios::INVALID_ARGUMENT_TRAP`.
+Sources below `0x02000000` are rejected. These strict checks are development diagnostics, not exact firmware behavior on invalid data.
+After validation, zero output length reads no payload and writes no output. Decoding stops at the declared length without consuming trailing data.
+Unmapped source reads and invalid output writes return normal memory diagnostics.
+Earlier completed writes remain committed. The buffered byte variant does not write a lone pending byte after a source failure.
+All output uses normal bus rules: byte writes to video memory can duplicate bytes, and byte writes to OAM are ignored.
+
+These original ARM routines execute through the CPU, not a host-side service hook.
+They preserve caller registers/status and mask CPU IRQ delivery until return, without changing IME.
+Timers, display clocks, and DMA continue. Exact Nintendo BIOS timing and undocumented side effects remain unmodeled.
+
 #### Firmware diagnostics
 
 Unsupported SWIs, unsupported exception vectors, and null/misaligned IRQ callbacks reach an intentional undefined-instruction trap.
 The CPU reports `CpuError::UnsupportedInstruction` with `bios::UNSUPPORTED_TRAP`, rather than silently treating a service as a no-op.
 Invalid arithmetic/decompression arguments use the same CPU error type with the distinct `bios::INVALID_ARGUMENT_TRAP` instruction.
 Prior boot/service steps remain committed on failure.
-Trigonometry, Huffman decompression, differential filters, reset services, and STOP remain unimplemented.
+Trigonometry, Huffman decompression, reset services, and STOP remain unimplemented.
 This subset is not sufficient for Pokémon Emerald compatibility.
 
 ### Timers, interrupt registers, and the machine clock
@@ -1410,7 +1442,8 @@ Important timing limits:
 | `src/bios/lz77.rs` | Emitted ARM LZ77 decoder with byte and halfword output |
 | `src/bios/run_length.rs` | Emitted ARM run-length decoder, header validation, and block bounds |
 | `src/bios/bit_unpack.rs` | Emitted ARM packed-unit expansion, offsets, word stores, and validation |
-| `src/bios/decompression.rs` | Shared emitted byte/halfword output routine for both decompression formats |
+| `src/bios/decompression.rs` | Shared emitted byte/halfword output routine for decompression and byte differential filters |
+| `src/bios/differential.rs` | Emitted ARM byte/halfword differential filters, modular accumulation, and validation |
 | `src/video.rs` | Presentation buffer, RGB555 conversion, and Mode 0–5 composition |
 | `src/video/affine.rs` | Programmed registers, internal scanline origins, and tiled/bitmap sampling |
 | `src/video/windows.rs` | Persistent vertical window edge flags and constant-time clock advancement |
@@ -1466,6 +1499,7 @@ Important timing limits:
 | `tests/bios/lz77.rs` | Token-reference tests, overlaps, output widths, malformed streams, and partial failures |
 | `tests/bios/run_length.rs` | All block controls, mixed streams, output widths, status, diagnostics, DMA, and IRQ masking |
 | `tests/bios/bit_unpack.rs` | Width pairs, bit references, offsets, maximum length, memory boundaries, status, DMA, and diagnostics |
+| `tests/bios/differential.rs` | Round trips, wraparound, output widths, large lengths, partial failures, status, DMA, and diagnostics |
 
 ## Deliberate limits
 
@@ -1533,12 +1567,15 @@ To test the core without building the window dependency:
 direnv exec . cargo test --locked --no-default-features
 ```
 
-This runs 607 core and integration tests; the eleven desktop and command-line tests are excluded.
+This runs 624 core and integration tests; the eleven desktop and command-line tests are excluded.
 
 On Apple Silicon, `file` must report a Mach-O `arm64` executable.
 Do not set a Linux cross-compilation target for this validation.
 
-The default suite has 618 tests.
+The default suite has 635 tests.
+Differential-filter tests round-trip original samples through an independent difference encoder, including all byte and halfword sample values.
+They cover seeded inputs, 24-bit byte lengths, full-register accumulation wrap, output widths, source regions, and caller status.
+Malformed headers, truncated inputs, partial output, video-bus behavior, DMA progress, and masked IRQ delivery have separate regression tests.
 BitUnPack tests compare all supported width pairs and byte values with an independent bit-by-bit reference.
 They cover offsets and the zero-data flag, seeded inputs, maximum source length, source alignment, and ROM descriptors.
 Other tests check output boundaries, video-memory word writes, malformed/truncated inputs, partial failures, caller status, and DMA/IRQ behavior.
@@ -1660,7 +1697,7 @@ These tests do not replace validation against GBA hardware or public hardware te
 
 1. Validate CPU behavior with public ARM7TDMI test programs before claiming instruction compatibility.
 2. Refine nominal timing with a fetch pipeline, Game Pak prefetch, per-access device updates, and verified timer/IRQ delays.
-3. Expand BIOS services with trigonometry, Huffman decompression, and differential filters; add STOP and remaining DMA device modes.
+3. Expand BIOS services with trigonometry and Huffman decompression; add STOP and remaining DMA device modes.
 4. Replace nominal sprite work limits with verified individual fetch timing; add background fetch timing and per-pixel composition.
 5. Expand graphics, audio, cartridge loading, and saves before testing Emerald compatibility.
 
@@ -1675,7 +1712,7 @@ Hardware references used for the core:
 - [GBATEK BIOS function calling conventions](https://problemkaputt.de/gbatek-bios-functions.htm).
 - [GBATEK BIOS memory-copy services](https://problemkaputt.de/gbatek-bios-memory-copy.htm).
 - [GBATEK BIOS arithmetic services](https://problemkaputt.de/gbatek-bios-arithmetic-functions.htm).
-- [GBATEK BIOS decompression services](https://problemkaputt.de/gbatek-bios-decompression-functions.htm), including BitUnPack descriptor fields and width constraints.
+- [GBATEK BIOS decompression services](https://problemkaputt.de/gbatek-bios-decompression-functions.htm), including BitUnPack descriptor fields, differential-filter headers, and width constraints.
 - [mGBA BIOS service implementation](https://github.com/mgba-emu/mgba/blob/master/src/gba/bios.c), reviewed for BitUnPack low-bit-first order and zero-offset selection.
 - [HALTCNT hardware-access tests](https://github.com/mgba-emu/mgba/issues/2309), for BIOS-only writes and halfword access.
 - [GBATEK display status and IRQs](https://problemkaputt.de/gbatek-lcd-i-o-interrupts-and-status.htm).

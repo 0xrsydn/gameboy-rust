@@ -1,6 +1,6 @@
 //! Original, optional ARM BIOS replacement. No Nintendo firmware is included.
 //! Supports interrupt waits, integer arithmetic, memory copy/fill, bit unpacking,
-//! and LZ77/run-length decoding.
+//! LZ77/run-length decoding, and differential filters.
 //! This is a functional subset, not a complete boot ROM or a timing-compatible BIOS.
 
 use std::collections::BTreeMap;
@@ -8,6 +8,7 @@ use std::collections::BTreeMap;
 mod arithmetic;
 mod bit_unpack;
 mod decompression;
+mod differential;
 mod lz77;
 mod run_length;
 
@@ -25,7 +26,7 @@ pub const IRQ_FLAGS: u32 = 0x0300_7ff8;
 pub const IRQ_HANDLER: u32 = 0x0300_7ffc;
 /// An intentional undefined instruction used for unsupported SWIs/vectors and invalid IRQ pointers.
 pub const UNSUPPORTED_TRAP: u32 = 0xe7f0_00f0;
-/// A separate diagnostic trap for division by zero or invalid unpacking/decompression arguments.
+/// A diagnostic trap for division by zero or invalid unpacking, decompression, or filter arguments.
 pub const INVALID_ARGUMENT_TRAP: u32 = 0xe7f0_00f1;
 
 /// Start at reset with our optional firmware. Call Machine::step to execute boot.
@@ -126,6 +127,9 @@ pub fn image() -> Vec<u8> {
         (0x12, "lz_vram"),
         (0x14, "rl_wram"),
         (0x15, "rl_vram"),
+        (0x16, "diff8_wram"),
+        (0x17, "diff8_vram"),
+        (0x18, "diff16"),
     ] {
         a.emit(0xe35c_0000 | number); // CMP r12,#service
         a.branch(0, target);
@@ -221,6 +225,7 @@ pub fn image() -> Vec<u8> {
     bit_unpack::emit(&mut a);
     lz77::emit(&mut a);
     run_length::emit(&mut a);
+    differential::emit(&mut a);
     decompression::emit_writer(&mut a);
 
     a.label("return");

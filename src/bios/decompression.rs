@@ -1,4 +1,4 @@
-//! Shared output routine for the original ARM decompression services.
+//! Shared output routine for original ARM decompression and differential filters.
 
 use super::ArmImage;
 

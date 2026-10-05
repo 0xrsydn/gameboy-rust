@@ -16,6 +16,8 @@ const ROM_DATA: u32 = ROM_START + 13 * 4;
 mod arithmetic;
 #[path = "bios/bit_unpack.rs"]
 mod bit_unpack;
+#[path = "bios/differential.rs"]
+mod differential;
 #[path = "bios/lz77.rs"]
 mod lz77;
 #[path = "bios/run_length.rs"]
