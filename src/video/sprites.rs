@@ -1,6 +1,7 @@
-//! Regular and affine OBJ sampling.
+//! Regular and affine OBJ sampling with a nominal per-row work allowance.
 //! Individual fetch timing and OAM contention are not modeled.
 
+mod budget;
 pub(crate) mod pipeline;
 
 use super::{halfword, Pixel, VideoError, WIDTH};
@@ -53,6 +54,7 @@ pub(crate) fn prepare(
         return Ok(output);
     }
     let samples = &mut output.samples;
+    let mut budgets = vec![budget::Budget::new(control); rows.len()];
     let mosaic_height = usize::from(mosaic >> 12) + 1;
     let one_dimensional = control & 0x40 != 0;
     for index in 0..128 {
@@ -60,7 +62,10 @@ pub(crate) fn prepare(
         let b = usize::from(halfword(oam, index * 8 + 2));
         let c = usize::from(halfword(oam, index * 8 + 4));
         if a & 0x300 == 0x200 {
-            continue; // Disabled regular OBJ.
+            for budget in &mut budgets {
+                budget.skip();
+            }
+            continue; // Disabled regular OBJ still consumes nominal OAM inspection.
         }
         let reason = if a & 0xc00 == 0xc00 {
             Some("prohibited OBJ mode")
@@ -89,17 +94,27 @@ pub(crate) fn prepare(
         };
         let eight_bit = a & 0x2000 != 0;
         let mut tile = c & 0x3ff;
-        if control & 7 >= 3 && tile < 512 {
-            continue; // Bitmap modes reserve the first half of OBJ tile memory.
-        }
+        // Restricted bitmap tiles produce no pixels, but active sprite work
+        // still uses the allowance. They are not disabled OAM entries.
+        let tile_visible = !(control & 7 >= 3 && tile < 512);
         if eight_bit && !one_dimensional {
             tile &= !1; // 2D 8bpp tiles are aligned to pairs of 32-byte slots.
         }
         let slot_width = if eight_bit { 2 } else { 1 };
         let priority = ((c >> 10) & 3) as u8;
         for y in rows.clone() {
+            let budget = &mut budgets[y - rows.start];
             let sy = (y + 256 - (a & 255)) & 255;
-            if sy >= canvas_height {
+            let left = b & 511;
+            let intersects_screen = left < WIDTH || left + canvas_width > 512;
+            if sy >= canvas_height || !intersects_screen {
+                budget.skip();
+                continue;
+            }
+            // Charge before texel lookup or priority/window masking. Transparent,
+            // hidden, and out-of-texture samples still require preparation work.
+            let columns = budget.draw(canvas_width, affine);
+            if !tile_visible {
                 continue;
             }
             // Preparation latches the ahead-of-display OBJ counter; snapshots
@@ -111,7 +126,7 @@ pub(crate) fn prepare(
             } else {
                 sy
             };
-            for sx in 0..canvas_width {
+            for sx in 0..columns {
                 let x = ((b & 511) + sx) & 511;
                 if x >= WIDTH {
                     continue;
