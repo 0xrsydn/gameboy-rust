@@ -78,7 +78,10 @@ The repository is a Cargo workspace with three crates:
 | `crates/desktop/src/desktop/effects.rs` | Window/effects demo and independent smoke-test pixel checks |
 | `crates/desktop/src/desktop/mosaic.rs` | Mosaic window and 128-frame independent pixel checks |
 | `crates/desktop/src/desktop/raster.rs` | Raster window and scanline color-band smoke test |
-| `crates/desktop/src/main.rs` | Command-line modes and fixed-length CPU demo |
+| `crates/desktop/src/main.rs` | Command-line modes, error exit status, and fixed-length CPU demo |
+| `crates/desktop/src/cartridge.rs` | Read-only ROM files, argument checks, bounded machine execution, and terminal reports |
+| `crates/desktop/src/cartridge/tests.rs` | ROM options, bounded readers, instruction/DMA/IRQ budgets, HALT/STOP, and diagnostic reports |
+| `crates/desktop/tests/rom_cli.rs` | Process-level loading and exit-status checks using temporary original programs |
 | `crates/gba-core/tests/core.rs` | CPU integration tests and the complete demo |
 | `crates/gba-core/tests/memory.rs` | Memory widths, alignment, errors, and mirrors |
 | `crates/gba-core/tests/exceptions.rs` | Exception demo, BIOS mapping, and reset-vector execution |

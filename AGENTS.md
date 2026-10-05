@@ -34,6 +34,7 @@ Window smoke tests (`--*-smoke-test`) need a logged-in desktop session. Details 
 | Working on | Read |
 | --- | --- |
 | ARM/Thumb instructions, modes, exceptions, timing | [docs/hardware/cpu.md](docs/hardware/cpu.md) |
+| ROM files and bounded terminal execution | [docs/hardware/cartridge.md](docs/hardware/cartridge.md) |
 | BIOS services (SWI) | [docs/hardware/bios.md](docs/hardware/bios.md) |
 | Timers, IE/IF/IME, HALT/STOP | [docs/hardware/timers-irq.md](docs/hardware/timers-irq.md) |
 | DMA | [docs/hardware/dma.md](docs/hardware/dma.md) |

@@ -37,6 +37,13 @@ The core's integration tests use `gba-demos` as a development dependency.
 On Apple Silicon, `file` must report a Mach-O `arm64` executable.
 Do not set a Linux cross-compilation target for this validation.
 
+ROM-runner tests use temporary files containing original instructions, without Nintendo assets or a desktop session.
+They check file-size boundaries, bounded reads, short reads, I/O errors, paths, symlinks, and read-only loading.
+CLI tests cover option order, missing/conflicting options, invalid step limits, process exit status, and reports.
+Execution tests cover original ARM/Thumb code, BIOS boot, DMA/IRQ step accounting, HALT budgets, and prompt STOP results.
+Unsupported instructions, truncated code, and DMA errors retain the failure state for inspection.
+See [cartridge execution](hardware/cartridge.md) for usage and limitations.
+
 Angle-service tests compare results with wide-integer polynomial and signed-sector references, plus floating-point accuracy checks in supported ranges.
 They cover a dense ArcTan unit-interval grid, sampled full-domain and seeded inputs, axes, quadrant boundaries, signed extremes, and scale invariance.
 Other tests verify all caller flag combinations, User/System masks, non-result registers, stack bounds, repeated calls, diagnostics, and DMA/IRQ progress.

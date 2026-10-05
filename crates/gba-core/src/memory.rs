@@ -10,7 +10,8 @@ use crate::{
 };
 
 pub const ROM_START: u32 = 0x0800_0000;
-const ROM_CAPACITY: usize = 32 * 1024 * 1024;
+/// Maximum supplied cartridge size, shared by all three Game Pak ROM windows.
+pub const ROM_CAPACITY: usize = 32 * 1024 * 1024;
 pub const BIOS_SIZE: usize = 16 * 1024;
 pub const PALETTE_START: u32 = 0x0500_0000;
 pub const VRAM_START: u32 = 0x0600_0000;

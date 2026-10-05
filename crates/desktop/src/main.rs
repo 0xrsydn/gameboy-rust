@@ -1,6 +1,7 @@
+mod cartridge;
 mod desktop;
 
-use std::{error::Error, ffi::OsString, io};
+use std::{error::Error, ffi::OsString, io, process::ExitCode};
 
 use gba_core::{
     cpu::Cpu,
@@ -17,6 +18,7 @@ use gba_demos::{
 #[derive(Debug, PartialEq, Eq)]
 enum RunMode {
     Window,
+    Rom(cartridge::Options),
     SmokeTest,
     CpuDemo,
     TimerDemo,
@@ -40,6 +42,9 @@ enum RunMode {
 }
 
 fn parse_args(args: &[OsString]) -> Result<RunMode, io::Error> {
+    if args.iter().any(|arg| arg == "--rom" || arg == "--steps") {
+        return cartridge::parse_args(args).map(RunMode::Rom);
+    }
     match args {
         [] => Ok(RunMode::Window),
         [arg] if arg == "--smoke-test" => Ok(RunMode::SmokeTest),
@@ -66,14 +71,25 @@ fn parse_args(args: &[OsString]) -> Result<RunMode, io::Error> {
         [arg] if arg == "--help" || arg == "-h" => Ok(RunMode::Help),
         _ => Err(io::Error::new(
             io::ErrorKind::InvalidInput,
-            "usage: gameboy-rust [--cpu-demo | --timer-demo | --graphics-demo | --smoke-test | --graphics-smoke-test | --raster-demo | --raster-smoke-test | --mosaic-demo | --mosaic-smoke-test | --effects-demo | --effects-smoke-test | --tile-demo | --tile-smoke-test | --affine-demo | --affine-smoke-test | --affine-raster-demo | --affine-raster-smoke-test | --bitmap4-demo | --bitmap5-demo | --bitmap4-smoke-test | --bitmap5-smoke-test | --help]; ROM loading is not supported yet",
+            "usage: gameboy-rust [--cpu-demo | --timer-demo | --graphics-demo | --smoke-test | --graphics-smoke-test | --raster-demo | --raster-smoke-test | --mosaic-demo | --mosaic-smoke-test | --effects-demo | --effects-smoke-test | --tile-demo | --tile-smoke-test | --affine-demo | --affine-smoke-test | --affine-raster-demo | --affine-raster-smoke-test | --bitmap4-demo | --bitmap5-demo | --bitmap4-smoke-test | --bitmap5-smoke-test | --help]; or gameboy-rust --rom PATH --steps COUNT",
         )),
     }
 }
 
-fn main() -> Result<(), Box<dyn Error>> {
+fn main() -> ExitCode {
+    match run() {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("{error}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+fn run() -> Result<(), Box<dyn Error>> {
     match parse_args(&std::env::args_os().skip(1).collect::<Vec<_>>())? {
         RunMode::Window => desktop::run(None),
+        RunMode::Rom(options) => cartridge::execute(options, &mut io::stdout().lock()),
         RunMode::SmokeTest => desktop::run(Some(60)),
         RunMode::CpuDemo => run_cpu_demo(),
         RunMode::TimerDemo => run_timer_demo(),
@@ -97,6 +113,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             println!(
                 "GBA Rust — emulator foundation, not game-compatible yet\n\
                 No arguments   Open the native 240x160 display test at 4x scale\n\
+                --rom PATH --steps COUNT  Run a raw ROM in the terminal (1..=100000000 steps)\n\
                 --cpu-demo     Run the terminal-only ARM/Thumb instruction demo\n\
                 --timer-demo   Run the timer IRQ demo with nominal cycle costs\n\
                 --graphics-demo        Open the CPU-driven Mode 3 demo\n\
@@ -128,7 +145,8 @@ fn main() -> Result<(), Box<dyn Error>> {
                 Affine raster: Arrows pan; Q rotates; W zooms; Z bypasses distortion; Enter resets; Escape exits.\n\
                 Affine backgrounds: Arrows pan; Q rotates; W zooms; Z disables wrapping; Enter resets; Escape exits.\n\
                 Bitmap pages: Arrows pan; Q rotates; W zooms; Z forces page1; Enter resets; Escape exits.\n\
-                All demos use original test content. Game ROM loading is not supported."
+                All demos use original test content. ROM mode uses our limited BIOS replacement.\n\
+                ROM mode has no window, input, audio, or saves. Commercial games are not supported."
             );
             Ok(())
         }
@@ -244,7 +262,7 @@ mod tests {
     }
 
     #[test]
-    fn command_line_rejects_rom_paths_and_conflicting_options() {
+    fn command_line_rejects_bare_paths_and_conflicting_options() {
         assert!(parse_args(&["emerald.gba".into()]).is_err());
         assert!(parse_args(&["--unknown".into()]).is_err());
         assert!(parse_args(&["--cpu-demo".into(), "--smoke-test".into()]).is_err());
