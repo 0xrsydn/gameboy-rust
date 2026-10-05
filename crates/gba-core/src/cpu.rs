@@ -14,6 +14,8 @@ pub use status::Mode;
 mod transfer;
 
 #[cfg(test)]
+mod bios_access_tests;
+#[cfg(test)]
 mod compare_psr_tests;
 #[cfg(test)]
 mod exception_tests;
@@ -206,7 +208,7 @@ impl Cpu {
         // Always clear the access context, including on diagnostic errors.
         memory.begin_cpu_access(self.pc(), self.instruction_set);
         let result = self.execute_instruction(instruction, memory);
-        memory.end_cpu_access();
+        memory.end_cpu_access(result.is_ok());
         result
     }
 

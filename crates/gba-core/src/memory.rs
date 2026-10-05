@@ -61,7 +61,8 @@ struct CpuAccess {
 
 /// Work/video/palette RAM, OAM, cartridge ROM, optional BIOS, and supported I/O.
 /// ARM data reads from unused memory return a PC+8 snapshot when available.
-/// BIOS protection, Thumb open bus, and DMA bus latches are not modeled.
+/// CPU data reads of BIOS from outside BIOS use its retained ARM PC+8 snapshot.
+/// Thumb BIOS prefetch, general Thumb open bus, and DMA bus latches are not modeled.
 pub struct Memory {
     external_ram: Vec<u8>,
     internal_ram: Vec<u8>,
@@ -74,6 +75,7 @@ pub struct Memory {
     cycles: u64,
     data_timing: Cell<Option<DataTiming>>,
     cpu_access: Option<CpuAccess>,
+    bios_prefetch: Option<u32>,
     scanline_capture: Option<video::capture::Capture>,
     sprite_pipeline: pipeline::SpritePipeline,
 }
@@ -95,6 +97,7 @@ impl Memory {
             cycles: 0,
             data_timing: Cell::new(None),
             cpu_access: None,
+            bios_prefetch: None,
             scanline_capture: None,
             sprite_pipeline: pipeline::SpritePipeline::default(),
         })
@@ -346,8 +349,14 @@ impl Memory {
         Some(u32::from_le_bytes(bytes))
     }
 
-    pub(crate) fn end_cpu_access(&mut self) {
-        self.cpu_access = None;
+    pub(crate) fn end_cpu_access(&mut self, succeeded: bool) {
+        if let Some(access) = self.cpu_access.take() {
+            if succeeded && access.pc < BIOS_SIZE as u32 {
+                // Commit only successful instruction snapshots under our diagnostic policy.
+                // Thumb BIOS execution or missing lookahead invalidates the known value.
+                self.bios_prefetch = access.arm_prefetch;
+            }
+        }
     }
 
     fn can_write_power_control(&self) -> bool {
@@ -415,6 +424,18 @@ impl Memory {
 
     // Multi-byte reads use this helper to avoid charging each byte as a bus access.
     fn read_byte(&self, address: u32) -> Result<u8, MemoryError> {
+        if address < BIOS_SIZE as u32
+            && self.bios.is_some()
+            && self
+                .cpu_access
+                .is_some_and(|access| access.pc >= BIOS_SIZE as u32)
+        {
+            // Protect CPU data reads, not host inspection or BIOS instruction fetches.
+            return self
+                .bios_prefetch
+                .map(|word| (word >> ((address & 3) * 8)) as u8)
+                .ok_or(MemoryError::Unmapped(address));
+        }
         if matches!(address, 0x0000_4000..=0x01ff_ffff | 0x1000_0000..=0xffff_ffff) {
             if let Some(word) = self.cpu_access.and_then(|access| access.arm_prefetch) {
                 return Ok((word >> ((address & 3) * 8)) as u8);

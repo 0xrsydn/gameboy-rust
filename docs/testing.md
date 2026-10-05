@@ -219,6 +219,11 @@ Status tests cover all modes, flag combinations, interrupt masks, field selectio
 Exception tests cover vectors, ARM/Thumb return addresses, nested interrupts, mask priority, and return-state restoration.
 User-bank transfers and failed returns are checked for unintended changes to active and hidden registers.
 Integration tests execute original vector handlers and check optional BIOS mapping boundaries and write protection.
+Original BIOS-access regressions check retained ARM PC+8 data for ARM/Thumb callers, all processor modes, load widths, lanes, and rotation.
+They verify direct reads while executing inside BIOS, re-entry, SWI/IRQ returns, host-inspection isolation, and original-boot provenance.
+Unknown history, Thumb BIOS execution, missing lookahead, and diagnostic-step retention have explicit checks.
+Protected loads keep normal nominal costs and advance devices only through machine stepping.
+The pinned public BIOS ROM remains a failed assertion, not a conformance pass.
 Display tests cover color conversion, framebuffer bounds, cursor movement, pause behavior, and animation wraparound.
 Input regression tests check focused arrow keys, focused Space presses, and ignored input when unfocused.
 Command-line tests cover mode selection and invalid arguments.

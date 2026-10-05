@@ -60,9 +60,18 @@ Before BIOS read protection:
 - The emulator instead exposes the replacement BIOS reset-vector instruction at address zero.
 - The later post-SWI and IRQ checks are not reached.
 
-This reveals a missing bus-protection rule and a separate firmware-specific expectation.
-Implementing protection must not substitute Nintendo opcode constants merely to pass this ROM.
-The original BIOS has a different layout, so its retained prefetch data can differ even with protection implemented.
+After the bounded ARM BIOS read-protection implementation:
+
+- Both builds still report test 1 as failed after 64 steps and 543 nominal cycles.
+- The protected read now returns `0xe59f1320`, sampled from the original BIOS at its final boot instruction's PC+8.
+- It no longer exposes address zero's reset-vector word, `0xea000006`.
+- The test still expects `0xe129f000`. No assertion, checkpoint, ROM byte, or returned constant was changed to force a pass.
+- Tests 2–4 remain unreached. Their SWI and IRQ cases have not passed independently.
+
+The initial failure exposed both a missing bus-protection rule and a firmware-specific expectation.
+The supported protection subset now derives data from the actual supplied image.
+The original BIOS has a different layout, so its retained prefetch data differs from Nintendo firmware.
+See [CPU BIOS read protection and its limits](hardware/bios.md#cpu-bios-read-protection).
 No public BIOS pass is claimed. The ARM, Thumb, and memory suites remain separate passing results.
 Exact fetch-pipeline behavior and full BIOS compatibility remain unverified.
 

@@ -90,6 +90,36 @@ Other invalid accesses use normal memory diagnostics. Earlier successful writes 
 These copy services keep CPU IRQ delivery masked until return; device clocks and DMA continue throughout.
 BIOS bus protection, exact firmware timing, undocumented side effects, and nested service calls remain incomplete.
 
+## CPU BIOS read protection
+
+CPU data reads at `0x00000000..0x00003fff` depend on the executing instruction's address, not its processor mode.
+While executing inside BIOS, ARM and Thumb code can read the mapped image directly.
+While executing outside BIOS, both instruction sets read byte lanes from retained BIOS prefetch data instead.
+Normal word rotation, odd-halfword behavior, sign extension, and load timing still apply.
+
+The current interpreter implements a bounded ARM prefetch model:
+
+- Before an ARM BIOS instruction executes, sample its mapped PC+8 word without charging another data access.
+- After successful execution, retain that snapshot for later protected reads. Skipped conditional instructions count as successful execution.
+- Instructions outside BIOS do not replace the retained value. Re-entering ARM BIOS code refreshes it.
+- Diagnostic failures preserve the previous value and clear the CPU access context.
+- Successful Thumb BIOS execution or unavailable PC+8 bytes invalidate the known value. Their fetch history is not yet modeled.
+- A protected read without known history returns `MemoryError::Unmapped` at the requested bus address, rather than exposing raw BIOS bytes.
+
+The initial history is unknown. Direct cartridge startup with `Cpu::new` does not manufacture boot prefetch data.
+Use BIOS execution, such as `bios::boot`, to establish supported history.
+All retained words come from the supplied image. No Nintendo opcode constants are substituted.
+The original replacement's boot and return paths therefore produce different values from Nintendo firmware.
+
+Host/debug reads and ROM-suite memory assertions still inspect raw mapped bytes and do not initialize or change the history.
+Instruction fetches remain strict mapped reads outside the CPU data-access context.
+BIOS writes remain read-only diagnostics. DMA BIOS sources retain their existing unsupported-source diagnostic.
+Missing BIOS images remain unmapped. The unused-memory ARM open-bus snapshot is separate from this retained BIOS value.
+
+This models neither a persistent fetch pipeline nor exact bus history across Thumb BIOS code and DMA.
+Original regressions cover synthetic images, boot, exception returns, access widths, alignment, modes, and diagnostics.
+The [public BIOS ROM](../public-bios-tests.md) still fails its firmware-specific test 1; this feature is not a public BIOS pass.
+
 ## Stop
 
 `Stop` (`SWI 0x03`) executes an original ARM byte store of `0x80` to HALTCNT.

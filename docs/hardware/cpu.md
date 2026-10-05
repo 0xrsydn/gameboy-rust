@@ -98,7 +98,8 @@ Host inspection, ROM-suite memory assertions, instruction fetches, and DMA do no
 Limits remain explicit:
 
 - Thumb open bus depends on instruction region, alignment, and prior bus data; it remains unsupported.
-- BIOS-protected reads, unused/write-only I/O reads, DMA latches, and disabled-RAM reads are not modeled here.
+- [BIOS-protected reads](bios.md#cpu-bios-read-protection) use separate retained ARM BIOS snapshots.
+- Unused/write-only I/O reads, DMA latches, and disabled-RAM reads are not modeled here.
 - Missing BIOS, truncated ROM, unsupported I/O, and save-memory accesses retain their existing diagnostics.
 - Unused-memory writes remain diagnostics rather than ignored hardware writes. Swaps cannot silently discard their write.
 - No persistent pipeline or bus history exists. Self-modifying code and DMA-to-CPU bus transitions are not hardware-accurate.

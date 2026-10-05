@@ -63,7 +63,8 @@ Rules:
 - `instruction_set` is exactly `arm` or `thumb`. ARM completion addresses must be word-aligned; Thumb addresses must be halfword-aligned.
 - Use the actual Thumb instruction address, without the address bit used by `BX`.
 - Register indices are integers from 0 through 15. Checks read the active register bank.
-- `memory32` addresses must be word-aligned. Reads use the existing little-endian memory bus, including its mapping errors.
+- `memory32` addresses must be word-aligned. Reads use the host inspection path, including mapping errors.
+  BIOS assertions inspect raw mapped bytes, not the protected values seen by CPU code executing outside BIOS.
 - `cpsr` compares the complete current program status register. No mask is applied.
 
 The runner validates the whole manifest before opening or executing any ROM.

@@ -50,9 +50,9 @@ Hardware references used for the core:
 - [NanoBoyAdvance keypad implementation](https://github.com/nba-emu/NanoBoyAdvance/blob/master/src/nba/src/hw/keypad/keypad.cc), compared for control access widths; its AND/retrigger behavior differs from the chosen polling model.
 - [mGBA keypad timing issue](https://github.com/mgba-emu/mgba/issues/2490), for frontend frame-based input timing limits.
 - [Tonc hardware interrupts](https://gbadev.net/tonc/interrupts.html), for keypad source enable and IF/IE bit 12.
-- [GBATEK memory mirrors, video byte writes, and unused-memory reads](https://problemkaputt.de/gbatek-gba-unpredictable-things.htm), for unused address ranges, ARM PC+8 open bus, byte lanes, and the distinct Thumb region/history rules.
+- [GBATEK memory mirrors, video byte writes, and unused-memory reads](https://problemkaputt.de/gbatek-gba-unpredictable-things.htm), for unused address ranges, ARM PC+8 open bus, byte lanes, the distinct Thumb region/history rules, and PC-dependent BIOS read protection.
 - [nocash GBA open-bus discussion](https://www.ngemu.com/threads/gba-open-bus.170809/), for the distinction between ARM prefetch and region-dependent Thumb values.
-- [mGBA memory implementation](https://github.com/mgba-emu/mgba/blob/master/src/gba/memory.c), reviewed for `GBALoadBad`, ARM prefetch sourcing, byte/halfword lane selection, and separate DMA/history behavior.
+- [mGBA memory implementation](https://github.com/mgba-emu/mgba/blob/master/src/gba/memory.c), reviewed for `GBALoadBad`, ARM prefetch sourcing, byte/halfword lane selection, and separate DMA/history behavior. Also reviewed its BIOS region-exit prefetch retention and protected-load lane selection.
 - [GBATEK GBA memory map and bus widths](https://problemkaputt.de/gbatek-gba-memory-map.htm).
 - [GBATEK GBA DMA transfers](https://problemkaputt.de/gbatek-gba-dma-transfers.htm).
 - [mGBA DMA implementation](https://github.com/mgba-emu/mgba/blob/master/src/gba/dma.c), used to cross-check masks, repeat behavior, and Game Pak source increments.
