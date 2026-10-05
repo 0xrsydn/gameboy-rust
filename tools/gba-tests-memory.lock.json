@@ -1,0 +1,54 @@
+{
+  "repository": "jsmolka/gba-tests",
+  "revision": "a7113b67e63f83a9b321696ddd7042ccfad6c881",
+  "license": "MIT",
+  "rom": "memory/memory.gba",
+  "completion_pc": "0x08000350",
+  "result_register": 12,
+  "files": {
+    "LICENSE": {
+      "sha256": "b59a9ed235d76752c977f04116bc72155a14af48176bdbf50d7e5c29fca35aa7",
+      "bytes": 1070
+    },
+    "README.md": {
+      "sha256": "488f50d9d9031c88cea4161fad69f6460209dd54d965645fa45cf5e972cc9062",
+      "bytes": 434
+    },
+    "memory/memory.asm": {
+      "sha256": "03c62d6ac9d72e65698f1f444780657998510c1c63ec8fe62905b20419a9559c",
+      "bytes": 500
+    },
+    "memory/memory.gba": {
+      "sha256": "21024fb6aae6343f5f0466dd54e3149de1fbeb23f78e7d85a015c983684d2f87",
+      "bytes": 2172
+    },
+    "memory/mirrors.asm": {
+      "sha256": "e5f0a092d1d20042169adecb0ed69fcdb07d82546812dca41aed5a1a9ac6d3ff",
+      "bytes": 2334
+    },
+    "memory/video_strb.asm": {
+      "sha256": "a57e5cdd37b85029ff14e7f6aab75056fe488b94d325d8a323b9400785863420",
+      "bytes": 1911
+    },
+    "lib/constants.inc": {
+      "sha256": "b4dd3f4760ac1ae7e99cdc7e255f8220eed666e1ab821b150561db58e5d3b7ea",
+      "bytes": 900
+    },
+    "lib/macros.inc": {
+      "sha256": "25b0ff553c4ca99d76ec82c8c9db874e25d6eed58e2e69fa27f1a0fe7a8c46d4",
+      "bytes": 2864
+    },
+    "lib/header.asm": {
+      "sha256": "e9d1e8c7b6382eeb1b7059423ec365e32911f702eadfa51804a2119438a87357",
+      "bytes": 1720
+    },
+    "lib/text.asm": {
+      "sha256": "77e579d6cf0db182fd24e8d420c8c0a81592d78197e8fb06accc8bcfb43db17e",
+      "bytes": 2288
+    },
+    "lib/glyphs.asm": {
+      "sha256": "538beb37f40b1fd56beed9253e0e9eab25444c748adba7440a2093f49e3cbcc9",
+      "bytes": 2545
+    }
+  }
+}

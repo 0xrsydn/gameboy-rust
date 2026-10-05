@@ -4,8 +4,9 @@ Use `--test-suite PATH.json` to run repeatable ROM checks without opening a wind
 Each case has a machine-step budget, a completion address, and explicit assertions.
 A timeout never counts as a pass. Existing `--rom ... --steps ...` remains a diagnostic mode, not a test verdict.
 
-Original programs cover the runner itself. Pinned public [ARM](public-arm-tests.md) and [Thumb](public-thumb-tests.md) ROMs provide independent compatibility results.
-Both pinned ROMs pass their checkpoints on Darwin arm64 in debug and release builds.
+Original programs cover the runner itself. Pinned public [ARM](public-arm-tests.md), [Thumb](public-thumb-tests.md), and [memory](public-memory-tests.md) ROMs provide independent compatibility results.
+These pinned ROMs pass their checkpoints on Darwin arm64 in debug and release builds.
+The memory ROM has documented assertion and mode-selection limits; a pass is not exhaustive memory validation.
 Passing the runner's unit tests does not mean an external suite passes.
 A passing suite establishes only its specified checkpoints and assertions. It does not establish Emerald compatibility.
 
@@ -134,7 +135,8 @@ They do not hash ROM contents; record source revisions and file checksums alongs
 The first public integration is [jsmolka/gba-tests ARM](public-arm-tests.md), with a verified result-register checkpoint.
 The pinned ARM ROM now passes this checkpoint on Darwin arm64. Historical failures remain documented.
 The [pinned Thumb ROM](public-thumb-tests.md) also passes its verified r7 checkpoint after the empty-list store correction.
-Next, integrate a pinned public memory suite with a verified result protocol.
+The [pinned memory ROM](public-memory-tests.md) also passes, without a core change and with explicit coverage limits.
+Next, integrate a pinned public BIOS suite with a verified result protocol.
 For further public ARM7TDMI/GBA tests, inspect their source, license, entry assumptions, and result protocol.
 Pin source revisions and build instructions before comparing emulator changes.
 Adapt suites to verified completion addresses and result locations; do not guess them or treat timeouts as passes.

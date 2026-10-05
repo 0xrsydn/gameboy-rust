@@ -67,8 +67,8 @@ Update this file when a feature lands or a limit is removed.
 - ROM windows with scanline capture, keyboard input, focus-loss release, bounded execution slices, and interactive keypad wake from STOP.
 - Optional ROM-window frame limits and an original input-test ROM generator.
 - Headless JSON ROM suites with per-case checkpoints, register/CPSR/memory assertions, bounded budgets, and structured failure reports.
-- Hash-pinned preparation of public `jsmolka/gba-tests` ARM and Thumb ROMs, with verified result-register checkpoints.
-- The pinned public ARM and Thumb ROMs pass their checkpoints on Darwin arm64 in debug and release builds.
+- Hash-pinned preparation of public `jsmolka/gba-tests` ARM, Thumb, and memory ROMs, with verified result-register checkpoints.
+- These pinned ROMs pass their checkpoints on Darwin arm64 in debug and release builds; coverage limits remain documented.
 - ARM test/compare Rd=15 status restoration, without a PC result write or nominal refill.
 - ARM unused-memory data reads return a PC+8 word snapshot, with normal byte lanes and load rotation.
 - Little-endian byte, halfword, and word reads/writes.
@@ -118,7 +118,8 @@ See [cartridge loading](hardware/cartridge.md) for file limits, step budgets, an
 The [ROM suite runner](rom-tests.md) has original regressions and a [pinned public ARM baseline](public-arm-tests.md).
 The pinned public ARM ROM passes its result checkpoint in debug and release builds.
 The [pinned public Thumb ROM](public-thumb-tests.md) also passes after correcting its empty-list store PC value.
-Other public suites remain unverified. These results do not establish full CPU compatibility.
+The [pinned public memory ROM](public-memory-tests.md) passes without a core change; its video-byte assertions have documented limits.
+Other public suites remain unverified. These results do not establish full CPU or memory compatibility.
 The runner requires known completion addresses and has no debug-port protocol, scripted input, or rendered-image assertions.
 
 ARM data reads from unused address ranges use a bounded [PC+8 open-bus snapshot](hardware/cpu.md#arm-unused-memory-data-reads).
@@ -131,7 +132,7 @@ Writes to cartridge addresses return errors instead of modeling cartridge hardwa
 
 ## Next steps
 
-1. Add a pinned public memory suite with a verified result protocol, then address its first compatibility failure.
+1. Add a pinned public BIOS suite with a verified result protocol, then address its first compatibility failure.
    Extend open-bus support with verified Thumb region/alignment rules and bus history, rather than a blanket unmapped-read fallback.
 2. Refine nominal timing with a fetch pipeline, Game Pak prefetch, per-access device updates, and verified timer/IRQ delays.
 3. Validate keypad retrigger behavior with hardware tests and add remaining device registers; extend BIOS reset coverage as sound/serial support becomes available.

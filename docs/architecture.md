@@ -14,7 +14,7 @@ The repository is a Cargo workspace with three crates:
 | Path | Purpose |
 | --- | --- |
 | `flake.nix`, `flake.lock` | Pinned Rust/Python development environment |
-| `tools/prepare_gba_tests.py`, `tools/gba-tests-{arm,thumb}.lock.json` | Hash-verified public ARM/Thumb source/ROM preparation and suite generation |
+| `tools/prepare_gba_tests.py`, `tools/gba-tests-{arm,thumb,memory}.lock.json` | Hash-verified public test source/ROM preparation and suite generation |
 | `tools/test_prepare_gba_tests.py` | Offline adapter tests using original synthetic data |
 | `.envrc` | Automatic environment loading through direnv |
 | `AGENTS.md` | Short orientation for coding agents: crate map, commands, and where docs live |
@@ -98,6 +98,7 @@ The repository is a Cargo workspace with three crates:
 | `crates/desktop/tests/rom_cli.rs` | File loading and exit-status checks; opt-in native ROM-window integration test |
 | `crates/gba-core/tests/core.rs` | CPU integration tests and the complete demo |
 | `crates/gba-core/tests/memory.rs` | Memory widths, alignment, errors, and mirrors |
+| `crates/gba-core/tests/video_bus_cpu.rs` | Original CPU video-byte writes, exact sentinels, mirror/mode boundaries, readback, and nominal store timing |
 | `crates/gba-core/tests/exceptions.rs` | Exception demo, BIOS mapping, and reset-vector execution |
 | `crates/gba-core/tests/timers.rs` | Timer rules, interrupt registers, and a cycle-by-cycle reference |
 | `crates/gba-core/tests/machine.rs` | Device IRQ entry/return, clock policy, and I/O failure atomicity |

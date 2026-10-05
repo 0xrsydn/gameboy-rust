@@ -81,7 +81,8 @@ They cover all low base registers, banked stack pointers, code/data alignment, R
 Existing empty-list expectations that incorrectly required PC+4 were corrected; empty loads and ARM stores retain their behavior.
 See [CPU transfer semantics](hardware/cpu.md#instruction-demo-and-execution-rules).
 This proves only the pinned suites' checkpoints and assertions, not complete CPU, bus, or timing compatibility.
-No public timing, memory, BIOS, graphics, or unsafe suite is claimed as passing.
+The [pinned public memory ROM](public-memory-tests.md) also passes, with documented video-byte coverage limits.
+No public timing, BIOS, graphics, save, or unsafe suite is claimed as passing.
 These results do not establish Pokémon Emerald compatibility.
 
 ## References

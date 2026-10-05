@@ -51,6 +51,7 @@ Its tests verify manifest limits, whole-suite validation, exact step boundaries,
 Additional tests cover DMA/IRQ accounting, HALT/STOP, diagnostic state, case isolation, repeatable JSON output, and failure exit status.
 These original tests validate the runner. The [public ARM adapter](public-arm-tests.md) provides a separate passing checkpoint result for its pinned ROM.
 The [public Thumb adapter](public-thumb-tests.md) uses a separate lock and r7 assertion after its return to ARM state.
+The [public memory adapter](public-memory-tests.md) uses its own lock and an ARM-state r12 checkpoint.
 Preparation tests use only synthetic original bytes and no network:
 
 ```sh
@@ -58,7 +59,7 @@ direnv exec . python3 -B -m unittest discover -s tools -p 'test_*.py' -v
 ```
 
 They verify suite selection, pinned URLs, hashes, sizes, checkpoint validation, offline copies, destination safety, and non-overwriting output.
-Thumb cases also verify the return-to-ARM bridge. Command-line tests cover default ARM selection, explicit Thumb selection, and errors.
+Thumb cases also verify the return-to-ARM bridge. Command-line tests cover default ARM selection, explicit Thumb/memory selection, and errors.
 Compare/status CPU regressions verify saved flags/masks, bank switching, sequential PC/timing, User/System fallback, and atomic diagnostics.
 Load-alias regressions cover widths, signed/unaligned values, immediate/register offsets, pre/post-indexing, every non-PC register bank, and address wrapping.
 They verify loaded-value precedence, preserved flags, unchanged stores, nominal timing, I/O reads before device progress, deferred IRQ delivery, and atomic errors.
@@ -69,7 +70,12 @@ The pinned public Thumb ROM also reaches its ARM-state checkpoint with r7 = 0 in
 Empty-list Thumb regressions cover PC+6, all low bases and processor modes, banked stacks, both code alignments, and unaligned data.
 They check one-word writes, 64-byte writeback, ROM windows, the following PC operand, nominal timing, and atomic errors.
 Existing ARM empty-list and Thumb empty-load tests continue to pass. `PUSH {lr}` retains its normal link value.
-These results do not establish public timing, memory, graphics, BIOS, or commercial-game compatibility.
+The pinned public memory ROM also passes in both builds, but its video-byte assertions and mode selection have documented limits.
+Separate original CPU tests check exact video-byte results across supported modes, mirrored addresses, byte lanes, and boundaries.
+They require unchanged nonzero sentinels for ignored writes and unchanged adjacent halfwords for duplicated writes.
+They also check forced blank, full source-value preservation, CPU halfword readback, nominal data costs, and device progress.
+Halfword/word stores remain writable in object regions. No emulator behavior change was needed for these tests.
+These results do not establish public timing, graphics, BIOS, save, or commercial-game compatibility.
 
 ROM-runner tests use temporary files containing original instructions, without Nintendo assets or a desktop session.
 They check file-size boundaries, bounded reads, short reads, I/O errors, paths, symlinks, and read-only loading.

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prepare a hash-verified, pinned public ARM or Thumb test outside tracked paths.
+"""Prepare a pinned public ARM, Thumb, or memory test outside tracked paths.
 
 This adapter is original. Upstream sources, license, and ROM bytes are downloaded
 only to the requested local directory. They are not embedded in this repository.
@@ -15,7 +15,7 @@ from urllib.request import Request, urlopen
 
 ROOT = Path(__file__).resolve().parent.parent
 LOCKS = {suite: Path(__file__).with_name(f"gba-tests-{suite}.lock.json")
-         for suite in ("arm", "thumb")}
+         for suite in ("arm", "thumb", "memory")}
 MAX_FILE_BYTES = 1024 * 1024
 
 
@@ -64,7 +64,7 @@ def prepare(output, source=None, download=fetch, suite="arm"):
         files[name] = data
 
     # The source-defined eval label starts with m_vsync's register save. All
-    # failure exits arrive with the result register set (ARM r12, Thumb r7).
+    # failure exits set the result register (ARM/memory r12, Thumb r7).
     # Thumb tests switch back to ARM before eval. Success leaves the result zero.
     # Hash pinning is authoritative; these checks catch adapter-offset mistakes.
     pc = int(lock["completion_pc"], 16)
@@ -111,7 +111,7 @@ def main():
         print(f"cannot prepare public {args.suite} test: {error}", file=sys.stderr)
         return 1
     print(f"Prepared pinned public {args.suite} suite: {manifest}")
-    print("Run with gameboy-rust --test-suite PATH. Preparation does not mean the CPU tests passed.")
+    print("Run with gameboy-rust --test-suite PATH. Preparation does not mean the tests passed.")
     return 0
 
 

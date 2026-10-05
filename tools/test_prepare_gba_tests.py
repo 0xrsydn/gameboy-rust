@@ -23,9 +23,12 @@ class PreparationTests(unittest.TestCase):
         if self.suite == "arm":
             data = struct.pack("<II", 0xEAFFFFFE, 0xE92D0003)
             pc, result = "0x08000004", 12
-        else:
+        elif self.suite == "thumb":
             data = struct.pack("<IIHHI", 0xEAFFFFFE, 0xE1A00000, 0xA000, 0x4700, 0xE92D0003)
             pc, result = "0x0800000c", 7
+        else:
+            data = struct.pack("<III", 0xEAFFFFFE, 0xE1A00000, 0xE92D0003)
+            pc, result = "0x08000008", 12
         self.files = {
             self.rom: data,
             "LICENSE": b"Original fixture, not upstream license content.\n",
@@ -59,7 +62,7 @@ class PreparationTests(unittest.TestCase):
         return self.files[url[len(prefix):]]
 
     def prepare(self):
-        # Exercise the existing default ARM API as well as explicit Thumb selection.
+        # Exercise default ARM preparation and explicit selection of the other suites.
         options = {} if self.suite == "arm" else {"suite": self.suite}
         return adapter.prepare(self.output, download=self.download, **options)
 
@@ -185,6 +188,10 @@ class ThumbPreparationTests(PreparationTests):
                 self.assertFalse(self.output.exists())
 
 
+class MemoryPreparationTests(PreparationTests):
+    suite = "memory"
+
+
 class SuiteSelectionTests(unittest.TestCase):
     def test_unknown_suite_is_rejected_before_download_or_output(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -199,7 +206,11 @@ class SuiteSelectionTests(unittest.TestCase):
             self.assertFalse(output.exists())
 
     def test_committed_locks_keep_distinct_verified_protocols(self):
-        for suite, pc, register in [("arm", "0x08001d4c", 12), ("thumb", "0x08000934", 7)]:
+        for suite, pc, register in [
+            ("arm", "0x08001d4c", 12),
+            ("thumb", "0x08000934", 7),
+            ("memory", "0x08000350", 12),
+        ]:
             lock = json.loads(adapter.LOCKS[suite].read_text())
             self.assertEqual(lock["repository"], "jsmolka/gba-tests")
             self.assertEqual(lock["revision"], "a7113b67e63f83a9b321696ddd7042ccfad6c881")
