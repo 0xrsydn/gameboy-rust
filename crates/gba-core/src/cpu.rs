@@ -22,6 +22,8 @@ mod instruction_tests;
 #[cfg(test)]
 mod load_alias_tests;
 #[cfg(test)]
+mod open_bus_tests;
+#[cfg(test)]
 mod status_tests;
 #[cfg(test)]
 mod tests;
@@ -200,7 +202,7 @@ impl Cpu {
     fn execute_fetched(&mut self, instruction: u32, memory: &mut Memory) -> Result<(), CpuError> {
         // Record the executing instruction, not an operand's pipelined PC value.
         // Always clear the access context, including on diagnostic errors.
-        memory.begin_cpu_access(self.pc());
+        memory.begin_cpu_access(self.pc(), self.instruction_set);
         let result = self.execute_instruction(instruction, memory);
         memory.end_cpu_access();
         result

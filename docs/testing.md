@@ -49,7 +49,7 @@ Do not set a Linux cross-compilation target for this validation.
 The [headless ROM suite runner](rom-tests.md) provides explicit checkpoint and assertion results through `--test-suite PATH.json`.
 Its tests verify manifest limits, whole-suite validation, exact step boundaries, ARM/Thumb checkpoints, and register/CPSR/memory checks.
 Additional tests cover DMA/IRQ accounting, HALT/STOP, diagnostic state, case isolation, repeatable JSON output, and failure exit status.
-These original tests validate the runner. The [public ARM adapter](public-arm-tests.md) is a separate, currently failing compatibility baseline.
+These original tests validate the runner. The [public ARM adapter](public-arm-tests.md) provides a separate passing checkpoint result for its pinned ROM.
 Its preparation tests use only synthetic original bytes and no network:
 
 ```sh
@@ -60,7 +60,10 @@ They verify pinned URLs, hashes, sizes, checkpoint validation, offline copies, d
 Compare/status CPU regressions verify saved flags/masks, bank switching, sequential PC/timing, User/System fallback, and atomic diagnostics.
 Load-alias regressions cover widths, signed/unaligned values, immediate/register offsets, pre/post-indexing, every non-PC register bank, and address wrapping.
 They verify loaded-value precedence, preserved flags, unchanged stores, nominal timing, I/O reads before device progress, deferred IRQ delivery, and atomic errors.
-The public ARM ROM progresses past tests 360–361 but still fails on the high-address read in test 362.
+ARM open-bus regressions cover unused-range boundaries, PC+8 source regions, byte lanes, signed/unaligned loads, writeback, and block loads.
+They check branch-target resampling, missing lookahead, skipped conditions, nominal timing, device progress, and retained host/fetch/Thumb/DMA diagnostics.
+The pinned public ARM ROM now reaches its completion checkpoint with r12 = 0 in debug and release builds.
+This does not establish public Thumb, timing, graphics, BIOS, or commercial-game compatibility.
 
 ROM-runner tests use temporary files containing original instructions, without Nintendo assets or a desktop session.
 They check file-size boundaries, bounded reads, short reads, I/O errors, paths, symlinks, and read-only loading.

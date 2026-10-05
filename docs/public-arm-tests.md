@@ -2,7 +2,8 @@
 
 The headless runner now executes the unmodified ARM ROM from [jsmolka/gba-tests](https://github.com/jsmolka/gba-tests).
 This is independent public test code, not a complete ARM7TDMI conformance suite or a new hardware measurement.
-The full public ARM test still fails. Compare/status and load/writeback alias errors are fixed; the next memory-access failure is recorded below.
+The pinned public ARM ROM now passes its result checkpoint on Darwin arm64 in debug and release builds.
+Compare/status, load/writeback aliases, and ARM unused-memory reads are fixed. Earlier failures are retained below.
 
 ## Prepare and run
 
@@ -61,7 +62,7 @@ The instruction at the checkpoint is checked during preparation, in addition to 
 
 The case budget is 1,000,000 successful machine steps, including our original BIOS boot.
 Timeouts, emulator diagnostics, and nonzero r12 all remain failures under the [normal suite rules](rom-tests.md).
-Preparation does not mean the test passed. The current run exits nonzero and writes a failed JSON report.
+Preparation does not mean the test passed. Check the runner's exit status and JSON assertions separately.
 
 ## Observed results on Darwin arm64
 
@@ -85,7 +86,7 @@ After the compare/status fix, before load/writeback alias support:
 - This is `LDR r0, [r0, #4]!` in upstream test 360, with base and destination equal.
 - The CPU is in System/ARM state, and r12 remains zero. The final completion checkpoint has not been reached.
 
-After load/writeback alias support:
+After load/writeback alias support, before ARM unused-memory reads:
 
 - Tests 360 and 361 complete without taking their failure paths.
 - After 877 successful steps, the runner reports `unmapped memory at 0x80000000`.
@@ -95,9 +96,20 @@ After load/writeback alias support:
 
 Single-load aliases now retain the loaded value rather than the updated base.
 Original regressions also cover byte, halfword, and signed loads, every non-PC register bank, index modes, offsets, alignment, timing, and failures.
-The public halfword alias tests later in the ROM have not yet been reached; their source and mGBA's load ordering support the same rule.
-The next compatibility task is to verify high-address read behavior and implement the appropriate memory mapping or open-bus behavior.
-Do not bypass test 362, invent a return value, or weaken the result assertion.
+
+After ARM unused-memory open-bus support:
+
+- Test 362 completes. The read returns the ARM word at the executing PC plus eight, not a high-address mirror.
+- Execution also reaches the later halfword alias and block-transfer tests without taking their failure exits.
+- The runner reaches `eval` at `0x08001d4c` after 1,344 successful steps, including original BIOS boot.
+- The CPU is in System/ARM state, with CPSR `0x6000001f`, r12 = 0, and 11,257 nominal cycles.
+- Debug and release runs exit zero, with `reason: checkpoint`, no error, and the result assertion passing.
+- The pinned ROM, manifest checkpoint, budget, and expected result are unchanged.
+
+Test 362 checks shifted addressing, writeback, and carry, but does not check the loaded value.
+Original regressions separately check the returned word, byte lanes, rotation, sign extension, timing, and retained diagnostics.
+See the bounded [ARM open-bus implementation](hardware/cpu.md#arm-unused-memory-data-reads).
+This is a passing result for this pinned ARM ROM, not proof of complete instruction, memory, or timing compatibility.
 No public Thumb, timing, memory, BIOS, graphics, or unsafe suite has been claimed as passing.
 These results do not establish Pokémon Emerald compatibility.
 

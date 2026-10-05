@@ -68,6 +68,36 @@ On ARM7, an empty register list transfers PC but uses a 64-byte span for address
 With writeback enabled, `STM` stores the old base only when that register is first in the list.
 Otherwise, `STM` stores the updated base.
 
+## ARM unused-memory data reads
+
+During ARM execution, data reads from `0x00004000..0x01ffffff` and `0x10000000..0xffffffff` return an open-bus value.
+Open bus means the bus retains previously driven data. GBATEK identifies this ARM value as the instruction word at PC+8.
+These high addresses do not mirror BIOS, RAM, or cartridge addresses.
+
+The interpreter snapshots mapped bytes at PC+8 before executing each ARM instruction.
+All unused-memory reads within that instruction use the same snapshot.
+Byte and halfword reads select their addressed lanes; the CPU applies normal rotation and sign extension.
+Base writeback, register aliases, block loads, PC loads, and flags retain their existing instruction semantics.
+Each data access pays the nominal unused-region cost of one cycle, plus normal code and internal costs.
+Snapshot reads add no data accesses or device cycles. This is not a simulated prefetch pipeline or Game Pak prefetch.
+
+The snapshot uses strict mapped reads, without recursive open-bus fallback.
+If any snapshot byte is unavailable, an unused-memory data read retains its `Unmapped` diagnostic.
+Missing lookahead does not fail ordinary instructions, mapped loads, or skipped conditional loads.
+The CPU clears the access context after each instruction, including errors.
+Host inspection, ROM-suite memory assertions, instruction fetches, and DMA do not inherit this context.
+
+Limits remain explicit:
+
+- Thumb open bus depends on instruction region, alignment, and prior bus data; it remains unsupported.
+- BIOS-protected reads, unused/write-only I/O reads, DMA latches, and disabled-RAM reads are not modeled here.
+- Missing BIOS, truncated ROM, unsupported I/O, and save-memory accesses retain their existing diagnostics.
+- Unused-memory writes remain diagnostics rather than ignored hardware writes. Swaps cannot silently discard their write.
+- No persistent pipeline or bus history exists. Self-modifying code and DMA-to-CPU bus transitions are not hardware-accurate.
+
+This subset lets public ARM test 362 complete. That test does not assert the loaded data value.
+Original regressions check the values separately. See [the public ARM result](../public-arm-tests.md).
+
 ## Processor status and exceptions
 
 User and System share registers. Each exception mode has its own stack pointer, link register, and SPSR.
@@ -144,7 +174,7 @@ The new settings apply to subsequent code accesses.
 Important timing limits:
 
 - Code S/N counts follow instruction summaries, not a simulated fetch pipeline.
-- Ordinary code costs use the current instruction address. No speculative PC+8 fetch or startup pipeline fill is performed.
+- Ordinary code costs use the current instruction address. The ARM open-bus PC+8 snapshot has no fetch timing or startup pipeline fill.
 - PC writes use destination-region costs and the restored instruction width for nominal refill accesses.
 - Refill cost calculation does not read target bytes. An invalid branch target fails on the following instruction fetch.
 - Game Pak prefetch is not implemented. WAITCNT bit 14 is stored but does not accelerate execution.

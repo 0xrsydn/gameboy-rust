@@ -41,7 +41,7 @@ Use `--test-suite suite.json` for [repeatable headless ROM assertions](docs/rom-
 | [docs/development.md](docs/development.md) | Nix, direnv, and macOS build notes |
 | [docs/testing.md](docs/testing.md) | Validation commands and what the test suites cover |
 | [docs/rom-tests.md](docs/rom-tests.md) | Headless ROM suites, completion checks, assertions, and JSON reports |
-| [docs/public-arm-tests.md](docs/public-arm-tests.md) | Pinned public ARM test, preparation command, and known failures |
+| [docs/public-arm-tests.md](docs/public-arm-tests.md) | Pinned public ARM test, preparation command, results, and limits |
 | [docs/architecture.md](docs/architecture.md) | Crate boundaries and a file-by-file map |
 | [docs/hardware/cpu.md](docs/hardware/cpu.md) | ARM/Thumb execution rules, modes, exceptions, and timing |
 | [docs/hardware/cartridge.md](docs/hardware/cartridge.md) | ROM loading, window/input controls, original ROM generator, and diagnostics |

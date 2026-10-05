@@ -130,8 +130,9 @@ They do not hash ROM contents; record source revisions and file checksums alongs
 
 ## Next validation stage
 
-The first public integration is [jsmolka/gba-tests ARM](public-arm-tests.md), with a verified result-register checkpoint and a known failing baseline.
-Investigate its next unsupported high-address read at test 362 before claiming the full ARM ROM passes.
+The first public integration is [jsmolka/gba-tests ARM](public-arm-tests.md), with a verified result-register checkpoint.
+The pinned ARM ROM now passes this checkpoint on Darwin arm64. Historical failures remain documented.
+Next, integrate a pinned public Thumb suite with a verified result protocol.
 For further public ARM7TDMI/GBA tests, inspect their source, license, entry assumptions, and result protocol.
 Pin source revisions and build instructions before comparing emulator changes.
 Adapt suites to verified completion addresses and result locations; do not guess them or treat timeouts as passes.

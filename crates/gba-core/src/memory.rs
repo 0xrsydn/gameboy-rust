@@ -1,6 +1,7 @@
 use std::{cell::Cell, error::Error, fmt};
 
 use crate::{
+    cpu::InstructionSet,
     display::{DisplayPosition, CYCLES_PER_LINE, HBLANK_START, VISIBLE_LINES},
     dma::{DmaError, DMA_BASE, DMA_END},
     input::Buttons,
@@ -52,8 +53,15 @@ fn vram_index(address: u32) -> usize {
     }
 }
 
+#[derive(Clone, Copy)]
+struct CpuAccess {
+    pc: u32,
+    arm_prefetch: Option<u32>,
+}
+
 /// Work/video/palette RAM, OAM, cartridge ROM, optional BIOS, and supported I/O.
-/// BIOS read protection and open-bus behavior are not modeled.
+/// ARM data reads from unused memory return a PC+8 snapshot when available.
+/// BIOS protection, Thumb open bus, and DMA bus latches are not modeled.
 pub struct Memory {
     external_ram: Vec<u8>,
     internal_ram: Vec<u8>,
@@ -65,7 +73,7 @@ pub struct Memory {
     io: Io,
     cycles: u64,
     data_timing: Cell<Option<DataTiming>>,
-    cpu_access: Option<u32>,
+    cpu_access: Option<CpuAccess>,
     scanline_capture: Option<video::capture::Capture>,
     sprite_pipeline: pipeline::SpritePipeline,
 }
@@ -317,9 +325,25 @@ impl Memory {
         self.io.next_event_cycles()
     }
 
-    pub(crate) fn begin_cpu_access(&mut self, pc: u32) {
+    pub(crate) fn begin_cpu_access(&mut self, pc: u32, instruction_set: InstructionSet) {
         debug_assert!(self.cpu_access.is_none());
-        self.cpu_access = Some(pc);
+        // Sample before execution, without data timing or open-bus recursion.
+        // Missing lookahead bytes must not fail an instruction that never uses them.
+        let arm_prefetch = match instruction_set {
+            InstructionSet::Arm => self.snapshot_arm_prefetch(pc),
+            InstructionSet::Thumb => None,
+        };
+        self.cpu_access = Some(CpuAccess { pc, arm_prefetch });
+    }
+
+    fn snapshot_arm_prefetch(&self, pc: u32) -> Option<u32> {
+        let mut bytes = [0; 4];
+        for (offset, byte) in bytes.iter_mut().enumerate() {
+            *byte = self
+                .read_mapped_byte(pc.wrapping_add(8 + offset as u32))
+                .ok()?;
+        }
+        Some(u32::from_le_bytes(bytes))
     }
 
     pub(crate) fn end_cpu_access(&mut self) {
@@ -328,7 +352,8 @@ impl Memory {
 
     fn can_write_power_control(&self) -> bool {
         // Bare memory writes are host/debug setup. CPU code must execute in BIOS.
-        self.cpu_access.is_none_or(|pc| pc < BIOS_SIZE as u32)
+        self.cpu_access
+            .is_none_or(|access| access.pc < BIOS_SIZE as u32)
     }
 
     /// Current scanline position and frame/VBlank event counters.
@@ -390,6 +415,16 @@ impl Memory {
 
     // Multi-byte reads use this helper to avoid charging each byte as a bus access.
     fn read_byte(&self, address: u32) -> Result<u8, MemoryError> {
+        if matches!(address, 0x0000_4000..=0x01ff_ffff | 0x1000_0000..=0xffff_ffff) {
+            if let Some(word) = self.cpu_access.and_then(|access| access.arm_prefetch) {
+                return Ok((word >> ((address & 3) * 8)) as u8);
+            }
+        }
+        self.read_mapped_byte(address)
+    }
+
+    // Strict lookup for host access, instruction fetches, and prefetch snapshots.
+    fn read_mapped_byte(&self, address: u32) -> Result<u8, MemoryError> {
         match address >> 24 {
             0x00 => self
                 .bios
