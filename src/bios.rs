@@ -1,10 +1,11 @@
 //! Original, optional ARM BIOS replacement. No Nintendo firmware is included.
-//! Supports interrupt waits, integer/fixed-point arithmetic, memory copy/fill, bit unpacking,
-//! LZ77/run-length/Huffman decoding, and differential filters.
+//! Supports interrupt waits, integer/fixed-point arithmetic, affine matrices,
+//! memory copy/fill, bit unpacking, LZ77/run-length/Huffman decoding, and differential filters.
 //! This is a functional subset, not a complete boot ROM or a timing-compatible BIOS.
 
 use std::collections::BTreeMap;
 
+mod affine;
 mod angles;
 mod arithmetic;
 mod bit_unpack;
@@ -42,7 +43,8 @@ pub fn boot(rom: Vec<u8>) -> Result<Machine, MemoryError> {
     ))
 }
 
-/// Build a deterministic 16 KiB image from original ARM instructions.
+/// Build a deterministic 16 KiB image from original ARM instructions and a
+/// mathematically generated sine table. No Nintendo firmware bytes are included.
 /// SWIs use bits 16–23 of the ARM immediate, or the Thumb immediate byte.
 /// Services support User/System callers and preserve caller status. Registers
 /// other than each arithmetic service's documented outputs are preserved.
@@ -126,6 +128,8 @@ pub fn image() -> Vec<u8> {
         (0x0a, "arctan2"),
         (0x0b, "cpu_set"),
         (0x0c, "cpu_fast_set"),
+        (0x0e, "bg_affine"),
+        (0x0f, "obj_affine"),
         (0x10, "bit_unpack"),
         (0x11, "lz_wram"),
         (0x12, "lz_vram"),
@@ -226,7 +230,11 @@ pub fn image() -> Vec<u8> {
         ["copy_halfword", "half_loop", "half_fill", "half_fill_loop"],
     );
 
+    // The preceding routine ends with an unconditional branch. Place a literal
+    // pool here so reset/dispatcher loads stay within ARM's 4 KiB reach.
+    a.flush_literals();
     arithmetic::emit(&mut a);
+    affine::emit(&mut a);
     angles::emit(&mut a);
     bit_unpack::emit(&mut a);
     lz77::emit(&mut a);
@@ -247,7 +255,9 @@ pub fn image() -> Vec<u8> {
     a.emit(UNSUPPORTED_TRAP);
     a.label("invalid_argument");
     a.emit(INVALID_ARGUMENT_TRAP);
-    a.finish()
+    let mut image = a.finish(affine::TABLE_ADDRESS as usize);
+    affine::write_table(&mut image);
+    image
 }
 
 fn emit_count(a: &mut ArmImage) {
@@ -327,7 +337,20 @@ impl ArmImage {
         self.emit(0);
     }
 
-    fn finish(mut self) -> Vec<u8> {
+    // Call only after an unconditional branch/return/trap, never on a fallthrough path.
+    fn flush_literals(&mut self) {
+        for (index, register, value) in std::mem::take(&mut self.literals) {
+            let offset = (self.code.len() as i32 - index as i32 - 2) * 4;
+            assert!(offset.unsigned_abs() <= 0xfff);
+            self.code[index] = (if offset < 0 { 0xe51f_0000 } else { 0xe59f_0000 })
+                | register << 12
+                | offset.unsigned_abs();
+            self.code.push(value);
+        }
+    }
+
+    fn finish(mut self, code_limit: usize) -> Vec<u8> {
+        self.flush_literals();
         for (index, condition, target, link) in self.branches {
             let offset = self.labels[target] as i32 - index as i32 - 2;
             assert!((-0x80_0000..0x80_0000).contains(&offset));
@@ -336,17 +359,54 @@ impl ArmImage {
                 | (u32::from(link) << 24)
                 | (offset as u32 & 0x00ff_ffff);
         }
-        for (index, register, value) in self.literals {
-            let offset = (self.code.len() as i32 - index as i32 - 2) * 4;
-            assert!(offset.unsigned_abs() <= 0xfff);
-            self.code[index] = (if offset < 0 { 0xe51f_0000 } else { 0xe59f_0000 })
-                | register << 12
-                | offset.unsigned_abs();
-            self.code.push(value);
-        }
         let mut bytes: Vec<u8> = self.code.into_iter().flat_map(u32::to_le_bytes).collect();
-        assert!(bytes.len() <= BIOS_SIZE);
+        assert!(
+            bytes.len() <= code_limit,
+            "BIOS code overlaps reserved data"
+        );
+        assert!(code_limit <= BIOS_SIZE);
         bytes.resize(BIOS_SIZE, 0);
         bytes
+    }
+}
+
+#[cfg(test)]
+mod image_tests {
+    use super::*;
+
+    #[test]
+    fn multiple_literal_pools_preserve_pc_offsets_and_branch_fixups() {
+        let mut a = ArmImage::default();
+        a.literal(0, 0x1122_3344);
+        a.branch(14, "after_pool");
+        a.flush_literals();
+        a.label("after_pool");
+        a.literal(1, 0x5566_7788);
+        a.emit(0xe12f_ff1e); // BX lr
+        let image = a.finish(BIOS_SIZE);
+        let actual: Vec<_> = image[..24]
+            .chunks_exact(4)
+            .map(|bytes| u32::from_le_bytes(bytes.try_into().unwrap()))
+            .collect();
+        assert_eq!(
+            actual,
+            [
+                0xe59f_0000,
+                0xea00_0000,
+                0x1122_3344,
+                0xe59f_1000,
+                0xe12f_ff1e,
+                0x5566_7788
+            ]
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "BIOS code overlaps reserved data")]
+    fn code_cannot_overlap_reserved_tables() {
+        let mut a = ArmImage::default();
+        a.emit(0xe1a0_0000);
+        a.emit(0xe1a0_0000);
+        a.finish(4);
     }
 }

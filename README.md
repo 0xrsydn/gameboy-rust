@@ -253,7 +253,7 @@ Verified locally on macOS 15.7.3:
 - Nix system: `aarch64-darwin`.
 - Rust host: `aarch64-apple-darwin`.
 - Release executable: native Mach-O `arm64`, without Rosetta.
-- All 671 tests pass in debug and release builds.
+- All 694 tests pass in debug and release builds.
 - All ten native window smoke tests pass. The mosaic test submits 128 frames; the other nine submit 60 frames each.
 - The eight CPU-driven smoke tests check CPU state, every output pixel, and presentation at VBlank entry.
 - The terminal-only CPU and timer IRQ demos run successfully.
@@ -358,7 +358,7 @@ nix develop -c cargo test
 - Game Pak wait-state control (`WAITCNT`) for all three ROM windows.
 - Sequential/non-sequential data accesses, branch refill costs, and variable multiply timing.
 - Optional caller-supplied 16 KiB BIOS mapping for vector code, without CPU BIOS read protection.
-- Optional original BIOS replacement: minimal boot, IRQ dispatch, interrupt waits, memory copy/fill, integer/fixed-point arithmetic, bit unpacking, LZ77/run-length/Huffman decompression, and differential filters.
+- Optional original BIOS replacement: minimal boot, IRQ dispatch, interrupt waits, memory copy/fill, integer/fixed-point arithmetic, affine matrices, bit unpacking, LZ77/run-length/Huffman decompression, and differential filters.
 - All 16 ARM data-processing operations, with immediate and shifted-register operands.
 - Logical operations: `AND`, `EOR`, `TST`, `TEQ`, `ORR`, `MOV`, `BIC`, and `MVN`.
 - Arithmetic operations: `SUB`, `RSB`, `ADD`, `ADC`, `SBC`, `RSC`, `CMP`, and `CMN`.
@@ -477,7 +477,11 @@ Neither constructor provides Nintendo BIOS services or initializes BIOS-managed 
 
 ### Optional original BIOS replacement
 
-`src/bios.rs` builds a deterministic 16 KiB image from original ARM instructions. No Nintendo firmware bytes are included.
+`src/bios.rs` builds a deterministic 16 KiB image from original ARM instructions and mathematically generated data.
+No Nintendo firmware bytes are included.
+A compile-time integer calculation generates the 512-byte sine table at `0x3e00..0x3fff`.
+The image builder checks that code and literal pools do not overlap this table.
+Literal pools follow unconditional branches and stay within each load instruction's address range.
 The CPU executes every instruction through the normal bus, timing, exception, HALT, and DMA paths.
 There is no host-side interception of SWIs.
 
@@ -513,6 +517,8 @@ Supported software interrupt services:
 | `0x0a` | ArcTan2 | Signed fixed-point X/Y in r0/r1; return the unsigned direction angle in r0 |
 | `0x0b` | CpuSet | `r0`: source; `r1`: destination; `r2`: count, fill, and width control |
 | `0x0c` | CpuFastSet | Word copy/fill in eight-word blocks; round count upward to a multiple of eight |
+| `0x0e` | BgAffineSet | Build background matrices and origins from r0 into r1; r2 is the record count |
+| `0x0f` | ObjAffineSet | Build sprite matrices from r0 into r1; r2 is the count, r3 the coefficient stride |
 | `0x10` | BitUnPack | Expand packed units from r0 to r1 using the descriptor at r2; write complete words |
 | `0x11` | LZ77UnCompWram | Decompress from r0 to r1 with byte writes |
 | `0x12` | LZ77UnCompVram | Decompress from r0 to r1 with buffered halfword writes |
@@ -528,7 +534,7 @@ Only User/System callers are supported. Calls from exception modes return a diag
 Services preserve CPSR and every caller register except the documented arithmetic outputs.
 This is deterministic behavior, not a claim about undocumented firmware outputs.
 Supervisor stack use is 28 bytes normally, including ArcTan. Division and ArcTan2 use 40 bytes.
-CpuFastSet, BitUnPack, all three decompression formats, and differential filters use 60 bytes.
+CpuFastSet, affine-matrix services, BitUnPack, all three decompression formats, and differential filters use 60 bytes.
 They do not reproduce the original firmware's internal stack layout or cycle counts.
 
 **IRQ callback contract:** install a word-aligned ARM callback address at `0x03007ffc` after boot.
@@ -592,6 +598,56 @@ Use ArcTan2 for direction calculations that require all four quadrants.
 Both services preserve r1–r14 and the caller's status. Undocumented BIOS scratch-register outputs are not reproduced.
 They execute original ARM instructions and keep CPU IRQ delivery masked until return, without changing IME.
 Device clocks and DMA continue. Exact firmware timing and full hardware compatibility remain unverified.
+
+#### Affine matrices
+
+Both services take a source pointer in r0, destination pointer in r1, and unsigned record count in r2.
+They generate inverse-mapping matrices for background and sprite rotation/scaling.
+Scale values are signed 8.8: 256 represents 1.0. The services do not calculate reciprocal scales.
+Angles use 65,536 units per turn, but only the upper byte is used.
+
+`BgAffineSet` reads 20-byte, word-aligned source records:
+
+| Offset | Field |
+| --- | --- |
+| 0, 4 | Signed 32-bit texture-center X/Y, with eight fractional bits |
+| 8, 10 | Signed 16-bit display-center X/Y, in pixels |
+| 12, 14 | Signed 16-bit X/Y scale |
+| 16 | Unsigned 16-bit angle |
+| 18 | Two padding bytes; not read |
+
+Each word-aligned output record occupies 16 bytes.
+It contains four signed halfwords, PA/PB/PC/PD, followed by two 32-bit background origins.
+The destination can point directly to BG2 or BG3 affine registers.
+
+`ObjAffineSet` reads eight-byte, halfword-aligned source records.
+Offsets 0 and 2 contain signed X/Y scales; offset 4 contains the angle.
+The final two padding bytes are not read.
+The destination must be halfword-aligned. Register r3 specifies an even coefficient stride of at least two bytes.
+Each matrix writes PA/PB/PC/PD at destination offsets `0*stride` through `3*stride`.
+The next matrix starts at `4*stride`. Stride two packs coefficients; stride eight preserves intervening sprite attributes in OAM.
+Other valid even strides work, and the services leave gaps unchanged.
+
+The shared kernel reads signed sine/cosine values with 14 fractional bits from the generated table.
+Products use arithmetic right shifts by 14, then narrow to signed 16-bit intermediates.
+PB negates the narrowed X-scale sine product after rounding, not before the shift.
+Background origins use those narrowed intermediates and wrap modulo 2³².
+All signed scales are accepted, including zero and -32768.
+Extreme overflow behavior follows the integer emulator reference; hardware equivalence remains unverified.
+
+Zero count returns before buffer or stride validation, without source or output accesses.
+For nonzero counts, invalid alignment, protected sources below `0x02000000`, or wrapping ranges reach `bios::INVALID_ARGUMENT_TRAP`.
+Counts cover complete record spans, including padding and the trailing object-stride gap.
+Overflow checks run before output writes. They do not require every source byte to be mapped in advance.
+Use separate source and output buffers; overlapping buffers are not supported.
+
+The services read each record's fields before writing its output.
+A failed source read preserves earlier records without writing the current record.
+A failed destination write preserves earlier successful stores, including stores within the current record.
+Normal halfword/word bus rules apply to video memory and display registers.
+Both services preserve all caller registers and status.
+They keep CPU IRQ delivery masked without changing IME; device clocks and DMA continue.
+Exact firmware cycle counts and undocumented side effects are not reproduced.
 
 #### LZ77 decompression
 
@@ -752,7 +808,7 @@ Unsupported SWIs, unsupported exception vectors, and null/misaligned IRQ callbac
 The CPU reports `CpuError::UnsupportedInstruction` with `bios::UNSUPPORTED_TRAP`, rather than silently treating a service as a no-op.
 Invalid arithmetic/decompression arguments use the same CPU error type with the distinct `bios::INVALID_ARGUMENT_TRAP` instruction.
 Prior boot/service steps remain committed on failure.
-BIOS affine-matrix helpers, reset services, and STOP remain unimplemented.
+BIOS reset services and STOP remain unimplemented.
 This subset is not sufficient for Pokémon Emerald compatibility.
 
 ### Timers, interrupt registers, and the machine clock
@@ -1504,6 +1560,7 @@ Important timing limits:
 | `src/lib.rs` | Core modules and original demo bytes |
 | `src/bios.rs` | Original ARM BIOS image builder, minimal boot, IRQ dispatch, waits, and memory services |
 | `src/bios/arithmetic.rs` | Emitted ARM division and integer-square-root routines |
+| `src/bios/affine.rs` | Emitted ARM background/sprite matrix services, range checks, and generated sine table |
 | `src/bios/angles.rs` | Emitted ARM ArcTan polynomial, ArcTan2 ratio/quadrant handling, and input validation |
 | `src/bios/lz77.rs` | Emitted ARM LZ77 decoder with byte and halfword output |
 | `src/bios/run_length.rs` | Emitted ARM run-length decoder, header validation, and block bounds |
@@ -1563,6 +1620,7 @@ Important timing limits:
 | `tests/halt.rs` | HALT wake masks, idle timing, BIOS-only writes, DMA progress, and STOP diagnostics |
 | `tests/bios.rs` | ARM/Thumb service calls, copy/fill boundaries, wait races, callback contracts, and boot |
 | `tests/bios/arithmetic.rs` | Arithmetic boundaries, wide-integer references, status restoration, and zero-division diagnostics |
+| `tests/bios/affine.rs` | Matrix/origin references, all angle phases, strides, live rendering, register preservation, and diagnostics |
 | `tests/bios/angles.rs` | Fixed-point references, axes/quadrants, rounding, caller flags, stack bounds, DMA, and diagnostics |
 | `tests/bios/lz77.rs` | Token-reference tests, overlaps, output widths, malformed streams, and partial failures |
 | `tests/bios/run_length.rs` | All block controls, mixed streams, output widths, status, diagnostics, DMA, and IRQ masking |
@@ -1636,12 +1694,12 @@ To test the core without building the window dependency:
 direnv exec . cargo test --locked --no-default-features
 ```
 
-This runs 660 core and integration tests; the eleven desktop and command-line tests are excluded.
+This runs 683 core and integration tests; the eleven desktop and command-line tests are excluded.
 
 On Apple Silicon, `file` must report a Mach-O `arm64` executable.
 Do not set a Linux cross-compilation target for this validation.
 
-The default suite has 671 tests.
+The default suite has 694 tests.
 Angle-service tests compare results with wide-integer polynomial and signed-sector references, plus floating-point accuracy checks in supported ranges.
 They cover a dense ArcTan unit-interval grid, sampled full-domain and seeded inputs, axes, quadrant boundaries, signed extremes, and scale invariance.
 Other tests verify all caller flag combinations, User/System masks, non-result registers, stack bounds, repeated calls, diagnostics, and DMA/IRQ progress.
@@ -1716,6 +1774,11 @@ The CPU demo test checks sprite controls, OAM attributes, disabled unused object
 Tile tests cover both color depths, palette banks, flips, all map sizes, scrolling, transparency, priorities, and register masks.
 They check errors for unsupported features and out-of-range fetches without changing the output image.
 The CPU tile demo test verifies asset copies, every pixel, wrapping, opposite directions, reset, and VBlank synchronization.
+BIOS affine tests check all 256 angle phases against independent trigonometric and wide-integer references.
+They cover signed scales, origin wraparound, rounding, ignored angle bits, strides, alignment, and partial failures.
+Live rendering tests apply generated matrices to background registers and sprite attribute memory.
+Other checks cover ARM/Thumb calls, register/status preservation, stack bounds, DMA, timers, and deferred IRQ delivery.
+Image-builder tests verify multiple literal pools, branch fixups, and reserved table boundaries.
 BIOS arithmetic tests cover signed boundaries, division overflow/zero, all sign combinations, and seeded integer inputs.
 Square-root tests check exact integer bounds around perfect squares and across unsigned inputs.
 LZ77 tests compare emitted-code execution against independent token expansion, including 4,096-byte distances and overlapping runs.
@@ -1772,7 +1835,7 @@ These tests do not replace validation against GBA hardware or public hardware te
 
 1. Validate CPU behavior with public ARM7TDMI test programs before claiming instruction compatibility.
 2. Refine nominal timing with a fetch pipeline, Game Pak prefetch, per-access device updates, and verified timer/IRQ delays.
-3. Expand BIOS services with affine-matrix helpers and reset functions; add STOP and remaining DMA device modes.
+3. Expand BIOS services with reset functions; add STOP and remaining DMA device modes.
 4. Replace nominal sprite work limits with verified individual fetch timing; add background fetch timing and per-pixel composition.
 5. Expand graphics, audio, cartridge loading, and saves before testing Emerald compatibility.
 
@@ -1786,6 +1849,8 @@ Hardware references used for the core:
 - [GBATEK BIOS halt functions](https://problemkaputt.de/gbatek-bios-halt-functions.htm), for wait contracts and STOP differences.
 - [GBATEK BIOS function calling conventions](https://problemkaputt.de/gbatek-bios-functions.htm).
 - [GBATEK BIOS memory-copy services](https://problemkaputt.de/gbatek-bios-memory-copy.htm).
+- [GBATEK BIOS rotation/scaling services](https://problemkaputt.de/gbatek-bios-rotation-scaling-functions.htm), for record layouts, angle units, and output strides.
+- [VisualBoyAdvance-M BIOS services](https://github.com/visualboyadvance-m/visualboyadvance-m/blob/master/src/core/gba/internal/gbaBios.cpp), reviewed for integer affine rounding and signed matrix intermediates. Our sine table is generated mathematically.
 - [GBATEK BIOS arithmetic services](https://problemkaputt.de/gbatek-bios-arithmetic-functions.htm).
 - [GBATEK BIOS decompression services](https://problemkaputt.de/gbatek-bios-decompression-functions.htm), including BitUnPack descriptor fields, differential-filter headers, Huffman tree layout, and width constraints.
 - [mGBA BIOS service implementation](https://github.com/mgba-emu/mgba/blob/master/src/gba/bios.c), reviewed for angle-polynomial coefficients and quadrant conventions, BitUnPack ordering/offsets, and Huffman tree layout and packing.
