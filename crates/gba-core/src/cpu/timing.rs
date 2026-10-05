@@ -149,6 +149,12 @@ impl Cpu {
         }
     }
 
+    // Share the existing control-flow classification with bounded bus history.
+    // A PC write can refill even when its target equals the sequential address.
+    pub(super) fn thumb_refills(&self, instruction: u32) -> bool {
+        self.thumb_summary(instruction).refill
+    }
+
     fn thumb_summary(&self, instruction: u32) -> Summary {
         match instruction {
             0x4000..=0x43ff => {

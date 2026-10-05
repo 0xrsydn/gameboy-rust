@@ -55,3 +55,5 @@ DMA writes to DMA registers return `DmaError::RegisterDestination`; self-modifyi
 Other accesses use the existing memory map, alignment checks, mirrors, and I/O write rules.
 Unmapped memory and cartridge writes remain diagnostics, not hardware open-bus/latch behavior.
 A failed unit changes no memory, device state, or clock. Earlier units remain committed; the failed unit remains pending.
+Successful units invalidate bounded sequential Thumb IWRAM history because DMA-to-CPU latch ordering is not modeled.
+Failed units preserve that history. No DMA value is substituted for a CPU open-bus read.

@@ -293,7 +293,7 @@ fn short_rom_needs_only_the_fetched_halfword_and_errors_only_when_used() {
 }
 
 #[test]
-fn iwram_history_and_region_crossing_fetches_remain_diagnostics() {
+fn cold_iwram_history_and_region_crossing_fetches_remain_diagnostics() {
     for base in [0x0300_0100, 0x0300_8100, 0x02ff_fffc, 0x05ff_fffc] {
         for offset in [0, 2] {
             let pc = base + offset;

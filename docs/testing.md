@@ -65,10 +65,15 @@ Compare/status CPU regressions verify saved flags/masks, bank switching, sequent
 Load-alias regressions cover widths, signed/unaligned values, immediate/register offsets, pre/post-indexing, every non-PC register bank, and address wrapping.
 They verify loaded-value precedence, preserved flags, unchanged stores, nominal timing, I/O reads before device progress, deferred IRQ delivery, and atomic errors.
 ARM open-bus regressions cover unused-range boundaries, PC+8 source regions, byte lanes, signed/unaligned loads, writeback, and block loads.
-They check branch-target resampling, missing lookahead, skipped conditions, nominal timing, device progress, and retained host/fetch/IWRAM-Thumb/DMA diagnostics.
+They check branch-target resampling, missing lookahead, skipped conditions, nominal timing, device progress, and retained host/fetch/cold-IWRAM/DMA diagnostics.
 Thumb open-bus tests cover supported code regions, both instruction alignments, ROM windows, mirrors, and physical memory wrap.
 They check widths, sign extension, rotation, block/stack/PC loads, aliases, modes, state preservation, and sequential/branch resampling.
-Short-ROM tests require only the fetched halfword in 16-bit regions. IWRAM and region-crossing tests retain explicit diagnostics.
+Short-ROM tests require only the fetched halfword in 16-bit regions. Cold IWRAM and region-crossing tests retain explicit diagnostics.
+Sequential IWRAM regressions check retained lanes across fetches, reads, writes, mirrors, and physical RAM wrap.
+They cover raw bus values before load rotation/sign extension, all modes, block transfers, and isolation from other memory regions.
+Known-bit tests reject incomplete words. Transaction tests verify discarded partial updates and preserved history after errors.
+Control-flow tests distinguish taken/untaken branches and invalidate PC writes even when the target equals fallthrough.
+DMA and IRQ tests check conservative invalidation; timed/untimed tests verify CPU results and nominal clock costs.
 Host/fetch isolation, separate BIOS history, unsupported stores/data regions, nominal device progression, and DMA diagnostics also have checks.
 The pinned public ARM ROM now reaches its completion checkpoint with r12 = 0 in debug and release builds.
 The pinned public Thumb ROM also reaches its ARM-state checkpoint with r7 = 0 in both builds.
@@ -228,7 +233,7 @@ They cover all processor modes, load widths, lanes, rotation, both Thumb code al
 They verify direct reads while executing inside BIOS, re-entry, SWI/IRQ returns, host-inspection isolation, and original-boot provenance.
 Thumb tests cover sequential snapshots, instruction-state transitions, SWI entry, and RAM-backed POP exits.
 Unknown history, last valid fetch words, missing lookahead, and diagnostic-step retention have explicit checks.
-Thumb IWRAM unused-memory reads remain diagnostics. Separate tests cover supported general Thumb snapshots and retained BIOS history.
+Unknown Thumb IWRAM history remains diagnostic. Separate tests cover known sequential history, general Thumb snapshots, and retained BIOS history.
 Protected loads keep normal nominal costs and advance devices only through machine stepping.
 Firmware readback regressions separately verify documented boot, SoftReset, returning SWI, IRQ callback, and IRQ return words.
 They execute ARM/Thumb loads across widths and lanes, check caller state, and trace actual exits to their image data.

@@ -50,7 +50,7 @@ Hardware references used for the core:
 - [NanoBoyAdvance keypad implementation](https://github.com/nba-emu/NanoBoyAdvance/blob/master/src/nba/src/hw/keypad/keypad.cc), compared for control access widths; its AND/retrigger behavior differs from the chosen polling model.
 - [mGBA keypad timing issue](https://github.com/mgba-emu/mgba/issues/2490), for frontend frame-based input timing limits.
 - [Tonc hardware interrupts](https://gbadev.net/tonc/interrupts.html), for keypad source enable and IF/IE bit 12.
-- [GBATEK memory mirrors, video byte writes, and unused-memory reads](https://problemkaputt.de/gbatek-gba-unpredictable-things.htm), for unused address ranges, ARM PC+8 open bus, byte lanes, the distinct Thumb region/history rules, and PC-dependent BIOS read protection. The Thumb implementation follows its 16-bit-region and BIOS/OAM formulas; IWRAM and region-transition history remain unsupported.
+- [GBATEK memory mirrors, video byte writes, and unused-memory reads](https://problemkaputt.de/gbatek-gba-unpredictable-things.htm), for unused address ranges, ARM PC+8 open bus, byte lanes, the distinct Thumb region/history rules, and PC-dependent BIOS read protection. The Thumb implementation follows its 16-bit-region and BIOS/OAM formulas. IWRAM has bounded sequential lane history; refills and region transitions remain unsupported.
 - [nocash GBA open-bus discussion](https://www.ngemu.com/threads/gba-open-bus.170809/), for ARM prefetch, repeated Thumb halfwords in 16-bit regions, aligned BIOS/OAM words, and history-dependent IWRAM lanes. Its data-load overwrite note prevents treating P+2 as a universal IWRAM rule.
 - [mGBA memory implementation](https://github.com/mgba-emu/mgba/blob/master/src/gba/memory.c), reviewed for `GBALoadBad`, ARM prefetch sourcing, byte/halfword lane selection, and separate DMA/history behavior. Also reviewed its BIOS region-exit prefetch retention and protected-load lane selection.
 - [GBATEK GBA memory map and bus widths](https://problemkaputt.de/gbatek-gba-memory-map.htm).
@@ -103,6 +103,14 @@ Thumb BIOS fetch research:
 - GBATEK's BIOS/OAM Thumb lane table above supports aligned-word sampling, but describes general unused-memory reads.
 
 See [Thumb BIOS prefetch snapshots](research/thumb-bios-prefetch.md) for the inference, implementation limits, and original regressions.
+
+IWRAM lane-history research:
+
+- [mGBA issue 1575](https://github.com/mgba-emu/mgba/issues/1575), for reported hardware alignment results and IWRAM read/write effects.
+- [ares IWRAM accesses](https://github.com/ares-emulator/ares/blob/6f6786e04f0822a3475463df284f313ab8518d51/ares/gba/cpu/memory.cpp) and [bus dispatch](https://github.com/ares-emulator/ares/blob/6f6786e04f0822a3475463df284f313ab8518d51/ares/gba/cpu/bus.cpp), for separate byte-lane retention and debugger isolation.
+- [jgenesis issue 676](https://github.com/jsgroth/jgenesis/issues/676) and [its correction](https://github.com/jsgroth/jgenesis/commit/fab6e2ccc60e492dd68b7f1e927b0829a6d80195), for distinguishing the IWRAM latch from reads to other regions.
+
+See [IWRAM Thumb bus history](research/iwram-bus-history.md). These were source reviews, not local hardware or external-emulator test runs.
 
 Use [GBATEK](https://problemkaputt.de/gbatek.htm) and ARM7TDMI documentation for further hardware work.
 Only use game ROMs that you may lawfully use. Do not commit game ROMs, BIOS files, or game assets.

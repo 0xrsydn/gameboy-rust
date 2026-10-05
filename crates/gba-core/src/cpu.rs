@@ -22,6 +22,8 @@ mod exception_tests;
 #[cfg(test)]
 mod instruction_tests;
 #[cfg(test)]
+mod iwram_open_bus_tests;
+#[cfg(test)]
 mod load_alias_tests;
 #[cfg(test)]
 mod open_bus_tests;
@@ -208,9 +210,15 @@ impl Cpu {
     fn execute_fetched(&mut self, instruction: u32, memory: &mut Memory) -> Result<(), CpuError> {
         // Record the executing instruction, not an operand's pipelined PC value.
         // Always clear the access context, including on diagnostic errors.
-        memory.begin_cpu_access(self.pc(), self.instruction_set);
+        let pc = self.pc();
+        let sequential_thumb =
+            self.instruction_set == InstructionSet::Thumb && !self.thumb_refills(instruction);
+        memory.begin_cpu_access(pc, self.instruction_set);
         let result = self.execute_instruction(instruction, memory);
-        memory.end_cpu_access(result.is_ok());
+        let sequential = sequential_thumb
+            && self.instruction_set == InstructionSet::Thumb
+            && self.pc() == pc.wrapping_add(2);
+        memory.end_cpu_access(result.is_ok(), sequential);
         result
     }
 

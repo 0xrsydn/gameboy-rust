@@ -178,6 +178,7 @@ impl Machine {
             return Ok(StepKind::HaltIdle);
         }
         let (kind, timing) = if self.cpu.take_interrupt(self.memory.irq_pending(), false) {
+            self.memory.invalidate_cpu_bus_history();
             (StepKind::IrqEntry, self.cpu.exception_timing(&self.memory))
         } else {
             (

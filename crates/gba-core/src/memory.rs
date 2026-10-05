@@ -1,5 +1,8 @@
 use std::{cell::Cell, error::Error, fmt};
 
+mod iwram_bus;
+use iwram_bus::IwramBus;
+
 use crate::{
     cpu::InstructionSet,
     display::{DisplayPosition, CYCLES_PER_LINE, HBLANK_START, VISIBLE_LINES},
@@ -62,7 +65,8 @@ struct CpuAccess {
 /// Work/video/palette RAM, OAM, cartridge ROM, optional BIOS, and supported I/O.
 /// Unused-memory reads use ARM PC+8 or supported region-dependent Thumb snapshots.
 /// Protected BIOS reads separately retain the snapshot from BIOS execution.
-/// Thumb IWRAM history, a full fetch pipeline, and DMA bus latches are not modeled.
+/// Sequential Thumb IWRAM accesses retain addressed bus lanes transactionally.
+/// Refill history, a full fetch pipeline, and DMA bus latches are not modeled.
 pub struct Memory {
     external_ram: Vec<u8>,
     internal_ram: Vec<u8>,
@@ -76,6 +80,7 @@ pub struct Memory {
     data_timing: Cell<Option<DataTiming>>,
     cpu_access: Option<CpuAccess>,
     bios_prefetch: Option<u32>,
+    iwram_bus: IwramBus,
     scanline_capture: Option<video::capture::Capture>,
     sprite_pipeline: pipeline::SpritePipeline,
 }
@@ -98,6 +103,7 @@ impl Memory {
             data_timing: Cell::new(None),
             cpu_access: None,
             bios_prefetch: None,
+            iwram_bus: IwramBus::default(),
             scanline_capture: None,
             sprite_pipeline: pipeline::SpritePipeline::default(),
         })
@@ -306,6 +312,8 @@ impl Memory {
             AccessWidth::Byte => unreachable!("DMA is never byte-wide"),
         }
         .map_err(map_error)?;
+        // DMA-to-CPU bus ordering is not modeled. Never reuse pre-DMA IWRAM history.
+        self.invalidate_cpu_bus_history();
         // Keep this channel active during its cycles: another edge must not
         // queue a second block while the current block is still transferring.
         self.advance_cycles(timing.total());
@@ -332,6 +340,11 @@ impl Memory {
         debug_assert!(self.cpu_access.is_none());
         // Sample before execution, without data timing or open-bus recursion.
         // Missing lookahead bytes must not fail an instruction that never uses them.
+        let iwram_pc = (instruction_set == InstructionSet::Thumb && pc >> 24 == 3).then_some(pc);
+        let fetched = iwram_pc
+            .filter(|pc| pc.wrapping_add(4) >> 24 == 3)
+            .and_then(|pc| self.snapshot_mapped_halfword(pc + 4));
+        self.iwram_bus.begin(iwram_pc, fetched);
         let prefetch = match instruction_set {
             InstructionSet::Arm => self.snapshot_mapped_word(pc.wrapping_add(8)),
             InstructionSet::Thumb => self.snapshot_thumb_prefetch(pc),
@@ -348,18 +361,22 @@ impl Memory {
         match pc >> 24 {
             // BIOS and OAM drive a full word even for a halfword instruction fetch.
             0x00 | 0x07 => self.snapshot_mapped_word(address & !3),
+            // The IWRAM halfword fetch replaces one lane of its retained bus word.
+            0x03 => self.iwram_bus.snapshot(),
             // These 16-bit regions repeat the fetched halfword in both word lanes.
             0x02 | 0x05 | 0x06 | 0x08..=0x0d => {
-                let half = u16::from_le_bytes([
-                    self.read_mapped_byte(address).ok()?,
-                    self.read_mapped_byte(address + 1).ok()?,
-                ]);
-                Some(u32::from(half) * 0x0001_0001)
+                Some(u32::from(self.snapshot_mapped_halfword(address)?) * 0x0001_0001)
             }
-            // IWRAM needs the previous bus value, including intervening data loads/DMA.
             // Unsupported code regions must not manufacture an open-bus snapshot.
             _ => None,
         }
+    }
+
+    fn snapshot_mapped_halfword(&self, address: u32) -> Option<u16> {
+        Some(u16::from_le_bytes([
+            self.read_mapped_byte(address).ok()?,
+            self.read_mapped_byte(address + 1).ok()?,
+        ]))
     }
 
     fn snapshot_mapped_word(&self, address: u32) -> Option<u32> {
@@ -372,7 +389,8 @@ impl Memory {
         Some(u32::from_le_bytes(bytes))
     }
 
-    pub(crate) fn end_cpu_access(&mut self, succeeded: bool) {
+    pub(crate) fn end_cpu_access(&mut self, succeeded: bool, sequential: bool) {
+        self.iwram_bus.finish(succeeded, sequential);
         if let Some(access) = self.cpu_access.take() {
             if succeeded && access.pc < BIOS_SIZE as u32 {
                 // Commit only successful instruction snapshots under our diagnostic policy.
@@ -380,6 +398,10 @@ impl Memory {
                 self.bios_prefetch = access.prefetch;
             }
         }
+    }
+
+    pub(crate) fn invalidate_cpu_bus_history(&mut self) {
+        self.iwram_bus.invalidate();
     }
 
     fn can_write_power_control(&self) -> bool {
@@ -442,6 +464,8 @@ impl Memory {
     pub fn read8(&self, address: u32) -> Result<u8, MemoryError> {
         let value = self.read_byte(address)?;
         self.record_access(address, AccessWidth::Byte);
+        self.iwram_bus
+            .access(address, AccessWidth::Byte, u32::from(value));
         Ok(value)
     }
 
@@ -520,6 +544,21 @@ impl Memory {
                 _ => unreachable!("unsupported bus width"),
             },
         );
+        if address >> 24 == 0x03 {
+            let (width, value) = match N {
+                1 => (AccessWidth::Byte, u32::from(bytes[0])),
+                2 => (
+                    AccessWidth::Halfword,
+                    u32::from(u16::from_le_bytes([bytes[0], bytes[1]])),
+                ),
+                4 => (
+                    AccessWidth::Word,
+                    u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]),
+                ),
+                _ => unreachable!("unsupported bus width"),
+            };
+            self.iwram_bus.access(address, width, value);
+        }
         if address >> 24 == 0x04 {
             if address & !3 == KEYINPUT {
                 self.io.write_keypad(address, &bytes);
@@ -615,6 +654,8 @@ impl Memory {
         }
         let value = u16::from_le_bytes([self.read_byte(address)?, self.read_byte(address + 1)?]);
         self.record_access(address, AccessWidth::Halfword);
+        self.iwram_bus
+            .access(address, AccessWidth::Halfword, u32::from(value));
         Ok(value)
     }
 
@@ -630,6 +671,7 @@ impl Memory {
             self.read_byte(address + 3)?,
         ]);
         self.record_access(address, AccessWidth::Word);
+        self.iwram_bus.access(address, AccessWidth::Word, value);
         Ok(value)
     }
 }

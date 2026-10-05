@@ -233,7 +233,7 @@ fn missing_bios_rom_save_and_unsupported_io_reads_remain_errors() {
 }
 
 #[test]
-fn unsupported_iwram_thumb_reads_and_unused_fetches_do_not_reuse_arm_context() {
+fn cold_iwram_thumb_reads_and_unused_fetches_do_not_reuse_arm_context() {
     let mut bus = memory(LDR);
     let mut cpu = Cpu::new(ROM_START);
     cpu.registers[0] = UNUSED;

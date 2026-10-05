@@ -97,12 +97,12 @@ Host inspection, ROM-suite memory assertions, instruction fetches, and DMA do no
 
 Limits remain explicit:
 
-- Thumb open bus uses the supported region rules below. Internal work RAM still needs unmodeled bus history.
+- Thumb open bus uses the supported region rules below, including bounded sequential internal-RAM lane history.
 - [BIOS-protected reads](bios.md#cpu-bios-read-protection) use separate retained ARM PC+8 or aligned Thumb PC+4 word snapshots.
 - Unused/write-only I/O reads, DMA latches, and disabled-RAM reads are not modeled here.
 - Missing BIOS, truncated ROM, unsupported I/O, and save-memory accesses retain their existing diagnostics.
 - Unused-memory writes remain diagnostics rather than ignored hardware writes. Swaps cannot silently discard their write.
-- No persistent pipeline or bus history exists. Self-modifying code and DMA-to-CPU bus transitions are not hardware-accurate.
+- There is no persistent instruction pipeline. Sequential Thumb IWRAM history does not model refills or DMA-to-CPU bus transitions.
 
 This subset lets public ARM test 362 complete. That test does not assert the loaded data value.
 Original regressions check the values separately. See [the public ARM result](../public-arm-tests.md).
@@ -116,7 +116,7 @@ The snapshot depends on the executing code region. P below is the executing inst
 | --- | --- |
 | External work RAM, palette RAM, video RAM, all three ROM windows | Halfword at P+4, repeated in both word lanes |
 | BIOS and object attribute memory (OAM) | Full word at `(P+4) & ~3` |
-| Internal work RAM (IWRAM) | Unsupported: one lane depends on previous bus activity |
+| Internal work RAM (IWRAM) | PC+4 replaces one halfword in known sequential IWRAM history; the other lanes retain their values |
 | Other code regions | Unsupported |
 
 For BIOS/OAM, aligned instructions expose halfwords at P+4 and P+6.
@@ -135,13 +135,38 @@ Snapshots add no nominal cycles. Host reads, instruction fetches, DMA, and unsup
 Protected BIOS reads use separate retained history, not the current ROM/RAM snapshot.
 
 GBATEK and nocash's [open-bus findings](https://www.ngemu.com/threads/gba-open-bus.170809/) document these region differences.
-IWRAM needs prior bus lanes, including data-load overwrites and possible DMA effects.
+IWRAM needs prior bus lanes, including IWRAM data-read/write changes and possible DMA effects.
 Do not substitute P+2 for that history: it is only the usual case, not a general rule.
 The original Nintendo DS also differs from GBA-family IWRAM behavior; this core targets GBA.
 
 This remains a bounded snapshot implementation, not a pipeline or a complete bus-history model.
-Refill timing, self-modifying code, DMA-to-CPU transitions, IWRAM, unused/write-only I/O, and disabled RAM remain incomplete.
+Refill timing, self-modifying code, DMA-to-CPU transitions, cross-state IWRAM history, unused/write-only I/O, and disabled RAM remain incomplete.
 Original regressions validate the documented formulas. No physical-hardware or independent public Thumb open-bus pass is claimed.
+
+### Sequential IWRAM history
+
+For consecutive Thumb instructions in IWRAM, the emulator retains a separate lane value and known-bit mask.
+The PC+4 halfword fetch updates its addressed halfword before execution.
+IWRAM data reads and writes then update only their addressed byte, halfword, or word lanes.
+The recorded value is raw aligned bus data, before CPU rotation or sign extension.
+Accesses to other regions do not replace the IWRAM latch.
+See [the evidence and implementation scope](../research/iwram-bus-history.md).
+
+History starts unknown. An unused-memory load requires all word lanes to be known, including for byte/halfword loads.
+Ordinary instructions and mapped loads still execute with incomplete history.
+Consecutive fetches can establish both halves. An IWRAM word read or write establishes the entire word.
+Host inspection and setup writes do not seed or change this emulated history.
+
+Each instruction stages its fetch and data-access changes.
+Success commits history only for the next sequential Thumb IWRAM PC. Failure preserves the previous committed history.
+Block-transfer data accesses stage updates in order; unused-memory reads still use one entry snapshot per instruction.
+This preserves the existing atomic diagnostic policy without adding bus or device cycles.
+
+Taken branches and PC-writing refills invalidate continuation history, even when their target is the fallthrough address.
+Untaken conditional branches keep sequential history.
+Other instruction states/regions, accepted machine IRQs, and successful DMA units end the supported history sequence.
+Failed DMA units leave history unchanged. Discontinuous entry starts unknown instead of borrowing stale lanes.
+Refill fetches, ARM-to-Thumb history, and DMA latch contents remain unmodeled.
 
 ## Processor status and exceptions
 

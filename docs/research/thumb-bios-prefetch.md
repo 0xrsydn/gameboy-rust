@@ -62,7 +62,7 @@ Original tests in `crates/gba-core/src/cpu/thumb_bios_access_tests.rs` cover:
 - Sequential history, ARM/Thumb transitions, SWI entry, and POP-to-PC exits with RAM stack data.
 - Raw reads inside BIOS and protected reads outside it.
 - The last complete fetch word, unavailable lookahead, and failure retention.
-- Separate host reads, retained IWRAM Thumb open-bus diagnostics, nominal costs, and device progression.
+- Separate host reads, retained cold-IWRAM Thumb open-bus diagnostics, nominal costs, and device progression.
 
 ## Validation result
 
