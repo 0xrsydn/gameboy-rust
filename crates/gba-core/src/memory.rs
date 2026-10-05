@@ -67,7 +67,8 @@ struct CpuAccess {
 /// Protected BIOS reads separately retain the snapshot from BIOS execution.
 /// Sequential Thumb IWRAM accesses retain addressed bus lanes transactionally.
 /// Successful refills into Thumb IWRAM sample the target pair to establish history.
-/// A full fetch pipeline, ARM-target refill history, and DMA bus latches are not modeled.
+/// DMA channels retain transfer data separately; CPU bus handoff remains unmodeled.
+/// A full fetch pipeline and ARM-target refill history are not modeled.
 pub struct Memory {
     external_ram: Vec<u8>,
     internal_ram: Vec<u8>,
@@ -268,7 +269,7 @@ impl Memory {
                 address: transfer.destination,
             });
         }
-        if transfer.source < 0x0200_0000 {
+        if transfer.source < 0x0200_0000 && transfer.data_latch.is_none() {
             return Err(DmaError::UnsupportedSource {
                 channel,
                 address: transfer.source,
@@ -281,18 +282,33 @@ impl Memory {
             });
         }
         let map_error = |error| DmaError::Memory { channel, error };
-        // Reads have no side effects. A failed destination leaves the unit pending.
+        // Validate before reading or committing channel data. Failed units are atomic.
+        match transfer.width {
+            AccessWidth::Halfword => self.write_index::<2>(transfer.destination),
+            AccessWidth::Word => self.write_index::<4>(transfer.destination),
+            AccessWidth::Byte => unreachable!("DMA is never byte-wide"),
+        }
+        .map_err(map_error)?;
+        let data_latch = if transfer.source < 0x0200_0000 {
+            // DMA cannot read BIOS or the lower unused region. Retain this channel's
+            // full word; never read firmware bytes or borrow CPU/another channel's data.
+            transfer
+                .data_latch
+                .expect("unknown blocked source rejected above")
+        } else {
+            match transfer.width {
+                AccessWidth::Halfword => {
+                    u32::from(self.read16(transfer.source).map_err(map_error)?) * 0x0001_0001
+                }
+                AccessWidth::Word => self.read32(transfer.source).map_err(map_error)?,
+                AccessWidth::Byte => unreachable!("DMA is never byte-wide"),
+            }
+        };
+        // A blocked halfword read keeps both old lanes. The destination selects
+        // one lane; mapped halfword reads have already duplicated their source data.
         let value = match transfer.width {
-            AccessWidth::Halfword => {
-                self.write_index::<2>(transfer.destination)
-                    .map_err(map_error)?;
-                u32::from(self.read16(transfer.source).map_err(map_error)?)
-            }
-            AccessWidth::Word => {
-                self.write_index::<4>(transfer.destination)
-                    .map_err(map_error)?;
-                self.read32(transfer.source).map_err(map_error)?
-            }
+            AccessWidth::Halfword => data_latch >> ((transfer.destination & 2) * 8),
+            AccessWidth::Word => data_latch,
             AccessWidth::Byte => unreachable!("DMA is never byte-wide"),
         };
         let kind = if transfer.first {
@@ -318,7 +334,7 @@ impl Memory {
         // Keep this channel active during its cycles: another edge must not
         // queue a second block while the current block is still transferring.
         self.advance_cycles(timing.total());
-        self.io.complete_dma_unit(channel);
+        self.io.complete_dma_unit(channel, data_latch);
         Ok(Some((channel, timing)))
     }
 

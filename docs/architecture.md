@@ -43,7 +43,7 @@ The repository is a Cargo workspace with three crates:
 | `crates/gba-core/src/memory.rs` | Memory mapping, I/O routing, write validation, and device clock |
 | `crates/gba-core/src/io.rs` | I/O registers, timers, HALT/STOP wake-up, next-event bounds, and IRQ latches |
 | `crates/gba-core/src/display.rs` | Display clock, scanline status, comparison edges, and display IRQ events |
-| `crates/gba-core/src/dma.rs` | DMA registers, internal pointers, trigger state, priority, and completion IRQs |
+| `crates/gba-core/src/dma.rs` | DMA registers, internal pointers, retained channel data, trigger state, priority, and completion IRQs |
 | `crates/gba-core/src/machine.rs` | Timed CPU/DMA/device stepping and IRQ delivery |
 | `crates/gba-core/src/timing.rs` | Bus widths, wait-state costs, and timing breakdowns |
 | `crates/gba-core/src/cpu/timing.rs` | ARM/Thumb cycle summaries and data-access accounting |
@@ -126,6 +126,7 @@ The repository is a Cargo workspace with three crates:
 | `crates/gba-core/tests/sprites/affine.rs` | Affine matrices, drawing areas, signed sampling, shared groups, and floating-point reference tests |
 | `crates/gba-core/tests/display.rs` | Display boundaries, register masks, IRQ handlers, and VBlank frame execution |
 | `crates/gba-core/tests/dma.rs` | DMA widths, latches, priority, triggers, IRQs, timing, errors, and CPU integration |
+| `crates/gba-core/tests/dma/latch.rs` | Retained channel data, blocked sources, lane selection, isolation, errors, repeats, and BIOS protection |
 | `crates/gba-core/tests/stop.rs` | STOP clock gating, live keypad wake, retained DMA/device phases, frame-runner results, and access rules |
 | `crates/gba-core/tests/bios/stop.rs` | ARM/Thumb Stop calls, caller preservation, keypad wake, and stopped frame running |
 | `crates/gba-core/tests/halt.rs` | HALT wake masks, idle timing, BIOS-only power writes, DMA progress, and validation |

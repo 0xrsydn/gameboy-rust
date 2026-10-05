@@ -8,6 +8,9 @@ use gba_core::{
     timing::{bus_cycles, AccessKind, AccessWidth},
 };
 
+#[path = "dma/latch.rs"]
+mod latch;
+
 const SOURCE: u32 = 0x0200_0000;
 const DEST: u32 = 0x0300_0000;
 

@@ -204,6 +204,9 @@ They distinguish wake-up from IF latching and test stale requests, interrupt mas
 ARM/Thumb BIOS Stop tests verify caller preservation. Frame-runner tests check prompt stopped results and unchanged output images.
 The graphics test verifies BIOS VBlank waiting, one IRQ callback per update, and status restoration before each redraw.
 DMA tests cover both widths, all supported address modes, count limits, register masks, enable latches, and repeated transfers.
+Original channel-data tests cover word retention, halfword duplication, blocked-source destination lanes, and channel isolation.
+They check cold/zero history, cancel/re-enable, source-counter crossings, repeats, priority, failed-unit rollback, and BIOS snapshot isolation.
+These tests do not establish general DMA open-bus reads or DMA-to-CPU handoff. See [the research scope](research/dma-data-latches.md).
 Tests verify channel priority/preemption, CPU pausing, display/timer progress, IRQ acknowledgement/return, and WAITCNT costs.
 Diagnostic tests check failed-unit isolation, retained earlier transfers, unsupported modes, and CPU block-store atomicity.
 Graphics startup tests verify that DMA3, not CPU stores or host writes, fills every background pixel.

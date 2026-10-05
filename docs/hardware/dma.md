@@ -50,10 +50,38 @@ Each step reports zero code cycles. Overlapping transfers read each unit after t
 Startup scheduling delays, channel-resumption costs, CPU fetch-state effects, and display-bus contention remain unmodeled.
 
 Special timing modes (sound FIFO/video capture), Game Pak DRQ, and prohibited source mode 3 return `DmaError::UnsupportedControl`.
-DMA reads below work RAM, including BIOS reads, return `DmaError::UnsupportedSource` rather than exposing BIOS bytes.
+DMA reads below work RAM reuse known channel data as described below. They never expose BIOS bytes.
 DMA writes to DMA registers return `DmaError::RegisterDestination`; self-modifying transfers are not supported.
 Other accesses use the existing memory map, alignment checks, mirrors, and I/O write rules.
-Unmapped memory and cartridge writes remain diagnostics, not hardware open-bus/latch behavior.
+Other unmapped reads and cartridge writes remain diagnostics, not general DMA open-bus behavior.
 A failed unit changes no memory, device state, or clock. Earlier units remain committed; the failed unit remains pending.
 Successful units invalidate bounded sequential Thumb IWRAM history because DMA-to-CPU latch ordering is not modeled.
 Failed units preserve that history. No DMA value is substituted for a CPU open-bus read.
+
+## Retained channel data
+
+Each channel has a separate retained 32-bit data value, distinct from its programmed addresses and count.
+A successful mapped word transfer replaces the full value.
+A successful mapped halfword transfer duplicates the source halfword into both lanes of the retained word.
+Normal source alignment and address masks apply before the read.
+
+A source below `0x02000000` cannot read the bus, including when a BIOS image is present.
+With known channel data, a word transfer writes the retained word.
+A halfword transfer writes its low half at a word-aligned destination, or its high half when destination bit 1 is set.
+The blocked read does not change either retained lane. Source bit 1 does not choose the written lane.
+This also applies when a source counter crosses into the blocked region during a block.
+
+Channel data survives completion, disable/cancel, re-enable, and repeated blanking transfers.
+Other channels, CPU reads, and host inspection/setup do not change it.
+Synthetic startup leaves each channel unknown, not zero.
+A blocked source with unknown channel data returns `DmaError::UnsupportedSource` and leaves the unit pending.
+A transferred zero is known data and can be reused.
+
+The emulator commits retained data only after a complete successful unit, under its existing atomic diagnostic policy.
+Failed source reads, unsupported controls, and failed destinations preserve the previous value and clocks.
+Earlier successful units remain committed. Normal destination validation, nominal timing, and completion IRQ rules still apply.
+This error policy is not a model of hardware data aborts.
+
+See [the latch evidence and scope](../research/dma-data-latches.md).
+General DMA open-bus reads, IWRAM lane effects, and CPU bus ownership on resume remain unimplemented.
+In particular, the known channel value does not supply unused/write-only I/O reads or CPU open-bus snapshots.

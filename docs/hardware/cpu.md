@@ -99,7 +99,8 @@ Limits remain explicit:
 
 - Thumb open bus uses the supported region rules below, including bounded sequential internal-RAM lane history.
 - [BIOS-protected reads](bios.md#cpu-bios-read-protection) use separate retained ARM PC+8 or aligned Thumb PC+4 word snapshots.
-- Unused/write-only I/O reads, DMA latches, and disabled-RAM reads are not modeled here.
+- Unused/write-only I/O reads, DMA-to-CPU bus handoff, and disabled-RAM reads are not modeled here.
+  [DMA channel data](dma.md#retained-channel-data) is separate and never overrides a CPU snapshot.
 - Missing BIOS, truncated ROM, unsupported I/O, and save-memory accesses retain their existing diagnostics.
 - Unused-memory writes remain diagnostics rather than ignored hardware writes. Swaps cannot silently discard their write.
 - There is no persistent instruction pipeline. Thumb IWRAM refills sample their target pair, but DMA-to-CPU transitions remain unmodeled.

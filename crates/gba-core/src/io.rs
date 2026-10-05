@@ -383,8 +383,8 @@ impl Io {
         self.dma.next()
     }
 
-    pub(crate) fn complete_dma_unit(&mut self, channel: usize) {
-        self.pending |= self.dma.complete_unit(channel);
+    pub(crate) fn complete_dma_unit(&mut self, channel: usize, data_latch: u32) {
+        self.pending |= self.dma.complete_unit(channel, data_latch);
         self.wake_if_requested();
     }
 

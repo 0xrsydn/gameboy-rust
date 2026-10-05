@@ -1,6 +1,7 @@
 //! Four-channel GBA direct memory access (DMA) controller.
 //! Transfers are scheduled one data unit at a time. Startup/resumption delays,
-//! open-bus latches, sound FIFO, video capture, and Game Pak DRQ are not modeled.
+//! CPU bus handoff, sound FIFO, video capture, and Game Pak DRQ are not modeled.
+//! Each channel retains known source data across blocks, including blocked reads.
 
 use std::{error::Error, fmt};
 
@@ -65,6 +66,8 @@ struct Channel {
     remaining: u32,
     active: bool,
     first: bool,
+    // Unknown at synthetic startup. Enable/disable does not reset retained data.
+    data_latch: Option<u32>,
 }
 
 impl Channel {
@@ -111,6 +114,7 @@ pub(crate) struct Transfer {
     pub destination: u32,
     pub width: AccessWidth,
     pub first: bool,
+    pub data_latch: Option<u32>,
 }
 
 impl Dma {
@@ -199,6 +203,7 @@ impl Dma {
                     destination: channel.current_destination,
                     width: channel.width(),
                     first: channel.first,
+                    data_latch: channel.data_latch,
                 }));
             }
         }
@@ -206,8 +211,9 @@ impl Dma {
     }
 
     /// Commit one successful data unit after its bus cycles. Return completion IRQ bits.
-    pub(crate) fn complete_unit(&mut self, index: usize) -> u16 {
+    pub(crate) fn complete_unit(&mut self, index: usize, data_latch: u32) -> u16 {
         let channel = &mut self.channels[index];
+        channel.data_latch = Some(data_latch);
         let width = channel.width().bytes();
         // The Game Pak source counter increments regardless of source control.
         let source_mode = if (0x08..=0x0d).contains(&(channel.current_source >> 24)) {

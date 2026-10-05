@@ -121,6 +121,15 @@ IWRAM refill research:
 
 These sources support bounded refill sampling, not a claim of cycle-accurate pipeline or DMA behavior.
 
+DMA data-latch research:
+
+- [NanoBoyAdvance hardware latch test at cc3f4a28](https://codeberg.org/nba-emu/hw-test/src/commit/cc3f4a286cdef823980d9b353bd70befc9927d28/dma/latch/source/main.c), for per-channel ownership, halfword duplication, blocked-source retention, and destination lane selection.
+  Its [BSD-3-Clause license](https://codeberg.org/nba-emu/hw-test/src/commit/cc3f4a286cdef823980d9b353bd70befc9927d28/LICENSE) was reviewed. No source or ROM was imported.
+- [NanoBoyAdvance DMA at 55b5cf0a](https://github.com/nba-emu/NanoBoyAdvance/blob/55b5cf0ae3d929582ac5bfd486558173502b8354/src/nba/src/hw/dma/dma.cc) and [its data structures](https://github.com/nba-emu/NanoBoyAdvance/blob/55b5cf0ae3d929582ac5bfd486558173502b8354/src/nba/src/hw/dma/dma.hh), compared with its bus read ordering.
+- [ares DMA at 6f6786e0](https://github.com/ares-emulator/ares/blob/6f6786e04f0822a3475463df284f313ab8518d51/ares/gba/cpu/dma.cpp), compared with its IWRAM and general-bus dispatch above.
+
+See [DMA data-latch findings](research/dma-data-latches.md). Source review is not a local hardware-test pass.
+
 Use [GBATEK](https://problemkaputt.de/gbatek.htm) and ARM7TDMI documentation for further hardware work.
 Only use game ROMs that you may lawfully use. Do not commit game ROMs, BIOS files, or game assets.
 The ignore file excludes `roms/`, common game ROM extensions, and save files.
