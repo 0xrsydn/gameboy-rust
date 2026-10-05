@@ -85,6 +85,16 @@ Hardware references used for the core:
 - [mGBA Thumb transfer implementation](https://github.com/mgba-emu/mgba/blob/master/src/arm/isa-thumb.c) and [shared memory transfers](https://github.com/mgba-emu/mgba/blob/master/src/gba/memory.c), reviewed for empty STM/PUSH routing and the extra Thumb instruction width on the stored pipeline PC. This supports executing PC+6, rather than an ordinary PC+4 operand read.
 - [GBATEK Thumb jumps and calls](https://problemkaputt.de/gbatek-thumb-opcodes-jumps-and-calls.htm).
 
+BIOS protected-read root-cause research:
+
+- [Smolka Progress Report #6](https://www.smolka.dev/posts/progress-report-6), for firmware-dependent protected reads and the Ruby/Sapphire null-pointer case; the report distinguishes Emerald.
+- [mGBA: Cracking the GBA BIOS](https://mgba.io/2017/06/30/cracking-gba-bios/), for BIOS access protection and replacement-versus-external firmware approaches.
+- [Cult-of-GBA BIOS](https://github.com/Cult-of-GBA/BIOS/tree/a30e9a96df083628b650724b7d4d7112b4070b98), reviewed for original boot, SWI, and IRQ exit layout and its MIT license. No source or binary was copied.
+- [mGBA BIOS implementation](https://github.com/mgba-emu/mgba/blob/master/src/gba/bios.c), for the explicit post-SWI `biosPrefetch` compatibility value.
+- [no$gba BIOS FAQ](https://problemkaputt.de/gbabios.htm), for the distinction between simulated firmware services and using a firmware image.
+
+See [the root-cause analysis and implementation decision](research/bios-readback.md).
+
 Use [GBATEK](https://problemkaputt.de/gbatek.htm) and ARM7TDMI documentation for further hardware work.
 Only use game ROMs that you may lawfully use. Do not commit game ROMs, BIOS files, or game assets.
 The ignore file excludes `roms/`, common game ROM extensions, and save files.
