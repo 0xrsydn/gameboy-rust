@@ -2,6 +2,7 @@
 
 The desktop executable can load raw ROM bytes for terminal diagnostics or window execution.
 This supports original test programs. It does not establish commercial-game compatibility.
+For explicit pass/fail assertions instead of diagnostic limits, use the [headless ROM suite runner](../rom-tests.md).
 
 ```sh
 direnv exec . cargo run --locked --release -- --rom path/to/original.gba --steps 100000

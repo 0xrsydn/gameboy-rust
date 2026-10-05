@@ -1,5 +1,6 @@
 //! Host-only raw ROM loading, execution modes, and diagnostics.
 
+pub mod suite;
 pub mod window;
 
 use std::{

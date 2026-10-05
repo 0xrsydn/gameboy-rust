@@ -147,6 +147,8 @@ dependencies = [
  "gba-core",
  "gba-demos",
  "minifb",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

@@ -5,6 +5,7 @@ The repository is a Cargo workspace with three crates:
 - `crates/gba-core`: the platform-independent GBA emulator. It has no dependencies and must not depend on window, audio, or file-system libraries.
 - `crates/gba-demos`: original ARM test programs and their frame runners. Depends on `gba-core`.
 - `crates/desktop`: the minifb window frontend and the `gameboy-rust` executable. Depends on both.
+  Serde and serde_json handle host-side test manifests and reports; neither dependency enters the core.
 
 `gba-core` uses `gba-demos` as a development dependency, because its integration tests run the demo programs.
 
@@ -80,6 +81,10 @@ The repository is a Cargo workspace with three crates:
 | `crates/desktop/src/desktop/raster.rs` | Raster window and scanline color-band smoke test |
 | `crates/desktop/src/main.rs` | Command-line modes, error exit status, and fixed-length CPU demo |
 | `crates/desktop/src/cartridge.rs` | Read-only ROM files, mode/limit checks, bounded terminal execution, and shared state reports |
+| `crates/desktop/src/cartridge/suite.rs` | Strict JSON manifests, bounded checkpoint execution, assertions, and structured reports |
+| `crates/desktop/src/cartridge/suite/tests.rs` | Manifest limits, checkpoint boundaries, memory/register checks, and diagnostic accounting |
+| `crates/desktop/tests/rom_suite_cli.rs` | File-backed suite execution, case isolation, output schema, determinism, and exit status |
+| `crates/desktop/examples/write_test_suite.rs` | Original ARM/Thumb/BIOS fixture generator with a local JSON suite |
 | `crates/desktop/src/cartridge/window.rs` | ROM-window session, bounded slices, capture, STOP/input handling, and progress limits |
 | `crates/desktop/src/cartridge/window/tests.rs` | Original ROM pixels, keyboard mapping, STOP wake, HALT, frame budgets, and diagnostics |
 | `crates/desktop/src/desktop/rom.rs` | Main-thread ROM window, input polling, presentation pacing, and frame-limited exit |

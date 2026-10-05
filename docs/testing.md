@@ -46,6 +46,11 @@ The core's integration tests use `gba-demos` as a development dependency.
 On Apple Silicon, `file` must report a Mach-O `arm64` executable.
 Do not set a Linux cross-compilation target for this validation.
 
+The [headless ROM suite runner](rom-tests.md) provides explicit checkpoint and assertion results through `--test-suite PATH.json`.
+Its tests verify manifest limits, whole-suite validation, exact step boundaries, ARM/Thumb checkpoints, and register/CPSR/memory checks.
+Additional tests cover DMA/IRQ accounting, HALT/STOP, diagnostic state, case isolation, repeatable JSON output, and failure exit status.
+These original tests validate the runner; they are not independent public hardware-test results.
+
 ROM-runner tests use temporary files containing original instructions, without Nintendo assets or a desktop session.
 They check file-size boundaries, bounded reads, short reads, I/O errors, paths, symlinks, and read-only loading.
 CLI tests cover option order, missing/conflicting options, invalid step limits, process exit status, and reports.

@@ -19,6 +19,7 @@ Verified locally on macOS 15.7.3:
 - The terminal-only CPU and timer IRQ demos run successfully.
 - The bounded terminal ROM runner loads original raw programs and reports state without opening a window.
 - The native ROM-window test presents a file-backed original program and reports STOP, CPU, and video failures.
+- The headless suite runner passes generated ARM/Thumb/BIOS cases, produces repeatable JSON, and rejects deliberate assertion mismatches.
 
 These results cover the CPU core, memory, Mode 0–5 snapshots and row capture, input mapping, and desktop windows.
 They do not verify a complete GBA display controller or audio.

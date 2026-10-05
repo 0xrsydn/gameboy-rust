@@ -30,6 +30,7 @@ Arrows scroll, Q rotates, W zooms, Z flips, X changes priority, Enter resets, an
 Run `direnv exec . cargo run --locked -- --help` to list all modes.
 For original ROM files, use `--rom path/to/original.gba --window`, or `--steps 100000` instead of `--window` for terminal diagnostics.
 See [cartridge loading](docs/hardware/cartridge.md) for limits and report meanings.
+Use `--test-suite suite.json` for [repeatable headless ROM assertions](docs/rom-tests.md).
 
 ## Documentation
 
@@ -39,6 +40,7 @@ See [cartridge loading](docs/hardware/cartridge.md) for limits and report meanin
 | [docs/demos.md](docs/demos.md) | Every demo, its command, and its controls |
 | [docs/development.md](docs/development.md) | Nix, direnv, and macOS build notes |
 | [docs/testing.md](docs/testing.md) | Validation commands and what the test suites cover |
+| [docs/rom-tests.md](docs/rom-tests.md) | Headless ROM suites, completion checks, assertions, and JSON reports |
 | [docs/architecture.md](docs/architecture.md) | Crate boundaries and a file-by-file map |
 | [docs/hardware/cpu.md](docs/hardware/cpu.md) | ARM/Thumb execution rules, modes, exceptions, and timing |
 | [docs/hardware/cartridge.md](docs/hardware/cartridge.md) | ROM loading, window/input controls, original ROM generator, and diagnostics |
