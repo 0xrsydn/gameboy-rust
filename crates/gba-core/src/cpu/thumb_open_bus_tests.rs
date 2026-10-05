@@ -127,8 +127,9 @@ fn loads_select_lanes_rotate_and_sign_extend_without_changing_flags() {
                     after.registers[1] = value;
                     after.registers[15] += 2;
                     cpu.step(&mut bus).unwrap();
-                    assert_eq!(
-                        cpu, after,
+                    assert_cpu_arch_eq!(
+                        cpu,
+                        after,
                         "pc={pc:#x} instruction={instruction:#x} lane={lane}"
                     );
                 }

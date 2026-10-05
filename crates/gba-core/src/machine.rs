@@ -179,7 +179,7 @@ impl Machine {
         }
         let (kind, timing) = if self.cpu.take_interrupt(self.memory.irq_pending(), false) {
             self.memory.invalidate_cpu_bus_history();
-            self.cpu.refill_arm_pipeline(&self.memory);
+            self.cpu.refill_pipeline(&self.memory);
             (StepKind::IrqEntry, self.cpu.exception_timing(&self.memory))
         } else {
             (

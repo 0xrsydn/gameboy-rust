@@ -24,7 +24,8 @@ No external source code or test ROM was imported. No physical-hardware or extern
 
 ## Implementation
 
-`cpu/pipeline.rs` owns a private two-slot ARM continuation with its expected execution PC.
+`cpu/pipeline.rs` owns a private two-slot continuation with its expected execution PC and instruction state.
+The later [Thumb extension](thumb-instruction-buffer.md) uses this same structure for halfwords.
 Each slot retains either a mapped word or its strict fetch error.
 `Cpu` owns and clones this state; full CPU equality includes it.
 
@@ -37,13 +38,13 @@ Successful non-refill ARM execution commits the next pair.
 A successful refill into ARM instead samples T and T+4 after data transfers and status restoration.
 This includes ARM/Thumb BX, ARM PC writes and loads, taken branches, exception returns, and SWI vectors.
 A refill to the sequential address still discards the previous sequential pair.
-Untaken branches retain the pair. Leaving ARM clears it; Thumb continues to use direct instruction reads.
+Untaken branches retain the pair. A transition to Thumb now replaces it with a Thumb target pair.
 
 Machine IRQ entry captures its vector pair immediately after exception entry.
 The standalone exception APIs have no Memory argument, so they invalidate the old pair and leave the vector cold.
 This distinction is explicit rather than retaining unrelated words at a coincident PC.
 
-`Memory::fetch_arm_word` reads aligned mapped words without CPU data context, timing traces, or bus-history changes.
+`Memory::fetch_instruction` reads aligned mapped instructions without CPU data context, timing traces, or bus-history changes.
 Normal memory mirrors apply. Unmapped, truncated, and misaligned fetches retain their existing errors.
 No BIOS-protected data value or general open-bus value can become a synthetic instruction through this path.
 
@@ -74,7 +75,7 @@ The current instruction address still selects nominal code cost rather than a se
 ARM PC+8 open bus and protected BIOS readback remain separate snapshots.
 The instruction-buffer sample and those snapshots see mapped memory before instruction effects, but no unified per-access bus model exists yet.
 The target samples do not establish complete ARM IWRAM or BIOS bus history.
-Thumb buffering, instruction-state-changing compare quirks, Game Pak prefetch, and DMA arbitration remain incomplete.
+Instruction-state-changing compare quirks, Game Pak prefetch, and DMA arbitration remain incomplete.
 DMA still runs between whole instructions, not during their data accesses or internal cycles.
 
 ## Original regression coverage

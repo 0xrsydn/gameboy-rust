@@ -163,7 +163,10 @@ fn completed_units_and_priority_changes_use_access_order_not_channel_number() {
 #[test]
 fn failed_dma_and_failed_resumed_instruction_preserve_last_completed_dma_history() {
     for fail_destination in [false, true] {
-        let mut machine = ready(CODE);
+        let (mut cpu, bus) = program(CODE, 0x680a);
+        cpu.registers[0] = 0x0e00_0000; // Buffered PROBE will fail on unsupported save memory.
+        let mut machine = Machine::new(cpu, bus);
+        machine.step().unwrap();
         machine.memory_mut().write32(EWRAM, DATA).unwrap();
         transfer(&mut machine, EWRAM, IWRAM, true);
         // A valid IWRAM source must not drive history if its destination is invalid.
@@ -189,16 +192,15 @@ fn failed_dma_and_failed_resumed_instruction_preserve_last_completed_dma_history
             .memory_mut()
             .write16(DMA_BASE + 3 * DMA_STRIDE + 10, 0)
             .unwrap();
-        machine.memory_mut().write16(CODE + 2, 0xde00).unwrap(); // Unsupported instruction.
         assert!(machine.step().is_err());
         assert_eq!(machine.cpu(), &before);
         assert_eq!(machine.cycles(), cycles);
-        machine.memory_mut().write16(CODE + 2, PROBE).unwrap();
-        machine.step().unwrap();
-        assert_eq!(
-            machine.cpu().registers()[6],
-            resumed(DATA.to_le_bytes(), CODE)
-        );
+        assert_eq!(machine.last_timing(), timing);
+        // Repair the data address, not the retained instruction or DMA history.
+        let mut cpu = machine.cpu().clone();
+        cpu.registers[0] = UNUSED;
+        cpu.step_timed(machine.memory_mut()).unwrap();
+        assert_eq!(cpu.registers()[6], resumed(DATA.to_le_bytes(), CODE));
     }
 }
 

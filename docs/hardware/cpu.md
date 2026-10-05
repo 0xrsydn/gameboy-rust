@@ -76,19 +76,21 @@ These forms retain nominal single-word access costs and the existing atomic-erro
 With writeback enabled, `STM` stores the old base only when that register is first in the list.
 Otherwise, `STM` stores the updated base.
 
-## ARM instruction buffering
+## ARM and Thumb instruction buffering
 
-ARM execution retains fetched instructions in a CPU-owned buffer, independent of later RAM contents.
-At cold entry, a successful step reads the current word P and samples P+4 and P+8 before instruction effects.
-During sequential execution, the current and next words come from retained results; only P+8 is newly sampled.
+ARM and Thumb execution retain fetched instructions in a CPU-owned buffer, independent of later RAM contents.
+Let W be the instruction width: four bytes for ARM, two for Thumb.
+At cold entry, a successful step reads the current instruction P and samples P+W and P+2W before instruction effects.
+During sequential execution, the current and next instructions come from retained results; only P+2W is newly sampled.
 Success advances the buffer. CPU/DMA stores and host writes do not replace already buffered instructions.
 The existing r15 convention is unchanged: it stores the next executing address, not the hardware fetch address.
 
-A successful branch or PC-writing refill into ARM samples target T and T+4 after instruction effects.
+A successful branch or PC-writing refill samples target T and T+W after instruction effects, using the resulting instruction state.
 This includes taken branches, BX, PC loads, status-restoring returns, and software interrupts.
 PC writes refill even when the destination equals fallthrough. Untaken conditional branches retain sequential buffering.
-The first target instruction samples T+8 before execution. Thumb-to-ARM transitions also capture the ARM target pair.
-Leaving ARM discards its buffer. Thumb still fetches directly and uses its separate bus-history snapshots.
+The first target instruction samples T+2W before execution. State transitions replace the buffer with the destination pair.
+Thumb BL's prefix advances sequentially; only its suffix refills. Ordinary Thumb PC writes preserve Thumb state.
+The buffer records both expected PC and instruction state. A state mismatch cannot reinterpret retained ARM words as Thumb halfwords.
 
 Machine IRQ entry captures the ARM vector pair before any handler instruction runs.
 `Cpu::enter_exception` and `Cpu::take_interrupt` have no memory parameter: they invalidate the buffer and leave vector sampling to the next step.
@@ -101,14 +103,14 @@ A failed instruction preserves all CPU state, including the old buffer; its spec
 A successful branch discards abandoned-path errors and replaces them with target fetch results.
 
 CPU clones and equality include the buffer. Architectural state checks are separate from full-state rollback checks in tests.
-`Cpu::invalidate_pipeline()` explicitly discards buffered words without changing registers, flags, or device clocks.
+`Cpu::invalidate_pipeline()` explicitly discards buffered instructions without changing registers, flags, or device clocks.
 Use it after debugger code repair or when attaching different memory to a retained CPU.
 Do not call it for ordinary CPU/DMA stores: that would hide self-modifying-code behavior.
 
 This is instruction buffering, not a complete timed fetch pipeline.
 Samples add no nominal data accesses or device cycles. Existing refill costs and one-shot DMA resume costs remain unchanged.
-Thumb buffering, fetch-driven bus history, exact refill costs, per-access device updates, and DMA arbitration remain incomplete.
-See [the evidence, diagnostic policy, and tests](../research/arm-instruction-buffer.md).
+Fetch-driven bus history, exact refill costs, per-access device updates, and DMA arbitration remain incomplete.
+See the [ARM evidence and diagnostic policy](../research/arm-instruction-buffer.md) and [Thumb extension](../research/thumb-instruction-buffer.md).
 
 ## ARM unused-memory data reads
 
@@ -137,8 +139,8 @@ Limits remain explicit:
   [DMA channel data](dma.md#retained-channel-data) is separate and never overrides a CPU snapshot.
 - Missing BIOS, truncated ROM, unsupported I/O, and save-memory accesses retain their existing diagnostics.
 - Unused-memory writes remain diagnostics rather than ignored hardware writes. Swaps cannot silently discard their write.
-- ARM instruction buffering is persistent, but these data snapshots remain a separate bounded model.
-  Thumb IWRAM refills sample their target pair without buffering Thumb instructions.
+- ARM/Thumb instruction buffering is persistent, but these data snapshots remain a separate bounded model.
+  Thumb IWRAM bus-history samples do not share storage with retained instructions.
   DMA updates existing IWRAM continuation lanes at instruction boundaries, not during CPU accesses.
 
 This subset lets public ARM test 362 complete. That test does not assert the loaded data value.
@@ -220,13 +222,13 @@ Stack and block-load returns finish their data accesses before the target sample
 Failed instructions do not sample a target or replace committed history.
 
 Snapshots use strict mapped reads and add no nominal data or device cycles.
-They update bus history only; the interpreter does not cache these instructions for execution.
+They update bus history only; a separate CPU buffer retains the target instructions for execution.
 Host inspection does not change captured lanes. A failed target fetch remains a later instruction diagnostic.
 Cold direct startup, unsupported target states/regions, and region-crossing lookahead still have no inferred refill history.
 DMA between refill and arrival updates this continuation's actual IWRAM access lanes before the target+4 sample.
 
 The [refill evidence and scope](../research/iwram-bus-history.md#thumb-iwram-refill-extension) distinguish these samples from a full pipeline.
-ARM-target refill history, sub-instruction DMA ordering, self-modifying instruction execution, and exact refill timing remain incomplete.
+ARM-target refill history, sub-instruction DMA ordering, and exact refill timing remain incomplete.
 
 ### DMA effects on Thumb IWRAM continuations
 
@@ -273,7 +275,7 @@ In User/System modes, they perform ordinary test/compare flag updates without a 
 Invalid saved modes still produce an atomic diagnostic. Failed conditions do not restore or validate status.
 Nominal timing remains one sequential code access, plus an internal cycle for register-specified shifts; there is no refill cost.
 This fixes the mode-switch expectation in public `jsmolka/gba-tests` ARM test 234 and agrees with mGBA's shared ALU flag handling.
-ARM instruction buffering is discarded on a state change without an ordinary refill.
+Instruction buffering is discarded on a state change without an ordinary refill.
 Instruction-state-changing compare forms and exact pipeline behavior remain hardware-unverified.
 
 Other S-bit block transfers access User registers while using the current mode's base register.

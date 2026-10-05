@@ -133,7 +133,7 @@ fn known_history_supports_widths_sign_extension_and_unaligned_loads_in_all_modes
                     expected.registers[6] = value;
                     expected.registers[15] += 2;
                     cpu.step(&mut bus).unwrap();
-                    assert_eq!(cpu, expected);
+                    assert_cpu_arch_eq!(cpu, expected);
                 }
             }
         }
@@ -284,6 +284,7 @@ fn failed_steps_discard_prefetch_history_before_retry() {
             assert!(cpu.step_timed(&mut bus).is_err());
             assert_eq!(cpu, before);
             bus.write16(pc + 2, PROBE).unwrap();
+            cpu.invalidate_pipeline(); // Debugger repair leaves separate bus history intact.
             cpu.step(&mut bus).unwrap();
             assert_eq!(
                 cpu.registers[6],

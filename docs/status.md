@@ -27,7 +27,7 @@ Update this file when a feature lands or a limit is removed.
 - `KEYCNT` selection and OR/AND matching, keypad IRQ latching, and HALT wake-up through IE bit 12.
 - Original ARM graphics demo that uses DMA, BIOS VBlank waiting, and a ROM-side IRQ callback.
 - Sixteen active 32-bit CPU registers, with ARM7 mode-specific register banks.
-- Persistent ARM instruction buffering, sequential fetch retention, branch/vector target pairs, and deferred fetch diagnostics.
+- Persistent ARM/Thumb instruction buffering, sequential fetch retention, branch/vector target pairs, and deferred fetch diagnostics.
 - User, System, Supervisor, IRQ, FIQ, Abort, and Undefined modes.
 - Current and saved program status registers (`CPSR`/`SPSR`), with `MRS`/`MSR` transfers.
 - ARM/Thumb software interrupts (`SWI`), exception vectors, and status-restoring returns.
@@ -141,8 +141,8 @@ Cold or invalidated IWRAM history remains diagnostic until all lanes are known.
 Refills into Thumb IWRAM establish new target-pair history after the instruction succeeds.
 Accepted machine IRQs, unsupported refills, and other execution states/regions invalidate continuation history.
 Successful DMA updates existing Thumb IWRAM continuation lanes for actual IWRAM accesses, before the resumed PC+4 sample.
-ARM instruction buffering now retains sequential words and refill target pairs, independently of these bus snapshots.
-Thumb buffering, complete ARM bus history, exact region-crossing bus behavior, general DMA handoff, and unused/write-only I/O open bus remain incomplete.
+ARM/Thumb instruction buffering retains sequential instructions and refill target pairs, independently of these bus snapshots.
+Complete ARM bus history, exact region-crossing bus behavior, general DMA handoff, and unused/write-only I/O open bus remain incomplete.
 [DMA channel data latches](hardware/dma.md#retained-channel-data) support blocked-source reuse, but never replace CPU bus history.
 BIOS protection uses separate retained BIOS fetch snapshots as described in [BIOS behavior](hardware/bios.md#cpu-bios-read-protection).
 Host inspection and instruction fetches remain strict. Other unmapped reads return errors.
@@ -153,7 +153,7 @@ Writes to cartridge addresses return errors instead of modeling cartridge hardwa
 
 ## Next steps
 
-1. Extend persistent ARM instruction buffering to Thumb, then connect fetches to bus history with independent per-access tests.
+1. Connect ARM/Thumb instruction fetches to bus history with independent per-access tests.
    General DMA open-bus reads and sub-instruction arbitration remain separate from retained channel data and local IWRAM lanes.
    Keep unknown history diagnostic until fetch ordering and latch ownership have independent coverage.
    Validate BIOS snapshots with independent hardware tests before claiming exact refill or data-access history.

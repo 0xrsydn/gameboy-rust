@@ -208,7 +208,7 @@ fn swi_and_machine_irq_refill_arm_vectors_before_handler_execution() {
                 StepKind::Instruction
             }
         );
-        assert!(machine.cpu().arm_pipeline.is_some()); // Entry itself captured the ARM vector pair.
+        assert!(machine.cpu().pipeline.is_some()); // Entry itself captured the ARM vector pair.
         machine.step().unwrap(); // Vector BX refills target pair.
         machine.memory_mut().write32(TARGET, NEW).unwrap();
         machine.step().unwrap();
@@ -244,21 +244,21 @@ fn explicit_exception_and_pc_discontinuity_discard_the_old_execution_sequence() 
     cpu.step(&mut bus).unwrap();
     assert_eq!(cpu.registers[0], 2);
     cpu.enter_exception(Exception::Irq);
-    assert!(cpu.arm_pipeline.is_none()); // This API has no Memory to sample.
+    assert!(cpu.pipeline.is_none()); // This API has no Memory to sample.
     let before = cpu.clone();
     assert!(cpu.step(&mut bus).is_err()); // Missing BIOS remains a strict error.
     assert_eq!(cpu, before);
 }
 
 #[test]
-fn leaving_arm_discards_its_buffer_and_returning_refills_from_current_memory() {
+fn state_changes_replace_the_buffer_and_returning_refills_from_current_memory() {
     let (mut cpu, mut bus) = program(&[0xe12f_ff11, OLD, OLD]);
     bus.write16(TARGET, 0x4710).unwrap(); // Thumb BX r2.
     cpu.registers[1] = TARGET | 1;
     cpu.registers[2] = CODE + 4;
     cpu.step(&mut bus).unwrap();
     assert_eq!(cpu.instruction_set(), InstructionSet::Thumb);
-    assert!(cpu.arm_pipeline.is_none());
+    assert!(cpu.pipeline.is_some()); // BX captured the Thumb target pair.
     bus.write32(CODE + 4, NEW).unwrap();
     cpu.step(&mut bus).unwrap();
     bus.write32(CODE + 4, OLD).unwrap();

@@ -58,6 +58,8 @@ mod thumb_empty_tests;
 #[cfg(test)]
 mod thumb_open_bus_tests;
 #[cfg(test)]
+mod thumb_pipeline_tests;
+#[cfg(test)]
 mod thumb_tests;
 #[cfg(test)]
 mod timing_tests;
@@ -165,8 +167,8 @@ impl InstructionSet {
     }
 }
 
-/// ARM/Thumb interpreter with register banks, ARM instruction buffering, and nominal costs.
-/// Clone/equality include buffered fetch results. Thumb instruction buffering is not modeled.
+/// ARM/Thumb interpreter with register banks, instruction buffering, and nominal costs.
+/// Clone/equality include buffered fetch results and their instruction-set tag.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Cpu {
     registers: [u32; 16],
@@ -176,7 +178,7 @@ pub struct Cpu {
     irq_disabled: bool,
     fiq_disabled: bool,
     banks: status::Banks,
-    arm_pipeline: Option<pipeline::ArmPipeline>,
+    pipeline: Option<pipeline::Pipeline>,
 }
 
 impl Cpu {
@@ -193,7 +195,7 @@ impl Cpu {
             irq_disabled: false,
             fiq_disabled: false,
             banks: status::Banks::default(),
-            arm_pipeline: None,
+            pipeline: None,
         }
     }
 
@@ -237,6 +239,7 @@ impl Cpu {
         // Record the executing instruction, not an operand's pipelined PC value.
         // Always clear the access context, including on diagnostic errors.
         let pc = self.pc();
+        let instruction_set = self.instruction_set;
         let refill = self.instruction_refills(instruction);
         let sequential_thumb = self.instruction_set == InstructionSet::Thumb && !refill;
         memory.begin_cpu_access(pc, self.instruction_set);
@@ -248,13 +251,13 @@ impl Cpu {
         if result.is_ok() {
             if refill {
                 memory.refill_cpu_bus_history(self.pc(), self.instruction_set);
-                self.refill_arm_pipeline(memory);
+                self.refill_pipeline(memory);
             } else {
-                // Never carry an ARM buffer through a Thumb-state transition.
-                self.arm_pipeline = if self.instruction_set == InstructionSet::Arm
-                    && self.pc() == pc.wrapping_add(4)
+                // A state change without an ordinary refill starts a cold sequence.
+                self.pipeline = if self.instruction_set == instruction_set
+                    && self.pc() == pc.wrapping_add(instruction_set.width())
                 {
-                    continuation
+                    Some(continuation)
                 } else {
                     None
                 };

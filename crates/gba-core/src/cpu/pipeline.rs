@@ -1,62 +1,67 @@
-//! ARM instruction buffering only. Timing and bus ownership remain separate.
+//! ARM/Thumb instruction buffering. Timing and bus ownership remain separate.
 use super::{Cpu, CpuError, InstructionSet};
 use crate::memory::{Memory, MemoryError};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct ArmPipeline {
+pub(super) struct Pipeline {
     pc: u32,
+    instruction_set: InstructionSet,
     // Deferred strict-fetch results for the next execute and decode positions.
-    words: [Result<u32, MemoryError>; 2],
+    // Thumb halfwords are zero-extended; their upper bits are not another opcode.
+    instructions: [Result<u32, MemoryError>; 2],
 }
 
 pub(super) struct Fetched {
     pub instruction: u32,
-    pub continuation: Option<ArmPipeline>,
+    pub continuation: Pipeline,
 }
 
 impl Cpu {
     /// Discard buffered instructions after debugger code edits or rebinding memory.
     /// Ordinary CPU/DMA stores and host inspection must not call this automatically.
-    /// The next ARM step fills from its current PC without adding nominal cycles.
+    /// The next step fills from its current PC/state without adding nominal cycles.
     pub fn invalidate_pipeline(&mut self) {
-        self.arm_pipeline = None;
+        self.pipeline = None;
     }
 
     pub(super) fn fetch(&self, memory: &Memory) -> Result<Fetched, CpuError> {
-        if self.instruction_set == InstructionSet::Thumb {
-            return Ok(Fetched {
-                instruction: u32::from(memory.read16(self.pc())?),
-                continuation: None,
-            });
-        }
         let pc = self.pc();
-        let retained = self.arm_pipeline.as_ref().filter(|pipe| pipe.pc == pc);
+        let instruction_set = self.instruction_set;
+        let width = instruction_set.width();
+        let retained = self
+            .pipeline
+            .as_ref()
+            .filter(|pipe| pipe.pc == pc && pipe.instruction_set == instruction_set);
         let instruction = match retained {
-            Some(pipe) => pipe.words[0].clone(),
-            None => memory.fetch_arm_word(pc),
+            Some(pipe) => pipe.instructions[0].clone(),
+            None => memory.fetch_instruction(pc, instruction_set),
         }?;
         let decode = match retained {
-            Some(pipe) => pipe.words[1].clone(),
-            None => memory.fetch_arm_word(pc.wrapping_add(4)),
+            Some(pipe) => pipe.instructions[1].clone(),
+            None => memory.fetch_instruction(pc.wrapping_add(width), instruction_set),
         };
-        let fetched = memory.fetch_arm_word(pc.wrapping_add(8));
+        let fetched = memory.fetch_instruction(pc.wrapping_add(2 * width), instruction_set);
         Ok(Fetched {
             instruction,
-            continuation: Some(ArmPipeline {
-                pc: pc.wrapping_add(4),
-                words: [decode, fetched],
-            }),
+            continuation: Pipeline {
+                pc: pc.wrapping_add(width),
+                instruction_set,
+                instructions: [decode, fetched],
+            },
         })
     }
 
-    /// Capture target and target+4 after a successful refill, without early errors.
+    /// Capture the target pair using the resulting state, without early errors.
     /// Explicit exception entry without Memory leaves a cold buffer instead.
-    pub(crate) fn refill_arm_pipeline(&mut self, memory: &Memory) {
-        self.arm_pipeline = (self.instruction_set == InstructionSet::Arm).then(|| ArmPipeline {
-            pc: self.pc(),
-            words: [
-                memory.fetch_arm_word(self.pc()),
-                memory.fetch_arm_word(self.pc().wrapping_add(4)),
+    pub(crate) fn refill_pipeline(&mut self, memory: &Memory) {
+        let pc = self.pc();
+        let instruction_set = self.instruction_set;
+        self.pipeline = Some(Pipeline {
+            pc,
+            instruction_set,
+            instructions: [
+                memory.fetch_instruction(pc, instruction_set),
+                memory.fetch_instruction(pc.wrapping_add(instruction_set.width()), instruction_set),
             ],
         });
     }

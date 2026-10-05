@@ -134,7 +134,7 @@ fn refill_history_supports_normal_load_lanes_rotation_and_sign_extension() {
                 after.registers[6] = value;
                 after.registers[15] += 2;
                 cpu.step(&mut bus).unwrap();
-                assert_eq!(cpu, after);
+                assert_cpu_arch_eq!(cpu, after);
             }
         }
     }

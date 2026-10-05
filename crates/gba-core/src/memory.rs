@@ -69,7 +69,7 @@ struct CpuAccess {
 /// Successful refills into Thumb IWRAM sample the target pair to establish history.
 /// DMA accesses drive existing Thumb IWRAM continuation lanes before the next fetch.
 /// Channel data remains separate; general and sub-instruction CPU bus handoff is unmodeled.
-/// CPU-owned ARM instruction buffering does not yet drive complete bus history or timing.
+/// CPU-owned ARM/Thumb instruction buffering does not yet drive complete bus history or timing.
 pub struct Memory {
     external_ram: Vec<u8>,
     internal_ram: Vec<u8>,
@@ -408,13 +408,22 @@ impl Memory {
         ]))
     }
 
-    /// Strict ARM fetch without CPU data context, timing trace, or bus-history changes.
-    pub(crate) fn fetch_arm_word(&self, address: u32) -> Result<u32, MemoryError> {
-        if address & 3 != 0 {
+    /// Strict instruction fetch without data context, timing, or bus-history changes.
+    /// Thumb reads exactly two bytes, even on a region with a wider data-bus latch.
+    pub(crate) fn fetch_instruction(
+        &self,
+        address: u32,
+        state: InstructionSet,
+    ) -> Result<u32, MemoryError> {
+        let width = match state {
+            InstructionSet::Arm => 4,
+            InstructionSet::Thumb => 2,
+        };
+        if address & (width as u32 - 1) != 0 {
             return Err(MemoryError::Unaligned(address));
         }
         let mut bytes = [0; 4];
-        for (offset, byte) in bytes.iter_mut().enumerate() {
+        for (offset, byte) in bytes[..width].iter_mut().enumerate() {
             *byte = self.read_mapped_byte(address.wrapping_add(offset as u32))?;
         }
         Ok(u32::from_le_bytes(bytes))

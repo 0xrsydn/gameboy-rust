@@ -45,7 +45,7 @@ A completed DMA WAITCNT store changes the settings before CPU resume.
 ## Limits
 
 The timing model has no per-access fetch scheduling or DMA arbitration.
-The later [ARM instruction buffer](arm-instruction-buffer.md) retains instruction words but does not change these nominal costs.
+The later [ARM](arm-instruction-buffer.md) and [Thumb](thumb-instruction-buffer.md) instruction buffers retain instructions without changing these nominal costs.
 It charges the current instruction address, not a separately scheduled PC+4/PC+8 pipeline fetch.
 DMA still executes only between instructions, not between data accesses or during CPU internal cycles.
 

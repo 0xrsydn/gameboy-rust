@@ -66,8 +66,9 @@ fn empty_thumb_stores_use_pc_plus_six_for_all_bases_banks_and_alignments() {
                         } else {
                             cpu.step(&mut memory).unwrap();
                         }
-                        assert_eq!(
-                            cpu, after,
+                        assert_cpu_arch_eq!(
+                            cpu,
+                            after,
                             "{instruction:#06x} {mode:?} code={code_low} data={data_low}"
                         );
                         assert_eq!(memory.read32(DATA).unwrap(), pc + 6);

@@ -56,7 +56,7 @@ An accepted machine IRQ invalidates history. Failed DMA units preserve it.
 The DMA extension below updates existing continuation lanes from successful IWRAM accesses.
 
 This is not a full IWRAM bus model across all CPU states. ARM-target history and DMA-to-CPU ordering remain incomplete.
-It is not a persistent instruction pipeline. Self-modifying instruction execution and exact per-access device timing remain unverified.
+It is not a persistent instruction pipeline. Exact per-access device timing remains unverified.
 
 ## Thumb IWRAM refill extension
 
@@ -77,7 +77,7 @@ Unmapped instruction targets still fail on the following fetch.
 Cold direct startup and arbitrary PC changes do not manufacture a refill.
 
 These are bus-history samples, not instruction-buffer contents or extra emulated cycles.
-The interpreter still reads Thumb instructions when it executes them; ARM now has separate instruction buffering.
+ARM and Thumb execution now use a separate instruction buffer. Cold buffer filling does not seed this bus history.
 Changing T+2 after the branch does not replace its captured bus value; changing T+4 before arrival affects the later sample.
 Those original tests verify sample ordering, not hardware-accurate self-modifying instruction execution.
 
@@ -111,8 +111,8 @@ Only complete successful units commit history, preserving the project's atomic d
 Cold direct entry still has no expected continuation PC. DMA does not manufacture one, even after a word access.
 An existing partially known continuation can gain lanes. IRQ entry and CPU discontinuities retain their invalidation rules.
 General DMA open-bus reads, cross-state history, sub-instruction arbitration, and DMA during CPU internal cycles remain outside this subset.
-This extension does not fix self-modifying Thumb instruction-buffer behavior.
-The later [ARM instruction buffer](arm-instruction-buffer.md) separately retains ARM words across DMA.
+This extension models bus lanes, not self-modifying instruction execution.
+The later [ARM](arm-instruction-buffer.md) and [Thumb](thumb-instruction-buffer.md) instruction buffers separately retain instructions across DMA.
 
 No physical-hardware measurements or external emulator differential runs were performed.
 All regression programs are original, with a separate byte-array lane reference in the DMA matrix tests.
