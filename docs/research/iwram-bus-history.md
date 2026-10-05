@@ -48,14 +48,42 @@ Ordinary instructions and mapped data accesses can establish history without req
 Consecutive halfword fetches or an IWRAM word access can make every lane known.
 Missing lookahead and 16 MiB region-crossing fetches retain diagnostics.
 
-Successful branches and other refill instructions invalidate continuation history, even when the target equals the next sequential address.
-The existing Thumb timing classifier identifies these refills for both timed and untimed CPU stepping.
-Execution outside Thumb IWRAM also ends this bounded history sequence.
-An accepted machine IRQ and each successful DMA unit invalidate the history. Failed DMA units preserve it.
-The implementation does not guess refill or DMA latch contents.
+The initial sequential-only implementation invalidated history after all refill instructions.
+The extension below now establishes target-pair history for successful refills into Thumb IWRAM.
+The existing ARM/Thumb timing classifiers identify these refills for both timed and untimed CPU stepping.
+Execution outside Thumb IWRAM still ends a sequential history sequence.
+An accepted machine IRQ and each successful DMA unit invalidate history. Failed DMA units preserve it.
+The implementation does not guess DMA latch contents.
 
-This is not a full IWRAM bus model across all CPU states. ARM access history, refill fetches, and DMA-to-CPU ordering remain incomplete.
+This is not a full IWRAM bus model across all CPU states. ARM-target history and DMA-to-CPU ordering remain incomplete.
 It is not a persistent instruction pipeline. Self-modifying instruction execution and exact per-access device timing remain unverified.
+
+## Thumb IWRAM refill extension
+
+The [ARM7TDMI branch sequence](https://support.arm.com/documentation/ddi0029/g/instruction-cycle-timings/branch-and-branch-with-link) fetches the destination, then destination plus instruction width.
+For Thumb destinations, those addresses are T and T+2.
+[NanoBoyAdvance's refill helpers](https://github.com/nba-emu/NanoBoyAdvance/blob/55b5cf0ae3d929582ac5bfd486558173502b8354/src/nba/src/arm/arm7tdmi.hh) use that order.
+Its execution loop then fetches T+4 before executing the first Thumb instruction.
+
+After a successful refill instruction, we sample the two mapped destination halfwords if both remain in Thumb IWRAM.
+The samples replace the old lane history and establish the next expected PC as T.
+The next instruction's normal PC+4 sample updates one lane while the other retains the captured T+2 halfword.
+The samples occur after data accesses and status restoration, so loaded PC values and saved Thumb state select the destination.
+
+This covers actual ARM/Thumb BX, taken Thumb branches, BL suffixes, PC-writing Thumb operations, and ARM status-restoring returns.
+The Thumb BL prefix alone does not refill.
+Failed instructions retain the previous committed history. An unsupported or incomplete target sample does not fail the branch early.
+Unmapped instruction targets still fail on the following fetch.
+Cold direct startup and arbitrary PC changes do not manufacture a refill.
+
+These are bus-history samples, not instruction-buffer contents or extra emulated cycles.
+The interpreter still reads instructions when it executes them.
+Changing T+2 after the branch does not replace its captured bus value; changing T+4 before arrival affects the later sample.
+Those original tests verify sample ordering, not hardware-accurate self-modifying instruction execution.
+
+Successful DMA still invalidates history, including between refill and arrival.
+ARM-target refill history, exact pipeline timing, and DMA-to-CPU ordering remain outside this extension.
+No external emulator differential run or physical-hardware test was performed.
 
 ## Original regression coverage
 
@@ -66,11 +94,14 @@ It is not a persistent instruction pipeline. Self-modifying instruction executio
 - Multiple-register transfers, final-word retention, and writeback.
 - Unknown lanes, establishment of known history, staged-access rollback, and retry.
 - Taken and untaken branches, PC writes to fallthrough, discontinuities, IRQ entry, and DMA success/failure.
+- ARM/Thumb source regions, both target alignments, refill sample ordering, stack/block returns, and saved User/System banks.
+- Actual SWI/IRQ return handlers, failed refills, unmapped targets, separate BIOS history, and DMA between refill and arrival.
 - Equal timed/untimed CPU results and unchanged nominal data/device costs.
 
 ## Validation result
 
 The sequential-history regressions reproduced the old unsupported-read failures before implementation.
+The refill regressions also failed on the prior invalidation-only path, then passed with target-pair sampling.
 Workspace and core/demo tests pass on Darwin arm64 in debug and release builds.
 Formatting, lint checks, rustdoc, preparation tests, native ROM windows, and graphics smoke modes also pass.
 Public ARM, Thumb, memory, and BIOS reports match their previous passing results exactly.

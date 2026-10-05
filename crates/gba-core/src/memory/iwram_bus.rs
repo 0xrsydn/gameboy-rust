@@ -1,5 +1,5 @@
-//! Transactional lane history for consecutive Thumb instructions in IWRAM.
-//! Unknown startup/refill/DMA history is not replaced with current memory bytes.
+//! Transactional lane history for Thumb IWRAM execution and target-pair refills.
+//! Unknown startup/DMA history is not replaced with guessed memory bytes.
 use std::cell::Cell;
 
 use crate::timing::AccessWidth;
@@ -85,6 +85,20 @@ impl IwramBus {
                 None
             };
         }
+    }
+
+    pub(super) fn refill(&mut self, pc: u32, fetched: [u16; 2]) {
+        debug_assert!(self.pending.get().is_none());
+        debug_assert_eq!(pc & 1, 0);
+        let mut lanes = Lanes::default();
+        for (index, half) in fetched.into_iter().enumerate() {
+            lanes.drive(
+                pc + index as u32 * 2,
+                AccessWidth::Halfword,
+                u32::from(half),
+            );
+        }
+        self.committed = Some(History { next_pc: pc, lanes });
     }
 
     pub(super) fn invalidate(&mut self) {

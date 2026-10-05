@@ -72,7 +72,10 @@ Short-ROM tests require only the fetched halfword in 16-bit regions. Cold IWRAM 
 Sequential IWRAM regressions check retained lanes across fetches, reads, writes, mirrors, and physical RAM wrap.
 They cover raw bus values before load rotation/sign extension, all modes, block transfers, and isolation from other memory regions.
 Known-bit tests reject incomplete words. Transaction tests verify discarded partial updates and preserved history after errors.
-Control-flow tests distinguish taken/untaken branches and invalidate PC writes even when the target equals fallthrough.
+Control-flow tests distinguish taken/untaken branches and refill Thumb IWRAM targets even when the target equals fallthrough.
+Refill tests cover ARM/Thumb BX, Thumb branches and BL, high-register PC writes, stack/block PC loads, and saved-state returns.
+They check both target alignments, mirrors/wrap, captured target+2 versus later target+4, widths, sign extension, and rotation.
+Original SWI/IRQ handlers verify return-time history. Failed returns, cold entry, region boundaries, DMA invalidation, and BIOS isolation retain checks.
 DMA and IRQ tests check conservative invalidation; timed/untimed tests verify CPU results and nominal clock costs.
 Host/fetch isolation, separate BIOS history, unsupported stores/data regions, nominal device progression, and DMA diagnostics also have checks.
 The pinned public ARM ROM now reaches its completion checkpoint with r12 = 0 in debug and release builds.
@@ -233,7 +236,7 @@ They cover all processor modes, load widths, lanes, rotation, both Thumb code al
 They verify direct reads while executing inside BIOS, re-entry, SWI/IRQ returns, host-inspection isolation, and original-boot provenance.
 Thumb tests cover sequential snapshots, instruction-state transitions, SWI entry, and RAM-backed POP exits.
 Unknown history, last valid fetch words, missing lookahead, and diagnostic-step retention have explicit checks.
-Unknown Thumb IWRAM history remains diagnostic. Separate tests cover known sequential history, general Thumb snapshots, and retained BIOS history.
+Unknown Thumb IWRAM history remains diagnostic. Separate tests cover sequential/refill history, general Thumb snapshots, and retained BIOS history.
 Protected loads keep normal nominal costs and advance devices only through machine stepping.
 Firmware readback regressions separately verify documented boot, SoftReset, returning SWI, IRQ callback, and IRQ return words.
 They execute ARM/Thumb loads across widths and lanes, check caller state, and trace actual exits to their image data.

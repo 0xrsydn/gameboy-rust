@@ -1,5 +1,5 @@
 //! Nominal ARM7 instruction-cycle summaries, separate from instruction semantics.
-//! Data costs come from actual bus accesses. No speculative pipeline reads occur.
+//! Data costs come from actual bus accesses. Bus-history samples are separate from timing calculations.
 //! PC writes use target-region code costs, following GBATEK's cycle summary.
 
 use super::{Cpu, CpuError, InstructionSet};
@@ -151,8 +151,11 @@ impl Cpu {
 
     // Share the existing control-flow classification with bounded bus history.
     // A PC write can refill even when its target equals the sequential address.
-    pub(super) fn thumb_refills(&self, instruction: u32) -> bool {
-        self.thumb_summary(instruction).refill
+    pub(super) fn instruction_refills(&self, instruction: u32) -> bool {
+        match self.instruction_set {
+            InstructionSet::Arm => self.arm_summary(instruction).refill,
+            InstructionSet::Thumb => self.thumb_summary(instruction).refill,
+        }
     }
 
     fn thumb_summary(&self, instruction: u32) -> Summary {

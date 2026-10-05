@@ -24,6 +24,8 @@ mod instruction_tests;
 #[cfg(test)]
 mod iwram_open_bus_tests;
 #[cfg(test)]
+mod iwram_refill_tests;
+#[cfg(test)]
 mod load_alias_tests;
 #[cfg(test)]
 mod open_bus_tests;
@@ -211,14 +213,17 @@ impl Cpu {
         // Record the executing instruction, not an operand's pipelined PC value.
         // Always clear the access context, including on diagnostic errors.
         let pc = self.pc();
-        let sequential_thumb =
-            self.instruction_set == InstructionSet::Thumb && !self.thumb_refills(instruction);
+        let refill = self.instruction_refills(instruction);
+        let sequential_thumb = self.instruction_set == InstructionSet::Thumb && !refill;
         memory.begin_cpu_access(pc, self.instruction_set);
         let result = self.execute_instruction(instruction, memory);
         let sequential = sequential_thumb
             && self.instruction_set == InstructionSet::Thumb
             && self.pc() == pc.wrapping_add(2);
         memory.end_cpu_access(result.is_ok(), sequential);
+        if result.is_ok() && refill {
+            memory.refill_cpu_bus_history(self.pc(), self.instruction_set);
+        }
         result
     }
 

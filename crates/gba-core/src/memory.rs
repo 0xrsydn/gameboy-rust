@@ -66,7 +66,8 @@ struct CpuAccess {
 /// Unused-memory reads use ARM PC+8 or supported region-dependent Thumb snapshots.
 /// Protected BIOS reads separately retain the snapshot from BIOS execution.
 /// Sequential Thumb IWRAM accesses retain addressed bus lanes transactionally.
-/// Refill history, a full fetch pipeline, and DMA bus latches are not modeled.
+/// Successful refills into Thumb IWRAM sample the target pair to establish history.
+/// A full fetch pipeline, ARM-target refill history, and DMA bus latches are not modeled.
 pub struct Memory {
     external_ram: Vec<u8>,
     internal_ram: Vec<u8>,
@@ -396,6 +397,24 @@ impl Memory {
                 // Commit only successful instruction snapshots under our diagnostic policy.
                 // Missing lookahead invalidates history rather than exposing stale bytes.
                 self.bios_prefetch = access.prefetch;
+            }
+        }
+    }
+
+    /// Sample only the two target fetches of a completed refill into Thumb IWRAM.
+    /// This updates bus history, not the CPU's instruction buffer or nominal costs.
+    /// Incomplete or unsupported refills stay unknown without failing the branch early.
+    pub(crate) fn refill_cpu_bus_history(&mut self, pc: u32, instruction_set: InstructionSet) {
+        self.iwram_bus.invalidate();
+        if instruction_set == InstructionSet::Thumb
+            && pc >> 24 == 3
+            && pc.wrapping_add(2) >> 24 == 3
+        {
+            if let (Some(first), Some(second)) = (
+                self.snapshot_mapped_halfword(pc),
+                self.snapshot_mapped_halfword(pc + 2),
+            ) {
+                self.iwram_bus.refill(pc, [first, second]);
             }
         }
     }

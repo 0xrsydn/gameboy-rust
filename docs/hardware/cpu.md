@@ -102,7 +102,7 @@ Limits remain explicit:
 - Unused/write-only I/O reads, DMA latches, and disabled-RAM reads are not modeled here.
 - Missing BIOS, truncated ROM, unsupported I/O, and save-memory accesses retain their existing diagnostics.
 - Unused-memory writes remain diagnostics rather than ignored hardware writes. Swaps cannot silently discard their write.
-- There is no persistent instruction pipeline. Sequential Thumb IWRAM history does not model refills or DMA-to-CPU bus transitions.
+- There is no persistent instruction pipeline. Thumb IWRAM refills sample their target pair, but DMA-to-CPU transitions remain unmodeled.
 
 This subset lets public ARM test 362 complete. That test does not assert the loaded data value.
 Original regressions check the values separately. See [the public ARM result](../public-arm-tests.md).
@@ -162,11 +162,33 @@ Success commits history only for the next sequential Thumb IWRAM PC. Failure pre
 Block-transfer data accesses stage updates in order; unused-memory reads still use one entry snapshot per instruction.
 This preserves the existing atomic diagnostic policy without adding bus or device cycles.
 
-Taken branches and PC-writing refills invalidate continuation history, even when their target is the fallthrough address.
+Taken branches and PC-writing refills end the old continuation history, even when their target is the fallthrough address.
+A successful refill into Thumb IWRAM establishes new history from its target pair, as described below.
 Untaken conditional branches keep sequential history.
-Other instruction states/regions, accepted machine IRQs, and successful DMA units end the supported history sequence.
-Failed DMA units leave history unchanged. Discontinuous entry starts unknown instead of borrowing stale lanes.
-Refill fetches, ARM-to-Thumb history, and DMA latch contents remain unmodeled.
+Other execution states/regions, accepted machine IRQs, and successful DMA units invalidate continuation history.
+A later exception return into Thumb IWRAM can establish new history through its refill.
+Failed DMA units leave history unchanged. Discontinuous entry without an executed refill starts unknown.
+
+### Thumb IWRAM refill history
+
+After a successful refill instruction, the emulator uses the resulting PC and instruction state.
+If the destination is Thumb IWRAM, it samples two halfwords in order: target T, then T+2.
+Both accesses must remain in IWRAM. Normal physical RAM mirrors apply.
+These samples establish both word lanes for execution at T. The first instruction then samples T+4 as usual.
+
+This applies to ARM/Thumb BX, taken Thumb branches, BL suffixes, Thumb PC writes, and ARM status-restoring returns.
+Saved Thumb state, not the target's low bit alone, controls exception-return sampling.
+Stack and block-load returns finish their data accesses before the target samples.
+Failed instructions do not sample a target or replace committed history.
+
+Snapshots use strict mapped reads and add no nominal data or device cycles.
+They update bus history only; the interpreter does not cache these instructions for execution.
+Host inspection does not change captured lanes. A failed target fetch remains a later instruction diagnostic.
+Cold direct startup, unsupported target states/regions, and region-crossing lookahead still have no inferred refill history.
+DMA between refill and arrival still invalidates this history rather than supplying a guessed DMA value.
+
+The [refill evidence and scope](../research/iwram-bus-history.md#thumb-iwram-refill-extension) distinguish these samples from a full pipeline.
+ARM-target refill history, DMA ordering, self-modifying instruction execution, and exact refill timing remain incomplete.
 
 ## Processor status and exceptions
 
@@ -246,7 +268,8 @@ Important timing limits:
 - Code S/N counts follow instruction summaries, not a simulated fetch pipeline.
 - Ordinary code costs use the current instruction address. The ARM open-bus PC+8 snapshot has no fetch timing or startup pipeline fill.
 - PC writes use destination-region costs and the restored instruction width for nominal refill accesses.
-- Refill cost calculation does not read target bytes. An invalid branch target fails on the following instruction fetch.
+- Refill cost calculation does not read target bytes. Separate Thumb IWRAM target-pair samples update bus history without extra cycles.
+- Target-pair sampling cannot fail the branch early. An invalid branch target still fails on the following instruction fetch.
 - Game Pak prefetch is not implemented. WAITCNT bit 14 is stored but does not accelerate execution.
 - PHI and SRAM wait fields are stored; PHI output and SRAM mapping are not implemented.
 - External work RAM timing is fixed. The undocumented memory-control register is not implemented.

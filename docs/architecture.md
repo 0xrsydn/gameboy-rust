@@ -31,7 +31,8 @@ The repository is a Cargo workspace with three crates:
 | `crates/gba-core/src/cpu/thumb_bios_access_tests.rs` | Thumb BIOS aligned-word snapshots, transitions, load lanes, boundaries, diagnostics, and nominal timing |
 | `crates/gba-core/src/cpu/thumb_open_bus_tests.rs` | Region-dependent Thumb open bus, mirrors, widths, transfers, source boundaries, isolation, and nominal timing |
 | `crates/gba-core/src/cpu/iwram_open_bus_tests.rs` | Sequential IWRAM lane history, access widths, isolation, errors, refills, IRQ/DMA invalidation, and nominal timing |
-| `crates/gba-core/src/memory/iwram_bus.rs` | Transactional known-lane history for sequential Thumb IWRAM execution |
+| `crates/gba-core/src/cpu/iwram_refill_tests.rs` | Thumb IWRAM target-pair refills, state changes, exception returns, boundaries, isolation, and nominal costs |
+| `crates/gba-core/src/memory/iwram_bus.rs` | Transactional known-lane history for Thumb IWRAM execution and target-pair refills |
 | `crates/gba-core/src/cpu/compare_psr_tests.rs` | Original Rd=15 test/compare status restoration, flags, bank, and timing regressions |
 | `crates/gba-core/src/cpu/status_tests.rs`, `crates/gba-core/src/cpu/exception_tests.rs` | Status, banking, exception, and return tests |
 | `crates/gba-core/src/cpu/thumb_tests.rs` | Thumb instructions, state switching, and decoder checks |

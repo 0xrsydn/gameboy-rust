@@ -295,7 +295,7 @@ fn failed_steps_discard_prefetch_history_before_retry() {
 }
 
 #[test]
-fn taken_control_flow_invalidates_history_even_when_target_is_fallthrough() {
+fn taken_control_flow_refills_history_even_when_target_is_fallthrough() {
     for branch in [0x4720, 0xe7ff, 0x46a7, 0xd0ff, 0xbd00] {
         // BX, B, MOV pc, BEQ, POP pc.
         let (mut cpu, mut bus) = program(CODE, &[SEED, branch, PROBE, 0x5566, 0x99aa]);
@@ -306,12 +306,8 @@ fn taken_control_flow_invalidates_history_even_when_target_is_fallthrough() {
         cpu.step(&mut bus).unwrap();
         cpu.step(&mut bus).unwrap();
         assert_eq!(cpu.pc(), CODE + 4);
-        let before = cpu.clone();
-        assert_eq!(
-            cpu.step(&mut bus),
-            Err(CpuError::Memory(MemoryError::Unmapped(UNUSED)))
-        );
-        assert_eq!(cpu, before);
+        cpu.step(&mut bus).unwrap();
+        assert_eq!(cpu.registers[6], 0x5566_99aa);
     }
     let (mut cpu, mut bus) = program(CODE, &[SEED, 0xd0ff, PROBE, 0x5566, 0x99aa]);
     cpu.flags.zero = false; // Untaken BEQ has no refill.
