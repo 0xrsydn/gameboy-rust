@@ -45,7 +45,8 @@ pub fn boot(rom: Vec<u8>) -> Result<Machine, MemoryError> {
 }
 
 /// Build a deterministic 16 KiB image from original ARM instructions and a
-/// mathematically generated sine table. No Nintendo firmware bytes are included.
+/// mathematically generated sine table. Documented protected-read compatibility
+/// words are explicit exit data; no Nintendo firmware routines are included.
 /// SWIs use bits 16–23 of the ARM immediate, or the Thumb immediate byte.
 /// Services support User/System callers. Returning services preserve caller status
 /// and registers other than each arithmetic service's documented outputs.
@@ -90,6 +91,7 @@ pub fn image() -> Vec<u8> {
     a.emit(0xe5c1_0000); // STRB r0,[r1]
     a.emit(0xe321_f01f); // MSR CPSR_c,#System
     a.literal(15, ROM_START); // LDR pc,=ROM_START
+    a.prefetch_tail(0xe129_f000); // Boot / SoftReset protected-read word.
 
     a.label("irq");
     a.emit(0xe92d_500f); // STMDB sp!,{r0-r3,r12,lr}
@@ -103,7 +105,10 @@ pub fn image() -> Vec<u8> {
     a.emit(0xe1a0_e00f); // MOV lr,pc (return after BX)
     a.emit(0xe12f_ff11); // BX r1
     a.emit(0xe8bd_500f); // LDMIA sp!,{r0-r3,r12,lr}
+
+    // This instruction is also the callback branch's PC+8 readback word.
     a.emit(0xe25e_f004); // SUBS pc,lr,#4
+    a.prefetch_tail(0xe55e_c002); // IRQ return protected-read word.
 
     a.label("swi");
     a.emit(0xe92d_500f); // STMDB sp!,{r0-r3,r12,lr}
@@ -268,6 +273,7 @@ pub fn image() -> Vec<u8> {
     a.emit(0xe169_f003); // MSR SPSR_fc,r3
     a.emit(0xe8bd_500f); // LDMIA sp!,{r0-r3,r12,lr}
     a.emit(0xe1b0_f00e); // MOVS pc,lr
+    a.prefetch_tail(0xe3a0_2004); // SWI return protected-read word.
     a.label("unsupported");
     a.emit(UNSUPPORTED_TRAP);
     a.label("invalid_argument");
@@ -329,6 +335,14 @@ struct ArmImage {
 impl ArmImage {
     fn emit(&mut self, instruction: u32) {
         self.code.push(instruction);
+    }
+
+    /// Place only after a non-fallthrough exit. Neither word is executed.
+    /// The normal ARM PC+8 snapshot exposes this documented compatibility data.
+    /// Keep the bus image-derived, including for caller-supplied BIOS images.
+    fn prefetch_tail(&mut self, value: u32) {
+        self.emit(UNSUPPORTED_TRAP); // PC+4: diagnose accidental fallthrough.
+        self.emit(value); // PC+8: retained BIOS word after the exit.
     }
 
     fn label(&mut self, name: &'static str) {
@@ -414,6 +428,32 @@ mod image_tests {
                 0xe59f_1000,
                 0xe12f_ff1e,
                 0x5566_7788
+            ]
+        );
+    }
+
+    #[test]
+    fn prefetch_tail_keeps_branch_and_literal_fixups_outside_compatibility_data() {
+        let mut a = ArmImage::default();
+        a.literal(0, 0x1122_3344);
+        a.branch(14, "after_tail");
+        a.prefetch_tail(0xe129_f000);
+        a.label("after_tail");
+        a.emit(0xe12f_ff1e); // BX lr
+        let image = a.finish(BIOS_SIZE);
+        let actual: Vec<_> = image[..24]
+            .chunks_exact(4)
+            .map(|bytes| u32::from_le_bytes(bytes.try_into().unwrap()))
+            .collect();
+        assert_eq!(
+            actual,
+            [
+                0xe59f_000c, // Literal at 20, relative to PC+8.
+                0xea00_0001, // Branch at 4 skips both tail words to 16.
+                UNSUPPORTED_TRAP,
+                0xe129_f000,
+                0xe12f_ff1e,
+                0x1122_3344,
             ]
         );
     }

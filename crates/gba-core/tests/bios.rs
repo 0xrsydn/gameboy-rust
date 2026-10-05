@@ -28,6 +28,8 @@ mod huffman;
 mod lz77;
 #[path = "bios/ram_reset.rs"]
 mod ram_reset;
+#[path = "bios/readback.rs"]
+mod readback;
 #[path = "bios/reset.rs"]
 mod reset;
 #[path = "bios/run_length.rs"]

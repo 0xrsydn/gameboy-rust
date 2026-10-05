@@ -125,6 +125,7 @@ The repository is a Cargo workspace with three crates:
 | `crates/gba-core/tests/bios/stop.rs` | ARM/Thumb Stop calls, caller preservation, keypad wake, and stopped frame running |
 | `crates/gba-core/tests/halt.rs` | HALT wake masks, idle timing, BIOS-only power writes, DMA progress, and validation |
 | `crates/gba-core/tests/bios.rs` | ARM/Thumb service calls, copy/fill boundaries, wait races, callback contracts, and boot |
+| `crates/gba-core/tests/bios/readback.rs` | Image-derived boot/reset/SWI/IRQ compatibility words, load lanes, caller state, and supplied-image isolation |
 | `crates/gba-core/tests/bios/ram_reset.rs` | Selective RAM boundaries, flag combinations, I/O reset, display rendering, DMA/timer latches, and diagnostics |
 | `crates/gba-core/tests/bios/reset.rs` | All restart flags, exact RAM boundaries, CPU banks, restart execution, device continuity, and IRQ masking |
 | `crates/gba-core/tests/bios/arithmetic.rs` | Arithmetic boundaries, wide-integer references, status restoration, and zero-division diagnostics |

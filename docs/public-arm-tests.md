@@ -112,7 +112,8 @@ See the bounded [ARM open-bus implementation](hardware/cpu.md#arm-unused-memory-
 This is a passing result for this pinned ARM ROM, not proof of complete instruction, memory, or timing compatibility.
 The [pinned public Thumb ROM](public-thumb-tests.md) also passes its verified checkpoint.
 The [pinned public memory ROM](public-memory-tests.md) passes its limited mirror and video-byte checks.
-No public timing, BIOS, graphics, save, or unsafe suite has been claimed as passing.
+The [public BIOS read-protection ROM](public-bios-tests.md) has a separate bounded passing result.
+No public timing, graphics, save, or unsafe suite has been claimed as passing.
 These results do not establish Pokémon Emerald compatibility.
 
 ## References

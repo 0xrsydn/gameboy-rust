@@ -81,7 +81,8 @@ Adjacent halfwords must remain unchanged. Ignored stores still pay their nominal
 Halfword and word stores still modify object video RAM and object attribute memory.
 These are implementation regressions based on documented rules, not new hardware measurements.
 
-No public BIOS, timing, graphics, save, or unsafe suite is claimed as passing.
+The [public BIOS read-protection ROM](public-bios-tests.md) has a separate bounded passing result.
+No public timing, graphics, save, or unsafe suite is claimed as passing.
 Pokémon Emerald compatibility remains unverified.
 
 ## References

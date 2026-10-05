@@ -52,7 +52,7 @@ Additional tests cover DMA/IRQ accounting, HALT/STOP, diagnostic state, case iso
 These original tests validate the runner. The [public ARM adapter](public-arm-tests.md) provides a separate passing checkpoint result for its pinned ROM.
 The [public Thumb adapter](public-thumb-tests.md) uses a separate lock and r7 assertion after its return to ARM state.
 The [public memory adapter](public-memory-tests.md) uses its own lock and an ARM-state r12 checkpoint.
-The [public BIOS adapter](public-bios-tests.md) also uses an ARM-state r12 checkpoint, but currently reports test 1 as failed.
+The [public BIOS adapter](public-bios-tests.md) also passes its ARM-state r12 checkpoint in debug and release builds.
 Preparation tests use only synthetic original bytes and no network:
 
 ```sh
@@ -76,7 +76,7 @@ Separate original CPU tests check exact video-byte results across supported mode
 They require unchanged nonzero sentinels for ignored writes and unchanged adjacent halfwords for duplicated writes.
 They also check forced blank, full source-value preservation, CPU halfword readback, nominal data costs, and device progress.
 Halfword/word stores remain writable in object regions. No emulator behavior change was needed for these tests.
-These results do not establish public timing, graphics, BIOS, save, or commercial-game compatibility.
+These results do not establish full BIOS, timing, graphics, save, or commercial-game compatibility.
 
 ROM-runner tests use temporary files containing original instructions, without Nintendo assets or a desktop session.
 They check file-size boundaries, bounded reads, short reads, I/O errors, paths, symlinks, and read-only loading.
@@ -223,7 +223,11 @@ Original BIOS-access regressions check retained ARM PC+8 data for ARM/Thumb call
 They verify direct reads while executing inside BIOS, re-entry, SWI/IRQ returns, host-inspection isolation, and original-boot provenance.
 Unknown history, Thumb BIOS execution, missing lookahead, and diagnostic-step retention have explicit checks.
 Protected loads keep normal nominal costs and advance devices only through machine stepping.
-The pinned public BIOS ROM remains a failed assertion, not a conformance pass.
+Firmware readback regressions separately verify documented boot, SoftReset, returning SWI, IRQ callback, and IRQ return words.
+They execute ARM/Thumb loads across widths and lanes, check caller state, and trace actual exits to their image data.
+Interrupt waits replace callback readback with SWI readback on return. Builder tests check branch/literal relocation around exit data.
+A modified original image verifies that the bus retains supplied data rather than forcing compatibility constants.
+The pinned public BIOS ROM passes unchanged; this is a bounded protected-read result, not complete BIOS conformance.
 Display tests cover color conversion, framebuffer bounds, cursor movement, pause behavior, and animation wraparound.
 Input regression tests check focused arrow keys, focused Space presses, and ignored input when unfocused.
 Command-line tests cover mode selection and invalid arguments.

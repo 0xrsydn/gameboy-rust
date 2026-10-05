@@ -67,9 +67,9 @@ Update this file when a feature lands or a limit is removed.
 - ROM windows with scanline capture, keyboard input, focus-loss release, bounded execution slices, and interactive keypad wake from STOP.
 - Optional ROM-window frame limits and an original input-test ROM generator.
 - Headless JSON ROM suites with per-case checkpoints, register/CPSR/memory assertions, bounded budgets, and structured failure reports.
-- Hash-pinned preparation of public `jsmolka/gba-tests` ARM, Thumb, and memory ROMs, with verified result-register checkpoints.
+- Hash-pinned preparation of public `jsmolka/gba-tests` ARM, Thumb, memory, and BIOS ROMs, with verified result-register checkpoints.
 - These pinned ROMs pass their checkpoints on Darwin arm64 in debug and release builds; coverage limits remain documented.
-- A pinned public BIOS read-protection ROM has a verified checkpoint and an explicit failing baseline with the original BIOS.
+- The original BIOS exposes documented boot, SoftReset, SWI, and IRQ protected-read words through its actual exit layout.
 - ARM test/compare Rd=15 status restoration, without a PC result write or nominal refill.
 - ARM unused-memory data reads return a PC+8 word snapshot, with normal byte lanes and load rotation.
 - Little-endian byte, halfword, and word reads/writes.
@@ -96,7 +96,7 @@ The ARMv4T high-register format requires at least one high register; low-to-low 
 `LDRT`/`STRT` single-transfer variants and invalid register combinations return errors.
 CPU BIOS reads are protected by the executing address using a bounded ARM prefetch snapshot.
 Thumb BIOS execution and missing lookahead invalidate that history; protected reads with unknown history remain diagnostics.
-This is not a full fetch pipeline, and the original BIOS does not reproduce Nintendo's opcode-specific retained values.
+This is not a full fetch pipeline. The original BIOS reproduces documented boundary readback words, not all firmware side effects.
 Multiply flags N/Z are implemented. Unspecified multiply C/V outputs are preserved deterministically, not hardware-verified.
 Instruction and memory errors are development diagnostics, not emulated CPU exceptions.
 Block transfers validate all accesses before committing register, RAM, or I/O changes.
@@ -122,7 +122,8 @@ The [ROM suite runner](rom-tests.md) has original regressions and a [pinned publ
 The pinned public ARM ROM passes its result checkpoint in debug and release builds.
 The [pinned public Thumb ROM](public-thumb-tests.md) also passes after correcting its empty-list store PC value.
 The [pinned public memory ROM](public-memory-tests.md) passes without a core change; its video-byte assertions have documented limits.
-The [pinned BIOS read-protection ROM](public-bios-tests.md) fails test 1; it expects Nintendo firmware opcode values.
+The [pinned BIOS read-protection ROM](public-bios-tests.md) passes after correcting the replacement firmware's exit layout.
+The bus still derives retained words from the actual image; no test-specific override or ROM patch is used.
 Other public suites remain unverified. These results do not establish full CPU or memory compatibility.
 The runner requires known completion addresses and has no debug-port protocol, scripted input, or rendered-image assertions.
 
@@ -137,8 +138,8 @@ Writes to cartridge addresses return errors instead of modeling cartridge hardwa
 
 ## Next steps
 
-1. Extend BIOS prefetch history to Thumb execution and validate firmware-specific reads with a lawfully supplied BIOS.
-   The desktop runner still uses only the original BIOS. Do not force the public test to pass with guessed opcode constants.
+1. Extend BIOS prefetch history to Thumb execution and validate broader fetch-history behavior with independent tests.
+   The desktop runner still uses only the original BIOS. Keep protected reads image-derived for all supplied images.
    Extend general open-bus support with verified Thumb region/alignment rules and bus history.
 2. Refine nominal timing with a fetch pipeline, Game Pak prefetch, per-access device updates, and verified timer/IRQ delays.
 3. Validate keypad retrigger behavior with hardware tests and add remaining device registers; extend BIOS reset coverage as sound/serial support becomes available.

@@ -40,6 +40,7 @@ pub(super) fn emit(a: &mut ArmImage) {
     // IME, IE, IF, devices, or unrelated CPU banks. IRQ stays masked throughout.
     a.emit(0xe329_f09f); // MSR CPSR_fc,#System|I
     a.emit(0xe12f_ff1e); // BX lr (ARM target, no return through erased SWI frame)
+    a.prefetch_tail(0xe129_f000); // Same protected-read word as cold boot.
 
     emit_ram_reset(a);
 }

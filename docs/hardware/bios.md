@@ -1,9 +1,9 @@
 # BIOS replacement
 
-The original, Nintendo-free BIOS image built by `crates/gba-core/src/bios/` and the services it implements.
+The original BIOS replacement built by `crates/gba-core/src/bios/` and the services it implements.
 
 `crates/gba-core/src/bios.rs` builds a deterministic 16 KiB image from original ARM instructions and mathematically generated data.
-No Nintendo firmware bytes are included.
+No Nintendo firmware routines or dumped image are included. Documented protected-read words are explicit compatibility data.
 A compile-time integer calculation generates the 512-byte sine table at `0x3e00..0x3fff`.
 The image builder checks that code and literal pools do not overlap this table.
 Literal pools follow unconditional branches and stay within each load instruction's address range.
@@ -108,8 +108,21 @@ The current interpreter implements a bounded ARM prefetch model:
 
 The initial history is unknown. Direct cartridge startup with `Cpu::new` does not manufacture boot prefetch data.
 Use BIOS execution, such as `bios::boot`, to establish supported history.
-All retained words come from the supplied image. No Nintendo opcode constants are substituted.
-The original replacement's boot and return paths therefore produce different values from Nintendo firmware.
+All retained words come from the supplied image. The bus never substitutes a firmware-specific constant.
+Our generated image places documented compatibility data at PC+8 of its non-fallthrough exits:
+
+| Boundary | Retained word |
+| --- | --- |
+| Boot and SoftReset | `0xe129f000` |
+| SWI return | `0xe3a02004` |
+| IRQ callback entry | `0xe25ef004` |
+| IRQ return | `0xe55ec002` |
+
+Boot, SoftReset, SWI return, and IRQ return skip a diagnostic trap at PC+4 and the data word at PC+8.
+The callback branch instead has the real `SUBS pc,lr,#4` return instruction at PC+8.
+Builder fixups preserve this layout without adding executed instructions or host-side service hooks.
+Other supplied BIOS images retain their own values; their data is not rewritten.
+See the [root-cause research](../research/bios-readback.md) for evidence and the firmware-versus-bus distinction.
 
 Host/debug reads and ROM-suite memory assertions still inspect raw mapped bytes and do not initialize or change the history.
 Instruction fetches remain strict mapped reads outside the CPU data-access context.
@@ -118,7 +131,8 @@ Missing BIOS images remain unmapped. The unused-memory ARM open-bus snapshot is 
 
 This models neither a persistent fetch pipeline nor exact bus history across Thumb BIOS code and DMA.
 Original regressions cover synthetic images, boot, exception returns, access widths, alignment, modes, and diagnostics.
-The [public BIOS ROM](../public-bios-tests.md) still fails its firmware-specific test 1; this feature is not a public BIOS pass.
+The [public BIOS ROM](../public-bios-tests.md) passes its unchanged protected-read assertions in debug and release builds.
+This result covers these firmware boundaries, not full BIOS service compatibility.
 
 ## Stop
 

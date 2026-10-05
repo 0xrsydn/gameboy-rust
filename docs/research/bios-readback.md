@@ -2,12 +2,12 @@
 
 ## Finding
 
-The remaining public BIOS failure comes from the replacement firmware's exit layout, not its protected-load byte lanes.
-The memory bus correctly returns the replacement image's retained ARM PC+8 word.
-That word differs from the documented value left by the standard GBA firmware.
+The public BIOS failure came from the replacement firmware's exit layout, not its protected-load byte lanes.
+The memory bus correctly returned the replacement image's retained ARM PC+8 word.
+Before the layout fix, that word differed from the documented value left by the standard GBA firmware.
 Matching the bus mechanism alone does not make replacement firmware's observable outputs compatible.
 
-At the initial failing checkpoint:
+Before the firmware-layout fix, at the initial failing checkpoint:
 
 - The unmodified public ROM expects `0xe129f000` after boot.
 - Our replacement's final boot instruction is at `0x60`; its PC+8 word at `0x68` is `0xe59f1320`.
@@ -67,6 +67,22 @@ Keep that executed return instruction in place and test the layout invariant sep
 This corrects the earlier overly broad claim that reproducing any documented opcode value would merely force a test pass.
 Arbitrarily overriding a read to satisfy an assertion would be wrong.
 Reproducing documented firmware boundary outputs for all callers is a legitimate compatibility feature, provided its scope is explicit.
+
+## Implemented result
+
+`ArmImage::prefetch_tail` adds skipped compatibility data after boot, SoftReset, SWI return, and IRQ return.
+The change adds 32 image bytes without adding normally executed instructions.
+The callback path retains its actual `SUBS pc,lr,#4` at the branch's PC+8.
+No CPU or memory-bus implementation changed.
+
+Original regressions in `crates/gba-core/tests/bios/readback.rs` reproduced the boundary failures before the fix.
+They now pass for ARM/Thumb callers, load lanes and widths, User/System state, both reset targets, and interrupt waits.
+A supplied-image variant keeps its own changed word, proving that no compatibility constant overrides image data.
+Builder regressions verify branch and literal relocation around the skipped data.
+
+The [unchanged public BIOS ROM](../public-bios-tests.md) passes in debug and release on Darwin arm64.
+It reaches its checkpoint with r12 = 0 and one IRQ entry. Public ARM, Thumb, and memory results remain passing.
+Workspace tests, preparation tests, lint checks, rustdoc, native ROM windows, and graphics smoke tests also pass.
 
 ## Validation requirements and limits
 

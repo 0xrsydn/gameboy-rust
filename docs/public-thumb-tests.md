@@ -82,7 +82,8 @@ Existing empty-list expectations that incorrectly required PC+4 were corrected; 
 See [CPU transfer semantics](hardware/cpu.md#instruction-demo-and-execution-rules).
 This proves only the pinned suites' checkpoints and assertions, not complete CPU, bus, or timing compatibility.
 The [pinned public memory ROM](public-memory-tests.md) also passes, with documented video-byte coverage limits.
-No public timing, BIOS, graphics, save, or unsafe suite is claimed as passing.
+The [public BIOS read-protection ROM](public-bios-tests.md) has a separate bounded passing result.
+No public timing, graphics, save, or unsafe suite is claimed as passing.
 These results do not establish Pokémon Emerald compatibility.
 
 ## References

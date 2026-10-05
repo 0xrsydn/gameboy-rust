@@ -1,7 +1,7 @@
 # Pinned public BIOS read-protection test
 
 The headless runner executes the unmodified BIOS test ROM from [jsmolka/gba-tests](https://github.com/jsmolka/gba-tests).
-It currently fails test 1 on Darwin arm64 in debug and release builds.
+It passes its unchanged protected-read assertions on Darwin arm64 in debug and release builds.
 This ROM tests protected BIOS reads against Nintendo firmware opcode values, not the complete BIOS service set.
 Our runner uses the original replacement BIOS. It neither supplies nor loads Nintendo firmware.
 
@@ -25,7 +25,7 @@ direnv exec . python3 tools/prepare_gba_tests.py /tmp/gba-public-bios-offline --
 ```
 
 ARM remains the default suite. The Thumb and memory selections remain unchanged.
-Preparation is not a passing result. The BIOS run currently exits nonzero and writes a failed assertion report.
+Preparation is not a passing result. A successful BIOS run exits zero and reports `r12 == 0` at the verified checkpoint.
 
 ## Provenance and checkpoint
 
@@ -51,6 +51,8 @@ Timeouts, diagnostics, STOP, and nonzero r12 remain failures under the [normal r
 
 ## Observed result on Darwin arm64
 
+### Historical failures
+
 Before BIOS read protection:
 
 - Both builds reach `eval` after 64 successful steps and 543 nominal cycles.
@@ -68,12 +70,27 @@ After the bounded ARM BIOS read-protection implementation:
 - The test still expects `0xe129f000`. No assertion, checkpoint, ROM byte, or returned constant was changed to force a pass.
 - Tests 2–4 remain unreached. Their SWI and IRQ cases have not passed independently.
 
-The initial failure exposed both a missing bus-protection rule and a firmware-specific expectation.
-The supported protection subset now derives data from the actual supplied image.
-The original BIOS has a different layout, so its retained prefetch data differs from Nintendo firmware.
-See [CPU BIOS read protection and its limits](hardware/bios.md#cpu-bios-read-protection).
-No public BIOS pass is claimed. The ARM, Thumb, and memory suites remain separate passing results.
-Exact fetch-pipeline behavior and full BIOS compatibility remain unverified.
+### Current passing result
+
+After correcting the replacement firmware's exit layout:
+
+- Both builds reach `eval` at `0x08000248` after 17,606 successful steps and 197,456 nominal cycles.
+- The CPU is in System/ARM state, with CPSR `0x6000001f` and r12 = 0.
+- The report says `reason: checkpoint`, with no emulator diagnostic and one IRQ entry.
+- Boot, returning Sqrt, external IRQ callback, and IRQ return checks all execute and pass.
+- The ROM, checkpoint, r12 assertion, and step budget remain unchanged.
+- Debug and release reports match exactly for the same fixture path.
+
+The initial failure exposed both a missing bus-protection rule and a firmware layout difference.
+The protected-read bus still derives its retained word from the actual supplied image.
+Our generated firmware now places documented compatibility words at its exit instructions' PC+8 locations.
+These words are skipped data, not copied firmware routines. No bus override or ROM-specific condition was added.
+The IRQ callback uses its existing real return instruction as the readback word.
+See the [root-cause research](research/bios-readback.md) and [CPU BIOS read-protection limits](hardware/bios.md#cpu-bios-read-protection).
+
+The ARM, Thumb, and memory suites remain separate passing results.
+This BIOS result covers boundary readback values, not complete BIOS services, exact fetch history, or commercial-game compatibility.
+Thumb BIOS execution, full pipeline behavior, and exact firmware timing remain unverified.
 
 ## References
 
