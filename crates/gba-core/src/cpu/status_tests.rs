@@ -190,6 +190,6 @@ fn conditional_status_transfers_do_not_execute_when_condition_fails() {
         let mut expected = cpu.clone();
         expected.registers[15] += 4;
         cpu.step(&mut program(instruction)).unwrap();
-        assert_eq!(cpu, expected);
+        assert_cpu_arch_eq!(cpu, expected);
     }
 }

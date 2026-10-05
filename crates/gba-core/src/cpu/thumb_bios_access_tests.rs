@@ -80,7 +80,11 @@ fn thumb_exit_retains_both_word_lanes_for_each_code_alignment_and_load_width() {
                         after.registers[1] = value;
                         after.registers[15] += if target_thumb { 2 } else { 4 };
                         let timing = cpu.step_timed(&mut memory).unwrap();
-                        assert_eq!(cpu, after, "pc={pc:#x} lane={lane} thumb={target_thumb}");
+                        assert_cpu_arch_eq!(
+                            cpu,
+                            after,
+                            "pc={pc:#x} lane={lane} thumb={target_thumb}"
+                        );
                         assert_eq!(timing.data_cycles, 1);
                         assert_eq!(timing.internal_cycles, 1);
                         assert_eq!(memory.cycles(), 0);

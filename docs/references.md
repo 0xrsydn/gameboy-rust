@@ -147,6 +147,14 @@ DMA resume-timing research:
 See [non-sequential CPU resume](research/dma-resume-timing.md) for the nominal subset and unmodeled refill/prefetch details.
 The public test was reviewed, not executed. No hardware timing pass is claimed.
 
+ARM instruction-buffer research:
+
+- [ARM7TDMI instruction pipeline](https://developer.arm.com/documentation/dvi0027/b/arm7tdmi/instruction-pipeline) and [technical reference manual](https://documentation-service.arm.com/static/5e8e1323fd977155116a3129), for fetch/decode/execute stages and the visible ARM PC offset.
+- The pinned NanoBoyAdvance ARM7TDMI `Run` and `ReloadPipeline32` helpers above, for retained words, pre-execution fetching, and target-pair refill order.
+- The ARM branch cycle sequence above, for target and target+instruction-width fetches.
+
+See [persistent ARM instruction buffering](research/arm-instruction-buffer.md). Instruction retention is implemented; per-access timing and Thumb buffering remain incomplete.
+
 Use [GBATEK](https://problemkaputt.de/gbatek.htm) and ARM7TDMI documentation for further hardware work.
 Only use game ROMs that you may lawfully use. Do not commit game ROMs, BIOS files, or game assets.
 The ignore file excludes `roms/`, common game ROM extensions, and save files.

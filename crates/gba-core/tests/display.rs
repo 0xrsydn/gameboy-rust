@@ -444,6 +444,11 @@ fn frame_runner_limits_and_cpu_errors_preserve_completed_progress_only() {
         machine.run_until_vblank(10),
         Err(FrameRunError::Cpu(_))
     ));
-    assert_eq!(machine.memory().display_position(), position);
-    assert_eq!(machine.cycles(), 6);
+    // The already buffered branch executes once and refills from the patched word.
+    // The unsupported instruction then fails without further device progress.
+    assert_eq!(
+        machine.memory().display_position().line_cycle,
+        position.line_cycle + 3
+    );
+    assert_eq!(machine.cycles(), 9);
 }

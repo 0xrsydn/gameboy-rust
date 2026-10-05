@@ -50,7 +50,8 @@ impl Cpu {
     /// this does not advance device time or sample interrupts. Machine does that.
     /// Failed instructions discard their timing trace and retain existing diagnostics.
     pub fn step_timed(&mut self, memory: &mut Memory) -> Result<StepTiming, CpuError> {
-        let instruction = self.fetch(memory)?;
+        let fetched = self.fetch(memory)?;
+        let instruction = fetched.instruction;
         let summary = match self.instruction_set {
             InstructionSet::Arm => self.arm_summary(instruction),
             InstructionSet::Thumb => self.thumb_summary(instruction),
@@ -61,7 +62,7 @@ impl Cpu {
         let waitcnt = memory.waitcnt();
         let code_kind = memory.cpu_code_kind(summary.code_kind);
         memory.begin_data_timing();
-        let result = self.execute_fetched(instruction, memory);
+        let result = self.execute_fetched(fetched, memory);
         let data_cycles = memory.end_data_timing();
         result?;
         let code_cycles = if summary.refill {

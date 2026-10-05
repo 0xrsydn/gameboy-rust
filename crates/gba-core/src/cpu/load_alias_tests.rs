@@ -99,7 +99,7 @@ fn load_aliases_keep_loaded_values_for_all_widths_offsets_and_index_modes() {
                         after.registers[0] = expected(kind, low);
                         after.registers[15] += 4;
                         let timing = cpu.step_timed(&mut bus).unwrap();
-                        assert_eq!(cpu, after, "{kind:?} {index:?} up={up} register_offset={register_offset} low={low}");
+                        assert_cpu_arch_eq!(cpu, after, "{kind:?} {index:?} up={up} register_offset={register_offset} low={low}");
                         assert_eq!(bus.read32(RAM).unwrap(), DATA);
                         assert_eq!(bus.cycles(), 0);
                         assert_eq!(
@@ -152,7 +152,7 @@ fn load_aliases_modify_only_the_active_register_in_every_cpu_bank() {
                     register as u32,
                 )))
                 .unwrap();
-                assert_eq!(cpu, after, "{kind:?} {mode:?} r{register}");
+                assert_cpu_arch_eq!(cpu, after, "{kind:?} {mode:?} r{register}");
             }
         }
     }
@@ -263,7 +263,7 @@ fn skipped_alias_loads_do_not_access_memory_or_apply_writeback() {
             let mut after = cpu.clone();
             after.registers[15] += 4;
             let timing = cpu.step_timed(&mut bus).unwrap();
-            assert_eq!(cpu, after);
+            assert_cpu_arch_eq!(cpu, after);
             assert_eq!(timing.data_cycles, 0);
             assert_eq!(timing.internal_cycles, 0);
         }

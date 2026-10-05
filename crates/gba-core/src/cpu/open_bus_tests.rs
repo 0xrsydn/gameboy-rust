@@ -38,7 +38,7 @@ fn arm_unused_ranges_return_pc_plus_eight_not_address_mirrors() {
         expected.registers[1] = DATA;
         expected.registers[15] += 4;
         cpu.step(&mut bus).unwrap();
-        assert_eq!(cpu, expected, "{address:#010x}");
+        assert_cpu_arch_eq!(cpu, expected, "{address:#010x}");
         // Inspection outside CPU execution remains strict, including every lane.
         for low in 0..4 {
             assert_eq!(
@@ -73,7 +73,7 @@ fn open_bus_loads_select_lanes_rotate_and_sign_extend_normally() {
             expected.registers[1] = value;
             expected.registers[15] += 4;
             let timing = cpu.step_timed(&mut bus).unwrap();
-            assert_eq!(cpu, expected, "{instruction:#010x}, lane {low}");
+            assert_cpu_arch_eq!(cpu, expected, "{instruction:#010x}, lane {low}");
             assert_eq!(timing.data_cycles, 1);
             assert_eq!(timing.internal_cycles, 1);
             assert_eq!(timing.code_cycles, 8); // ROM boundary; no extra lookahead cost

@@ -77,7 +77,7 @@ Unmapped instruction targets still fail on the following fetch.
 Cold direct startup and arbitrary PC changes do not manufacture a refill.
 
 These are bus-history samples, not instruction-buffer contents or extra emulated cycles.
-The interpreter still reads instructions when it executes them.
+The interpreter still reads Thumb instructions when it executes them; ARM now has separate instruction buffering.
 Changing T+2 after the branch does not replace its captured bus value; changing T+4 before arrival affects the later sample.
 Those original tests verify sample ordering, not hardware-accurate self-modifying instruction execution.
 
@@ -111,7 +111,8 @@ Only complete successful units commit history, preserving the project's atomic d
 Cold direct entry still has no expected continuation PC. DMA does not manufacture one, even after a word access.
 An existing partially known continuation can gain lanes. IRQ entry and CPU discontinuities retain their invalidation rules.
 General DMA open-bus reads, cross-state history, sub-instruction arbitration, and DMA during CPU internal cycles remain outside this subset.
-The interpreter still fetches instructions directly; this extension does not fix self-modifying instruction-buffer behavior.
+This extension does not fix self-modifying Thumb instruction-buffer behavior.
+The later [ARM instruction buffer](arm-instruction-buffer.md) separately retains ARM words across DMA.
 
 No physical-hardware measurements or external emulator differential runs were performed.
 All regression programs are original, with a separate byte-array lane reference in the DMA matrix tests.

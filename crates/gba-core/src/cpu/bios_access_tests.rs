@@ -78,8 +78,9 @@ fn protected_bios_loads_use_latched_lanes_for_arm_and_thumb_callers() {
                     expected.registers[1] = value;
                     expected.registers[15] += if is_thumb { 2 } else { 4 };
                     let timing = cpu.step_timed(&mut memory).unwrap();
-                    assert_eq!(
-                        cpu, expected,
+                    assert_cpu_arch_eq!(
+                        cpu,
+                        expected,
                         "arm={arm:#010x} thumb={is_thumb} address={address:#x} lane={low}"
                     );
                     assert_eq!(timing.data_cycles, 1);

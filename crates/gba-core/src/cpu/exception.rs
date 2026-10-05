@@ -29,6 +29,7 @@ impl Cpu {
     /// For IRQ/FIQ, PC must identify the next instruction, between CPU steps.
     /// This does not execute a BIOS service or fetch the vector instruction.
     pub fn enter_exception(&mut self, exception: Exception) {
+        self.invalidate_pipeline();
         let (mode, vector, offset) = match exception {
             Exception::UndefinedInstruction => {
                 (Mode::Undefined, 0x04, self.instruction_set.width())

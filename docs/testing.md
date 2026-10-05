@@ -80,6 +80,12 @@ DMA tests compare source/destination lane updates against a byte-array reference
 They cover channel preemption, blocked sources, failures, mirrors, partial/cold continuations, and other-region snapshot isolation.
 IRQ and PC-discontinuity tests retain conservative invalidation; timed/untimed tests verify CPU results and nominal clock costs.
 Host/fetch isolation, separate BIOS history, unsupported stores/data regions, nominal device progression, and DMA diagnostics also have checks.
+ARM instruction-buffer tests verify retained P+4/P+8 words across CPU stores, DMA transfers, and host writes.
+They cover refill target pairs, PC writes to fallthrough, conditional branches, ARM/Thumb transitions, exception entry/return, and deferred fetch errors.
+Full CPU equality checks buffer rollback and cloning. Successful instruction-semantic tests compare architectural state separately.
+Explicit invalidation tests cover debugger repair. Timed/untimed tests verify equal buffers without added nominal cycles.
+The display-runner error test allows an already buffered branch to complete before the patched unsupported word executes.
+See [ARM instruction buffering](research/arm-instruction-buffer.md) for scope and remaining timing limits.
 The pinned public ARM ROM now reaches its completion checkpoint with r12 = 0 in debug and release builds.
 The pinned public Thumb ROM also reaches its ARM-state checkpoint with r7 = 0 in both builds.
 Empty-list Thumb regressions cover PC+6, all low bases and processor modes, banked stacks, both code alignments, and unaligned data.

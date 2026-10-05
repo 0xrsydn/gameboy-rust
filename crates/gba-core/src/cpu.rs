@@ -2,9 +2,23 @@ use std::{error::Error, fmt};
 
 use crate::memory::{Memory, MemoryError};
 
+// Semantic tests compare architectural state after successful instructions.
+// Error/rollback tests keep full Cpu equality, including buffered fetch results.
+#[cfg(test)]
+macro_rules! assert_cpu_arch_eq {
+    ($actual:expr, $expected:expr $(, $($message:tt)+)?) => {{
+        let mut actual = $actual.clone();
+        let mut expected = $expected.clone();
+        actual.invalidate_pipeline();
+        expected.invalidate_pipeline();
+        assert_eq!(actual, expected $(, $($message)+)?);
+    }};
+}
+
 mod alu;
 mod arm;
 mod exception;
+mod pipeline;
 mod status;
 mod thumb;
 mod timing;
@@ -13,6 +27,8 @@ pub use exception::Exception;
 pub use status::Mode;
 mod transfer;
 
+#[cfg(test)]
+mod arm_pipeline_tests;
 #[cfg(test)]
 mod bios_access_tests;
 #[cfg(test)]
@@ -149,7 +165,8 @@ impl InstructionSet {
     }
 }
 
-/// ARM/Thumb interpreter with register banks and optional nominal cycle costs.
+/// ARM/Thumb interpreter with register banks, ARM instruction buffering, and nominal costs.
+/// Clone/equality include buffered fetch results. Thumb instruction buffering is not modeled.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Cpu {
     registers: [u32; 16],
@@ -159,6 +176,7 @@ pub struct Cpu {
     irq_disabled: bool,
     fiq_disabled: bool,
     banks: status::Banks,
+    arm_pipeline: Option<pipeline::ArmPipeline>,
 }
 
 impl Cpu {
@@ -175,6 +193,7 @@ impl Cpu {
             irq_disabled: false,
             fiq_disabled: false,
             banks: status::Banks::default(),
+            arm_pipeline: None,
         }
     }
 
@@ -206,14 +225,15 @@ impl Cpu {
         self.execute_fetched(instruction, memory)
     }
 
-    fn fetch(&self, memory: &Memory) -> Result<u32, CpuError> {
-        Ok(match self.instruction_set {
-            InstructionSet::Arm => memory.read32(self.pc())?,
-            InstructionSet::Thumb => u32::from(memory.read16(self.pc())?),
-        })
-    }
-
-    fn execute_fetched(&mut self, instruction: u32, memory: &mut Memory) -> Result<(), CpuError> {
+    fn execute_fetched(
+        &mut self,
+        fetched: pipeline::Fetched,
+        memory: &mut Memory,
+    ) -> Result<(), CpuError> {
+        let pipeline::Fetched {
+            instruction,
+            continuation,
+        } = fetched;
         // Record the executing instruction, not an operand's pipelined PC value.
         // Always clear the access context, including on diagnostic errors.
         let pc = self.pc();
@@ -225,8 +245,20 @@ impl Cpu {
             && self.instruction_set == InstructionSet::Thumb
             && self.pc() == pc.wrapping_add(2);
         memory.end_cpu_access(result.is_ok(), sequential);
-        if result.is_ok() && refill {
-            memory.refill_cpu_bus_history(self.pc(), self.instruction_set);
+        if result.is_ok() {
+            if refill {
+                memory.refill_cpu_bus_history(self.pc(), self.instruction_set);
+                self.refill_arm_pipeline(memory);
+            } else {
+                // Never carry an ARM buffer through a Thumb-state transition.
+                self.arm_pipeline = if self.instruction_set == InstructionSet::Arm
+                    && self.pc() == pc.wrapping_add(4)
+                {
+                    continuation
+                } else {
+                    None
+                };
+            }
         }
         result
     }

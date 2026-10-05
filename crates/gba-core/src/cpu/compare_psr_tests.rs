@@ -129,7 +129,7 @@ fn failed_conditions_do_not_restore_status_or_validate_spsr() {
         expected.registers[15] += 4;
         cpu.step(&mut memory(instruction(opcode, 1) & 0x0fff_ffff))
             .unwrap(); // EQ
-        assert_eq!(cpu, expected);
+        assert_cpu_arch_eq!(cpu, expected);
     }
 }
 

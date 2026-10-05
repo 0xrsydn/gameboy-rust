@@ -90,7 +90,7 @@ fn conditional_swi_can_be_skipped_without_entering_supervisor() {
     let mut expected = cpu.clone();
     expected.registers[15] += 4;
     cpu.step(&mut program(0x0fff_ffff)).unwrap();
-    assert_eq!(cpu, expected);
+    assert_cpu_arch_eq!(cpu, expected);
 }
 
 #[test]

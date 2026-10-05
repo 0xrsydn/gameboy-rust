@@ -134,7 +134,8 @@ Missing BIOS images remain unmapped. The unused-memory ARM open-bus snapshot is 
 
 The Thumb rule follows documented BIOS bus lanes and a source comparison with NanoBoyAdvance.
 See [Thumb BIOS prefetch research](../research/thumb-bios-prefetch.md) for evidence, emulator differences, and test scope.
-This models neither a persistent fetch pipeline nor exact refill, BIOS data-access, or DMA bus history.
+This BIOS readback model remains separate from the CPU's ARM instruction buffer.
+It does not model exact refill, BIOS data-access, or DMA bus history.
 The boundary diagnostic policy and precise bus timing remain hardware-unverified.
 Original regressions cover synthetic images, boot, exception returns, access widths, alignment, modes, and diagnostics.
 The [public BIOS ROM](../public-bios-tests.md) passes its unchanged protected-read assertions in debug and release builds.

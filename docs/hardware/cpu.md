@@ -76,6 +76,40 @@ These forms retain nominal single-word access costs and the existing atomic-erro
 With writeback enabled, `STM` stores the old base only when that register is first in the list.
 Otherwise, `STM` stores the updated base.
 
+## ARM instruction buffering
+
+ARM execution retains fetched instructions in a CPU-owned buffer, independent of later RAM contents.
+At cold entry, a successful step reads the current word P and samples P+4 and P+8 before instruction effects.
+During sequential execution, the current and next words come from retained results; only P+8 is newly sampled.
+Success advances the buffer. CPU/DMA stores and host writes do not replace already buffered instructions.
+The existing r15 convention is unchanged: it stores the next executing address, not the hardware fetch address.
+
+A successful branch or PC-writing refill into ARM samples target T and T+4 after instruction effects.
+This includes taken branches, BX, PC loads, status-restoring returns, and software interrupts.
+PC writes refill even when the destination equals fallthrough. Untaken conditional branches retain sequential buffering.
+The first target instruction samples T+8 before execution. Thumb-to-ARM transitions also capture the ARM target pair.
+Leaving ARM discards its buffer. Thumb still fetches directly and uses its separate bus-history snapshots.
+
+Machine IRQ entry captures the ARM vector pair before any handler instruction runs.
+`Cpu::enter_exception` and `Cpu::take_interrupt` have no memory parameter: they invalidate the buffer and leave vector sampling to the next step.
+An unexpected PC discontinuity starts from current mapped bytes rather than reusing a mismatched buffer.
+
+Fetch samples use strict mapped reads, without protected-data or unused-memory fallback.
+Unavailable lookahead is retained as a deferred diagnostic; it cannot fail an otherwise valid current instruction or branch.
+A buffered fetch error fails only if execution reaches that slot. No automatic hardware abort is generated.
+A failed instruction preserves all CPU state, including the old buffer; its speculative advance is discarded.
+A successful branch discards abandoned-path errors and replaces them with target fetch results.
+
+CPU clones and equality include the buffer. Architectural state checks are separate from full-state rollback checks in tests.
+`Cpu::invalidate_pipeline()` explicitly discards buffered words without changing registers, flags, or device clocks.
+Use it after debugger code repair or when attaching different memory to a retained CPU.
+Do not call it for ordinary CPU/DMA stores: that would hide self-modifying-code behavior.
+
+This is instruction buffering, not a complete timed fetch pipeline.
+Samples add no nominal data accesses or device cycles. Existing refill costs and one-shot DMA resume costs remain unchanged.
+Thumb buffering, fetch-driven bus history, exact refill costs, per-access device updates, and DMA arbitration remain incomplete.
+See [the evidence, diagnostic policy, and tests](../research/arm-instruction-buffer.md).
+
 ## ARM unused-memory data reads
 
 During ARM execution, data reads from `0x00004000..0x01ffffff` and `0x10000000..0xffffffff` return an open-bus value.
@@ -103,7 +137,8 @@ Limits remain explicit:
   [DMA channel data](dma.md#retained-channel-data) is separate and never overrides a CPU snapshot.
 - Missing BIOS, truncated ROM, unsupported I/O, and save-memory accesses retain their existing diagnostics.
 - Unused-memory writes remain diagnostics rather than ignored hardware writes. Swaps cannot silently discard their write.
-- There is no persistent instruction pipeline. Thumb IWRAM refills sample their target pair.
+- ARM instruction buffering is persistent, but these data snapshots remain a separate bounded model.
+  Thumb IWRAM refills sample their target pair without buffering Thumb instructions.
   DMA updates existing IWRAM continuation lanes at instruction boundaries, not during CPU accesses.
 
 This subset lets public ARM test 362 complete. That test does not assert the loaded data value.
@@ -238,7 +273,8 @@ In User/System modes, they perform ordinary test/compare flag updates without a 
 Invalid saved modes still produce an atomic diagnostic. Failed conditions do not restore or validate status.
 Nominal timing remains one sequential code access, plus an internal cycle for register-specified shifts; there is no refill cost.
 This fixes the mode-switch expectation in public `jsmolka/gba-tests` ARM test 234 and agrees with mGBA's shared ALU flag handling.
-The interpreter has no fetch pipeline; instruction-state-changing forms and exact pipeline behavior remain hardware-unverified.
+ARM instruction buffering is discarded on a state change without an ordinary refill.
+Instruction-state-changing compare forms and exact pipeline behavior remain hardware-unverified.
 
 Other S-bit block transfers access User registers while using the current mode's base register.
 User-bank writeback, S-bit empty lists, and User-mode S-bit transfers return diagnostics.
@@ -311,7 +347,7 @@ Important timing limits:
 - Code S/N counts follow instruction summaries, not a simulated fetch pipeline.
 - Ordinary code costs use the current instruction address. The ARM open-bus PC+8 snapshot has no fetch timing or startup pipeline fill.
 - PC writes use destination-region costs and the restored instruction width for nominal refill accesses.
-- Refill cost calculation does not read target bytes. Separate Thumb IWRAM target-pair samples update bus history without extra cycles.
+- Refill cost calculation does not read target bytes. ARM instruction-buffer and Thumb IWRAM bus-history samples add no extra cycles.
 - Target-pair sampling cannot fail the branch early. An invalid branch target still fails on the following instruction fetch.
 - Game Pak prefetch is not implemented. WAITCNT bit 14 is stored but does not accelerate execution.
 - PHI and SRAM wait fields are stored; PHI output and SRAM mapping are not implemented.
