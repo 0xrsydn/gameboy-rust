@@ -148,6 +148,10 @@ Frame tests verify consecutive VBlank events, step limits, error handling, and i
 Graphics tests check CPU-generated pixels, movement, edge clamping, opposite directions, colors, and reset behavior.
 Video tests cover mirrors, byte-write rules, RGB555 layout, backdrop, forced blank, green swap, and unsupported modes.
 Input tests cover all 1,024 button combinations, read-only KEYINPUT behavior, keyboard mapping, and focus loss.
+Keypad tests compare every button-state/selection pair with independent per-button OR/AND logic.
+They check all KEYCNT values, byte merging, complete-word sampling, empty masks, and repeated request behavior.
+Integration tests cover CPU/DMA writes, interrupt masks, HALT wake-up, ARM/Thumb IRQ return, and original BIOS IntrWait.
+Failed-store tests check register, IRQ-history, CPU, and clock preservation. BIOS reset tests verify retained KEYCNT state.
 The bounded graphics frame runner is checked for instruction errors and timeouts.
 Timing tests cover every ROM wait-state setting, access width, ROM window, and 128 KiB boundary handling.
 Instruction timing tests cover arithmetic, shifts, branches, transfers, block operations, multiply, and exception returns.

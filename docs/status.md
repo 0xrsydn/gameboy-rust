@@ -24,6 +24,7 @@ Update this file when a feature lands or a limit is removed.
 - Alpha blending, brightness increase/decrease, and semi-transparent sprites using five-bit color arithmetic.
 - 96 KiB video RAM, 1 KiB palette RAM, and 1 KiB object attribute memory, with mirrors and byte-write behavior.
 - Active-low `KEYINPUT` for all ten GBA buttons, independent of the window library.
+- `KEYCNT` selection and OR/AND matching, keypad IRQ latching, and HALT wake-up through IE bit 12.
 - Original ARM graphics demo that uses DMA, BIOS VBlank waiting, and a ROM-side IRQ callback.
 - Sixteen active 32-bit CPU registers, with ARM7 mode-specific register banks.
 - User, System, Supervisor, IRQ, FIQ, Abort, and Undefined modes.
@@ -95,7 +96,8 @@ Horizontal window comparators retain four-cycle event history.
 Sprite rows prepare one line ahead with a whole-row cycle40 sample and nominal per-row work limits.
 Individual fetch timing, hardware-accurate work cutoffs, video-bus contention, and per-pixel color composition remain unimplemented.
 There is no sound or cartridge save support.
-Mapped I/O covers DMA, timers, interrupts, WAITCNT, display control/status, background control/scroll/affine registers, window/effect registers, KEYINPUT, POSTFLG, and HALTCNT.
+Mapped I/O covers DMA, timers, interrupts, WAITCNT, display control/status, background control/scroll/affine registers, window/effect registers, KEYINPUT/KEYCNT, POSTFLG, and HALTCNT.
+Keypad IRQs use a documented polling model; hardware retrigger edges and asynchronous input timing remain unverified.
 The presentation framebuffer is separate from emulated video RAM.
 All named graphics demos connect desktop input and rendering to the emulated CPU. The default display test remains host-generated.
 The executable does not accept ROM files yet.
@@ -110,7 +112,7 @@ Writes to cartridge addresses return errors instead of modeling cartridge hardwa
 
 1. Validate CPU behavior with public ARM7TDMI test programs before claiming instruction compatibility.
 2. Refine nominal timing with a fetch pipeline, Game Pak prefetch, per-access device updates, and verified timer/IRQ delays.
-3. Add keypad interrupt control and remaining device registers; extend BIOS reset coverage as sound/serial support becomes available.
+3. Validate keypad retrigger behavior with hardware tests and add remaining device registers; extend BIOS reset coverage as sound/serial support becomes available.
    Add STOP and remaining DMA device modes with verified timing and wake-up behavior.
 4. Replace nominal sprite work limits with verified individual fetch timing; add background fetch timing and per-pixel composition.
 5. Expand graphics, audio, cartridge loading, and saves before testing Emerald compatibility.

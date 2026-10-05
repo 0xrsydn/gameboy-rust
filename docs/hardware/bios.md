@@ -166,8 +166,8 @@ Bit 7 runs after the selected RAM clears:
 Timer counter reads retain the stopped count until a later enable loads the cleared reload value.
 This is normal timer-register behavior, not a host-side replacement of device state.
 Read-only display status and VCOUNT continue to reflect the advancing display clock.
-GREENSWAP, KEYINPUT/button state, POSTFLG, and BIOS IRQ communication words are not reset.
-Keypad interrupt control is not implemented. Bit 7 covers only the listed supported registers.
+GREENSWAP, KEYINPUT/button state, KEYCNT, POSTFLG, and BIOS IRQ communication words are not reset.
+Bit 7 covers only the listed registers. A later matching input sample can request keypad IRQ again after IF acknowledgement.
 
 Without bit 7, device configuration remains unchanged except for DISPCNT.
 IRQ delivery stays CPU-masked during the call. The service restores the caller's mask on return.

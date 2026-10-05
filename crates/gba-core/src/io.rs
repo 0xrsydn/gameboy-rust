@@ -1,11 +1,11 @@
-//! GBA I/O subset: DMA, timers, interrupts, WAITCNT, display, and polled input.
+//! GBA I/O subset: DMA, timers, interrupts, WAITCNT, display, and keypad input.
 //! Timer phase resets on enable or clock-source changes. Hardware startup delays,
 //! shared prescaler phase, audio events, and interrupt delivery delays are not modeled.
 
 use crate::{
     display::{Display, DisplayPosition, CYCLES_PER_LINE, HBLANK_START, VISIBLE_LINES},
     dma::{Dma, DmaError, Transfer, DMA_BASE, DMA_END},
-    input::Buttons,
+    input::{Buttons, Keypad},
 };
 
 pub const DISPCNT: u32 = 0x0400_0000;
@@ -47,6 +47,7 @@ pub const BLDCNT: u32 = 0x0400_0050;
 pub const BLDALPHA: u32 = 0x0400_0052;
 pub const BLDY: u32 = 0x0400_0054;
 pub const KEYINPUT: u32 = 0x0400_0130;
+pub const KEYCNT: u32 = 0x0400_0132;
 pub const TIMER_BASE: u32 = 0x0400_0100;
 pub const IE: u32 = 0x0400_0200;
 pub const IF: u32 = 0x0400_0202;
@@ -137,7 +138,7 @@ pub(crate) struct Io {
     effects: crate::video::effects::Effects,
     window_edges: crate::video::windows::WindowEdges,
     horizontal_windows: crate::video::windows::horizontal::HorizontalWindows,
-    buttons: Buttons,
+    keypad: Keypad,
     display: Display,
     dma: Dma,
     postflg: bool,
@@ -146,7 +147,7 @@ pub(crate) struct Io {
 
 impl Io {
     pub(crate) fn mapped(address: u32) -> bool {
-        matches!(address, 0x0400_0000..=0x0400_0057 | DMA_BASE..=DMA_END | 0x0400_0100..=0x0400_010f | 0x0400_0130..=0x0400_0131 | 0x0400_0200..=0x0400_020b | POSTFLG..=0x0400_0303)
+        matches!(address, 0x0400_0000..=0x0400_0057 | DMA_BASE..=DMA_END | 0x0400_0100..=0x0400_010f | 0x0400_0130..=0x0400_0133 | 0x0400_0200..=0x0400_020b | POSTFLG..=0x0400_0303)
     }
 
     pub(crate) fn read8(&self, address: u32) -> Option<u8> {
@@ -165,7 +166,8 @@ impl Io {
             WINOUT => self.effects.outside,
             BLDCNT => self.effects.control,
             BLDALPHA => self.effects.alpha,
-            KEYINPUT => self.buttons.keyinput(),
+            KEYINPUT => self.keypad.keyinput(),
+            KEYCNT => self.keypad.control(),
             0x0400_0100..=0x0400_010e => {
                 let timer = &self.timers[((address - TIMER_BASE) / 4) as usize];
                 if address & 2 == 0 {
@@ -188,8 +190,10 @@ impl Io {
     }
 
     /// The memory bus validates every byte before calling this method.
+    /// Keypad accesses use write_keypad instead, preserving transfer boundaries.
     pub(crate) fn write8(&mut self, address: u32, value: u8) {
         debug_assert!(Self::mapped(address));
+        debug_assert!(!(KEYINPUT..=KEYCNT + 1).contains(&address));
         if (DMA_BASE..=DMA_END).contains(&address) {
             self.dma.write8(address, value);
             return;
@@ -198,7 +202,7 @@ impl Io {
             DISPCNT => self.dispcnt = replace_byte(self.dispcnt, address, value) & 0xfff7,
             GREENSWAP if address & 1 == 0 => self.greenswap = value & 1 != 0,
             DISPSTAT => self.pending |= self.display.write_status(address & 1 != 0, value),
-            VCOUNT | KEYINPUT => {} // Read-only; writes are ignored.
+            VCOUNT => {} // Read-only; writes are ignored.
             BG0CNT..=BG3CNT => {
                 let index = ((address - BG0CNT) / 2) as usize;
                 let control = &mut self.backgrounds[index].control;
@@ -294,7 +298,30 @@ impl Io {
     }
 
     pub(crate) fn set_buttons(&mut self, buttons: Buttons) {
-        self.buttons = buttons;
+        if self.keypad.set_buttons(buttons) {
+            self.pending |= 1 << 12;
+        }
+        self.wake_if_requested();
+    }
+
+    /// Commit one validated byte/halfword/word access in the keypad block.
+    /// KEYINPUT writes are ignored. Sample once after both KEYCNT bytes merge,
+    /// never on a transient low-byte value during a halfword or word write.
+    pub(crate) fn write_keypad(&mut self, address: u32, bytes: &[u8]) {
+        debug_assert!(address >= KEYINPUT && address + bytes.len() as u32 <= KEYCNT + 2);
+        let mut control = self.keypad.control();
+        let mut touched = false;
+        for (offset, byte) in bytes.iter().enumerate() {
+            let address = address + offset as u32;
+            if (KEYCNT..=KEYCNT + 1).contains(&address) {
+                control = replace_byte(control, address, *byte);
+                touched = true;
+            }
+        }
+        if touched && self.keypad.write_control(control) {
+            self.pending |= 1 << 12;
+        }
+        self.wake_if_requested();
     }
 
     pub(crate) fn display_control(&self) -> u16 {

@@ -1,6 +1,9 @@
 //! Platform-independent GBA button state. Bits are pressed-high here;
 //! the KEYINPUT register exposes their active-low hardware representation.
 
+mod keypad;
+pub(crate) use keypad::Keypad;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u16)]
 pub enum Button {

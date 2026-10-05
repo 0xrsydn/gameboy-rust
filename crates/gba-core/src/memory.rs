@@ -4,7 +4,7 @@ use crate::{
     display::{DisplayPosition, CYCLES_PER_LINE, HBLANK_START, VISIBLE_LINES},
     dma::{DmaError, DMA_BASE, DMA_END},
     input::Buttons,
-    io::{Io, HALTCNT, POSTFLG},
+    io::{Io, HALTCNT, KEYINPUT, POSTFLG},
     timing::{bus_cycles, AccessKind, AccessWidth, DataTiming, StepTiming},
     video::{self, sprites::pipeline, Framebuffer, VideoError},
 };
@@ -325,7 +325,8 @@ impl Memory {
     }
 
     /// Replace the current pressed-button state. This does not advance time.
-    /// KEYCNT and keypad interrupts are not implemented yet.
+    /// Sample KEYCNT and latch a matching keypad IRQ immediately, without cycles.
+    /// This can wake HALT; CPU IRQ delivery occurs on a later Machine::step.
     pub fn set_buttons(&mut self, buttons: Buttons) {
         self.io.set_buttons(buttons);
     }
@@ -424,6 +425,10 @@ impl Memory {
             },
         );
         if address >> 24 == 0x04 {
+            if address & !3 == KEYINPUT {
+                self.io.write_keypad(address, &bytes);
+                return Ok(());
+            }
             for (offset, byte) in bytes.into_iter().enumerate() {
                 let byte_address = address + offset as u32;
                 if matches!(byte_address, POSTFLG | HALTCNT) && !self.can_write_power_control() {

@@ -279,10 +279,7 @@ fn keyinput_exposes_all_ten_buttons_active_low_and_ignores_writes() {
     memory.set_buttons(Buttons::default());
     assert_eq!(memory.read16(KEYINPUT).unwrap(), 0x3ff);
     assert_eq!(memory.cycles(), 0);
-    assert_eq!(
-        memory.read16(KEYINPUT + 2),
-        Err(MemoryError::Unmapped(KEYINPUT + 2))
-    ); // KEYCNT deferred.
+    assert_eq!(memory.read16(KEYINPUT + 2).unwrap(), 0); // KEYCNT resets disabled.
 }
 
 #[test]

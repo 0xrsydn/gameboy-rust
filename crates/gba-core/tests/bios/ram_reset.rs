@@ -4,7 +4,7 @@ use gba_core::{
     dma::{DmaError, DMA_BASE, DMA_STRIDE},
     input::Buttons,
     io::{
-        BG0CNT, BG2PA, BG2PD, BG3PA, BG3PD, BLDALPHA, BLDCNT, DISPCNT, GREENSWAP, KEYINPUT,
+        BG0CNT, BG2PA, BG2PD, BG3PA, BG3PD, BLDALPHA, BLDCNT, DISPCNT, GREENSWAP, KEYCNT, KEYINPUT,
         WAITCNT, WININ, WINOUT,
     },
     memory::{OAM_START, PALETTE_START},
@@ -236,6 +236,7 @@ fn io_reset_clears_readable_controls_but_keeps_input_postflg_and_green_swap() {
         let (mut m, pc) = prepare(flags, false, 0x9f);
         m.memory_mut().set_buttons(Buttons::from_bits(0x251));
         let keys = m.memory().read16(KEYINPUT).unwrap();
+        m.memory_mut().write16(KEYCNT, 0x4001).unwrap();
         m.memory_mut().write16(GREENSWAP, 1).unwrap();
         for address in [
             BG0CNT,
@@ -277,6 +278,7 @@ fn io_reset_clears_readable_controls_but_keeps_input_postflg_and_green_swap() {
         }
         assert_eq!(m.memory().read16(DISPSTAT).unwrap() & 0xff38, 0);
         assert_eq!(m.memory().read16(KEYINPUT).unwrap(), keys);
+        assert_eq!(m.memory().read16(KEYCNT).unwrap(), 0x4001); // Current reset subset preserves KEYCNT.
         assert_eq!(m.memory().read16(POSTFLG).unwrap(), 1);
         assert_eq!(m.memory().read16(GREENSWAP).unwrap(), 1);
         assert!(m.cycles() > cycles);

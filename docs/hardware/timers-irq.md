@@ -38,6 +38,8 @@ Mapped input/output (I/O) registers:
 | --- | --- | --- |
 | `0x04000100` + `4*n` | Timer n counter/reload | Reads the counter; writes the separate reload value |
 | `0x04000102` + `4*n` | Timer n control | Prescaler, count-up, local IRQ enable, and start/stop |
+| `0x04000130` | KEYINPUT | Ten active-low button bits; read-only |
+| `0x04000132` | KEYCNT | Button selection, keypad IRQ enable, and OR/AND condition |
 | `0x04000200` | IE | Enables selected interrupt sources; bits 0–13 are writable |
 | `0x04000202` | IF | Latches requests; writing 1 clears the corresponding bit |
 | `0x04000204` | WAITCNT | Configures first/second ROM access wait states; unused bits read as zero |
@@ -61,7 +63,7 @@ Byte, halfword, and word accesses are supported for this register subset.
 
 Timer startup delays and shared prescaler phase are not modeled.
 The provisional timer model resets its private prescaler phase on enable or clock-source changes.
-Audio events, STOP, and interrupt sources other than timers, display events, and DMA completion are not implemented.
+Audio events, STOP, and interrupt sources other than timers, display events, DMA completion, and keypad input are not implemented.
 
 `--timer-demo` executes original ARM code that configures Timer 0, IE, and IME.
 The timer overflows after 16 supplied cycles and enters the original handler through vector `0x18`.
@@ -69,6 +71,59 @@ The handler stops Timer 0, acknowledges IF, increments r10, and returns with `SU
 The demo ends after 21 steps and 153 nominal cycles with one handler call, using default WAITCNT settings.
 These counts test the timing model; they are not hardware timing measurements.
 Its test handler deliberately changes r2 and r10; it does not implement the Nintendo BIOS calling convention.
+
+## Keypad interrupt control
+
+`KEYCNT` resets to zero and stores only bits selected by `0xc3ff`:
+
+| Bits | Meaning |
+| --- | --- |
+| 0–9 | Select A, B, Select, Start, Right, Left, Up, Down, R, and L |
+| 10–13 | Unused; read as zero |
+| 14 | Enable keypad interrupt requests |
+| 15 | Zero: OR condition; one: AND condition |
+
+OR matches when any selected button is pressed.
+AND matches when every selected button is pressed; unselected pressed buttons do not prevent a match.
+An empty selection never matches OR and always matches AND.
+
+A matching enabled sample can latch IF bit 12, independently of IE, IME, and CPSR.I.
+Changing input or disabling KEYCNT does not clear an existing request.
+Software acknowledges IF by writing bit 12 as one.
+IE bit 12 gates HALT wake-up. IME and CPSR.I gate IRQ delivery, not wake-up or request latching.
+Ready DMA units still take priority over CPU IRQ entry.
+The original BIOS IntrWait can consume keypad events through the normal IRQ callback contract.
+
+### Sampling policy and limits
+
+The current functional model follows mGBA's polling behavior, not a verified hardware edge detector:
+
+- Each `Memory::set_buttons` call samples the input, including repeated identical values.
+- Each successful write touching KEYCNT samples after the complete register update.
+- OR requests on every matching enabled sample, so another identical input sample can reassert an acknowledged request.
+- AND remembers the complete pressed-button snapshot and suppresses an identical matching sample.
+- A different matching snapshot requests again, including changes to unselected buttons.
+- An enabled nonmatching sample clears that history. Disabled samples retain it.
+- Newly selected buttons are removed from the remembered snapshot before testing a control write.
+  A newly selected held button can therefore cause another AND request.
+- Reads, KEYINPUT-only writes, IF acknowledgement, and clock advancement do not sample the keypad.
+
+This policy makes IRQ generation depend on input sampling, not only on elapsed emulated time.
+Host input calls consume no emulated cycles and do not modify CPU registers.
+They can wake HALT immediately; `Machine::step` subsequently samples the IRQ line.
+The desktop demos currently supply frame-based input snapshots.
+Physical key-event timing, switch bounce, exact hardware retrigger rules, and synchronization delays remain unverified.
+STOP still returns a diagnostic; this change does not implement STOP wake-up.
+
+Byte writes merge with the untouched KEYCNT byte.
+Halfword writes, and word writes at KEYINPUT, evaluate the final KEYCNT value once.
+They do not generate requests from temporary byte-by-byte values.
+The lower half of a word write remains a read-only KEYINPUT write.
+CPU, DMA, and host/debug writes use the same path.
+Failed writes and failed block stores leave control, IRQ history, pending flags, and HALT state unchanged.
+
+The current BIOS SoftReset and RegisterRamReset subset preserve KEYCNT and button state.
+RegisterRamReset bit 7 still acknowledges IF, but a later matching input sample can request keypad IRQ again.
 
 ## HALT and power-control registers
 

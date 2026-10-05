@@ -61,6 +61,7 @@ The repository is a Cargo workspace with three crates:
 | `crates/gba-core/src/video/sprites/pipeline.rs` | Two prepared row buffers, cycle40 events, and bounded capture-disabled advancement |
 | `crates/gba-core/src/video/sprites/budget.rs` | Nominal per-row work allowance, partial canvas prefixes, and independent arithmetic tests |
 | `crates/gba-core/src/input.rs` | Platform-independent GBA button state |
+| `crates/gba-core/src/input/keypad.rs` | KEYCNT mask, OR/AND matching, and keypad IRQ sampling history |
 | `crates/gba-demos/src/graphics_demo.rs` | Original ARM bitmap program and shared bounded frame runner |
 | `crates/gba-demos/src/tile_demo.rs` | Original ARM tile/sprite program, palettes, tiles, maps, and OAM image |
 | `crates/gba-demos/src/affine_demo.rs` | Shared ARM background program builder and Mode 2 assets |
@@ -84,6 +85,7 @@ The repository is a Cargo workspace with three crates:
 | `crates/gba-core/tests/timers.rs` | Timer rules, interrupt registers, and a cycle-by-cycle reference |
 | `crates/gba-core/tests/machine.rs` | Device IRQ entry/return, clock policy, and I/O failure atomicity |
 | `crates/gba-core/tests/timing.rs` | WAITCNT fields, bus costs, and timer/IRQ timing integration |
+| `crates/gba-core/tests/keypad.rs` | Keypad register widths, IRQ sampling, CPU/DMA ordering, HALT wake-up, diagnostics, and BIOS IntrWait |
 | `crates/gba-core/tests/graphics.rs` | Video memory, rendering, KEYINPUT, and CPU-driven graphics integration |
 | `crates/gba-core/tests/tiles.rs` | Mode 0 registers, maps, palettes, composition, diagnostics, and CPU tile/sprite demo |
 | `crates/gba-core/tests/affine_backgrounds.rs` | Affine registers, maps, transforms, bitmap sampling, composition, and CPU demo |

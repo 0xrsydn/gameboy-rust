@@ -8,7 +8,9 @@ Rendering behavior implemented in `crates/gba-core/src/video/`, plus button inpu
 `GREENSWAP` at `0x04000002` exchanges the green channels of adjacent pixel pairs when bit zero is set.
 `KEYINPUT` at `0x04000130` exposes ten active-low buttons. Unused bits read as zero; writes are ignored.
 `Memory::set_buttons(Buttons)` supplies pressed-high host input. The I/O layer converts it to active-low register bits.
-`KEYCNT` and keypad IRQs are not implemented; accesses to KEYCNT return unmapped-memory diagnostics.
+`KEYCNT` at `0x04000132` selects buttons, OR/AND matching, and keypad interrupt enable.
+Input samples and control writes can latch IF bit 12 and wake HALT without advancing the clock.
+See [keypad interrupt control](timers-irq.md#keypad-interrupt-control) for the sampling policy and limits.
 
 Video RAM starts at `0x06000000` and contains 96 KiB.
 Its 128 KiB mirror layout repeats the final 32 KiB in offsets `0x18000..0x1ffff`.

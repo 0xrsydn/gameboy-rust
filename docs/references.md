@@ -45,7 +45,11 @@ Hardware references used for the core:
 - [NanoBoyAdvance composition](https://github.com/nba-emu/NanoBoyAdvance/blob/master/src/nba/src/hw/ppu/merge.cc), reviewed for palette lookup and horizontal mosaic after sprite preparation.
 - [mGBA window renderer](https://github.com/mgba-emu/mgba/blob/master/src/gba/renderers/video-software.c), reviewed for inverted bounds and vertical edge flags.
 - [NanoBoyAdvance window implementation](https://github.com/nba-emu/NanoBoyAdvance/blob/master/src/nba/src/hw/ppu/window.cc), reviewed for persistent vertical flags, four-cycle horizontal comparisons, offscreen columns, and end-edge precedence.
-- [GBATEK keypad input](https://problemkaputt.de/gbatek-gba-keypad-input.htm).
+- [GBATEK keypad input](https://problemkaputt.de/gbatek-gba-keypad-input.htm), for KEYINPUT/KEYCNT fields and selected-button OR/AND matching.
+- [mGBA keypad sampling](https://github.com/mgba-emu/mgba/blob/master/src/gba/gba.c) and [control writes](https://github.com/mgba-emu/mgba/blob/master/src/gba/io.c), reviewed for repeated OR requests, AND snapshot suppression, and newly selected held keys.
+- [NanoBoyAdvance keypad implementation](https://github.com/nba-emu/NanoBoyAdvance/blob/master/src/nba/src/hw/keypad/keypad.cc), compared for control access widths; its AND/retrigger behavior differs from the chosen polling model.
+- [mGBA keypad timing issue](https://github.com/mgba-emu/mgba/issues/2490), for frontend frame-based input timing limits.
+- [Tonc hardware interrupts](https://gbadev.net/tonc/interrupts.html), for keypad source enable and IF/IE bit 12.
 - [GBATEK memory mirrors and video byte writes](https://problemkaputt.de/gbatek-gba-unpredictable-things.htm).
 - [GBATEK GBA memory map and bus widths](https://problemkaputt.de/gbatek-gba-memory-map.htm).
 - [GBATEK GBA DMA transfers](https://problemkaputt.de/gbatek-gba-dma-transfers.htm).
