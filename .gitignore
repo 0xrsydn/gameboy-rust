@@ -1,0 +1,6 @@
+/target/
+/.direnv/
+/roms/
+*.gba
+*.nds
+*.sav
