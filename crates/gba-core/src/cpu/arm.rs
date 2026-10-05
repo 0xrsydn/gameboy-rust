@@ -142,7 +142,7 @@ impl Cpu {
         let byte = instruction & (1 << 22) != 0;
         let load = instruction & (1 << 20) != 0;
         if (!pre && write_bit) // LDRT/STRT access semantics are not implemented.
-            || (write_back && (base_register == 15 || (load && base_register == destination)))
+            || (write_back && base_register == 15)
             || (byte && destination == 15)
         {
             return Err(self.unsupported(instruction));
@@ -186,6 +186,8 @@ impl Cpu {
         if write_back {
             self.registers[base_register] = adjusted;
         }
+        // ARM7 load aliases keep the loaded value, not the updated base. All
+        // operands and the effective address were captured before either write.
         if load && destination != 15 {
             self.registers[destination] = value;
         }
@@ -210,7 +212,7 @@ impl Cpu {
             || (!load && kind != 1)
             || (!pre && write_bit)
             || destination == 15
-            || (write_back && (base_register == 15 || (load && base_register == destination)))
+            || (write_back && base_register == 15)
         {
             return Err(self.unsupported(instruction));
         }
@@ -240,6 +242,7 @@ impl Cpu {
         if write_back {
             self.registers[base_register] = adjusted;
         }
+        // Halfword and signed load aliases also let the loaded value win.
         if load {
             self.registers[destination] = value;
         }

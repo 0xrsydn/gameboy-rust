@@ -58,6 +58,9 @@ direnv exec . python3 -B -m unittest discover -s tools -p 'test_*.py' -v
 
 They verify pinned URLs, hashes, sizes, checkpoint validation, offline copies, destination safety, and non-overwriting output.
 Compare/status CPU regressions verify saved flags/masks, bank switching, sequential PC/timing, User/System fallback, and atomic diagnostics.
+Load-alias regressions cover widths, signed/unaligned values, immediate/register offsets, pre/post-indexing, every non-PC register bank, and address wrapping.
+They verify loaded-value precedence, preserved flags, unchanged stores, nominal timing, I/O reads before device progress, deferred IRQ delivery, and atomic errors.
+The public ARM ROM progresses past tests 360–361 but still fails on the high-address read in test 362.
 
 ROM-runner tests use temporary files containing original instructions, without Nintendo assets or a desktop session.
 They check file-size boundaries, bounded reads, short reads, I/O errors, paths, symlinks, and read-only loading.

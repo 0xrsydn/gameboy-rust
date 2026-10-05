@@ -61,11 +61,13 @@ Hardware references used for the core:
 - [GBATEK status transfers](https://problemkaputt.de/gbatek-arm-opcodes-psr-transfer-mrs-msr.htm).
 - [GBATEK CPU exceptions](https://problemkaputt.de/gbatek-arm-cpu-exceptions.htm).
 - [GBATEK ARM data processing](https://problemkaputt.de/gbatek-arm-opcodes-data-processing-alu.htm), including R15/status notes. Its legacy `{P}` description alone does not establish ARM7 behavior.
-- [mGBA ARM instruction implementation](https://github.com/mgba-emu/mgba/blob/master/src/arm/isa-arm.c), reviewed for Rd=15 test/compare SPSR restoration, User/System fallback, and no result write/refill.
+- [mGBA ARM instruction implementation](https://github.com/mgba-emu/mgba/blob/master/src/arm/isa-arm.c), reviewed for Rd=15 test/compare SPSR restoration, User/System fallback, and no result write/refill. Also reviewed its word/byte/halfword/signed load ordering: writeback precedes the destination result.
 - [jsmolka/gba-tests](https://github.com/jsmolka/gba-tests/tree/a7113b67e63f83a9b321696ddd7042ccfad6c881), pinned for independent ARM testing. Reviewed its MIT license, startup, result macros, compare/status tests, and load/writeback alias tests.
 - [armwrestler-gba-fixed](https://github.com/destoer/armwrestler-gba-fixed) and [arm7wrestler](https://github.com/Arisotura/arm7wrestler), considered as test sources; not integrated.
 - [SingleStepTests ARM7TDMI](https://github.com/SingleStepTests/ARM7TDMI), considered as an experimental, emulator-generated test source; not integrated.
-- [GBATEK ARM single data transfers](https://problemkaputt.de/gbatek-arm-opcodes-memory-single-data-transfer-ldr-str-pld.htm).
+- [GBATEK ARM single data transfers](https://problemkaputt.de/gbatek-arm-opcodes-memory-single-data-transfer-ldr-str-pld.htm), for address calculation, indexing, load extension, and nominal timing.
+- [Arm armasm LDR constraints](https://support.arm.com/documentation/dui0801/l/A32-and-T32-Instructions/LDR--register-offset---A32-), reviewed to distinguish portable assembly restrictions from the ARM7 alias behavior tested here.
+- [Pinned halfword alias tests](https://github.com/jsmolka/gba-tests/blob/a7113b67e63f83a9b321696ddd7042ccfad6c881/arm/halfword_transfer.asm), for loaded-value precedence in pre/post-indexed `LDRH` aliases.
 - [GBATEK memory alignment](https://problemkaputt.de/gbatek-arm-cpu-memory-alignments.htm).
 - [GBATEK multiply instructions](https://problemkaputt.de/gbatek-arm-opcodes-multiply-and-multiply-accumulate-mul-mla.htm).
 - [GBATEK block transfers](https://www.problemkaputt.de/gbatek-arm-opcodes-memory-block-data-transfer-ldm-stm.htm).

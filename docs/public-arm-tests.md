@@ -2,7 +2,7 @@
 
 The headless runner now executes the unmodified ARM ROM from [jsmolka/gba-tests](https://github.com/jsmolka/gba-tests).
 This is independent public test code, not a complete ARM7TDMI conformance suite or a new hardware measurement.
-The full public ARM test still fails. The first discovered CPU error is fixed; the next unsupported instruction is recorded below.
+The full public ARM test still fails. Compare/status and load/writeback alias errors are fixed; the next memory-access failure is recorded below.
 
 ## Prepare and run
 
@@ -78,14 +78,26 @@ User/System forms still use ordinary test/compare flags because those modes have
 Original regressions cover all four test/compare operations, exception banks, flags, masks, operands, timing, conditions, and invalid saved modes.
 See [CPU status behavior](hardware/cpu.md#processor-status-and-exceptions).
 
-After the fix:
+After the compare/status fix, before load/writeback alias support:
 
 - Execution progresses past tests 234 and 235 and the PSR-transfer section.
 - After 861 successful steps, the runner reports unsupported instruction `0xe5b00004` at `0x0800132c`.
 - This is `LDR r0, [r0, #4]!` in upstream test 360, with base and destination equal.
 - The CPU is in System/ARM state, and r12 remains zero. The final completion checkpoint has not been reached.
 
-The load/writeback alias case is the next compatibility task. Do not weaken the assertion or label this run a pass.
+After load/writeback alias support:
+
+- Tests 360 and 361 complete without taking their failure paths.
+- After 877 successful steps, the runner reports `unmapped memory at 0x80000000`.
+- The current instruction is `0xe7b12060` at `0x08001384`: `LDR r2, [r1, r0, RRX]!`, in test 362.
+- With carry set and r0/r1 zero, the shifted offset correctly selects `0x80000000`.
+- The unsupported bus read prevents completion. r12 remains zero, but that alone is not a passing result.
+
+Single-load aliases now retain the loaded value rather than the updated base.
+Original regressions also cover byte, halfword, and signed loads, every non-PC register bank, index modes, offsets, alignment, timing, and failures.
+The public halfword alias tests later in the ROM have not yet been reached; their source and mGBA's load ordering support the same rule.
+The next compatibility task is to verify high-address read behavior and implement the appropriate memory mapping or open-bus behavior.
+Do not bypass test 362, invent a return value, or weaken the result assertion.
 No public Thumb, timing, memory, BIOS, graphics, or unsafe suite has been claimed as passing.
 These results do not establish Pokémon Emerald compatibility.
 
@@ -94,5 +106,6 @@ These results do not establish Pokémon Emerald compatibility.
 - [Pinned ARM entry and result flow](https://github.com/jsmolka/gba-tests/blob/a7113b67e63f83a9b321696ddd7042ccfad6c881/arm/arm.asm).
 - [Pinned test/result macros](https://github.com/jsmolka/gba-tests/blob/a7113b67e63f83a9b321696ddd7042ccfad6c881/lib/macros.inc).
 - [Tests 234 and 235](https://github.com/jsmolka/gba-tests/blob/a7113b67e63f83a9b321696ddd7042ccfad6c881/arm/data_processing.asm).
-- [Load/writeback alias tests](https://github.com/jsmolka/gba-tests/blob/a7113b67e63f83a9b321696ddd7042ccfad6c881/arm/single_transfer.asm).
+- [Load/writeback alias and shifted-offset tests](https://github.com/jsmolka/gba-tests/blob/a7113b67e63f83a9b321696ddd7042ccfad6c881/arm/single_transfer.asm).
+- [Halfword load/writeback alias expectations](https://github.com/jsmolka/gba-tests/blob/a7113b67e63f83a9b321696ddd7042ccfad6c881/arm/halfword_transfer.asm).
 - [Pinned license](https://github.com/jsmolka/gba-tests/blob/a7113b67e63f83a9b321696ddd7042ccfad6c881/LICENSE).

@@ -20,6 +20,8 @@ mod exception_tests;
 #[cfg(test)]
 mod instruction_tests;
 #[cfg(test)]
+mod load_alias_tests;
+#[cfg(test)]
 mod status_tests;
 #[cfg(test)]
 mod tests;

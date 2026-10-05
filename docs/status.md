@@ -56,6 +56,7 @@ Update this file when a feature lands or a limit is removed.
 - `B` and `BL` with signed relative displacement and conditional execution.
 - `BX` switches between ARM and Thumb using target bit zero.
 - `LDR`, `STR`, `LDRB`, `STRB`, `LDRH`, `STRH`, `LDRSB`, and `LDRSH`.
+- Single-load base/destination aliases retain the loaded value over writeback for r0–r14, across word, byte, halfword, and signed loads.
 - Pre/post-indexed addressing, positive/negative offsets, and base-register writeback.
 - `LDM`/`STM` in increment-after, increment-before, decrement-after, and decrement-before modes.
 - Stack save/restore, PC loads, empty register lists, and ARM7 base-register overlap rules.
@@ -113,7 +114,7 @@ ROM windows have no demo-specific startup checks. Input is sampled between bound
 Audio, saves, and external BIOS loading remain unavailable. ROM loading does not establish commercial-game compatibility.
 See [cartridge loading](hardware/cartridge.md) for file limits, step budgets, and exit status.
 The [ROM suite runner](rom-tests.md) has original regressions and a [pinned public ARM baseline](public-arm-tests.md).
-The public ARM ROM now gets past its compare/status tests but stops at test 360, a load/writeback base-destination alias.
+The public ARM ROM now gets past its compare/status and word-load alias tests but stops at test 362 on an unmapped read from `0x80000000`.
 It requires known completion addresses and has no debug-port protocol, scripted input, or rendered-image assertions.
 
 Unmapped reads return errors instead of hardware open-bus values.
@@ -124,7 +125,7 @@ Writes to cartridge addresses return errors instead of modeling cartridge hardwa
 
 ## Next steps
 
-1. Implement verified load/writeback alias behavior exposed by public ARM test 360; rerun the pinned suite and fix subsequent failures.
+1. Verify high-address read behavior exposed by public ARM test 362; implement the appropriate memory mapping or open-bus behavior and rerun the pinned suite.
    Add further public suites only with verified result protocols before claiming instruction compatibility.
 2. Refine nominal timing with a fetch pipeline, Game Pak prefetch, per-access device updates, and verified timer/IRQ delays.
 3. Validate keypad retrigger behavior with hardware tests and add remaining device registers; extend BIOS reset coverage as sound/serial support becomes available.

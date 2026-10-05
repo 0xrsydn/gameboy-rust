@@ -504,7 +504,6 @@ fn invalid_or_unimplemented_encodings_do_not_change_state_or_memory() {
     for instruction in [
         0xe1a0_0f11, // Rs=pc (register shift)
         0xe3b0_f001, // status restore via MOVS pc
-        0xe490_0004, // LDR r0,[r0],#4 (base/destination overlap)
         0xe5bf_1000, // LDR with PC writeback
         0xe4b0_1004, // LDRT user-mode transfer
         0xe5d0_f000, // LDRB pc

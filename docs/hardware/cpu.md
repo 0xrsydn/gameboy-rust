@@ -49,6 +49,18 @@ Both constructors zero registers deterministically; real reset register values a
 Each call to `Cpu::step(&mut memory)` executes one ARM word or one Thumb halfword, not one hardware cycle.
 The two halves of Thumb `BL` execute separately. A standalone suffix uses the existing link register.
 
+ARM single loads allow base and destination to share r0–r14, including with pre-indexed or post-indexed writeback.
+This applies to `LDR`, `LDRB`, `LDRH`, `LDRSB`, and `LDRSH`.
+The loaded value takes precedence over the updated base. Addresses and register offsets use incoming register values.
+Pre-indexed loads access the adjusted address; post-indexed loads access the original address.
+The discarded post-indexed writeback address is not a second memory access.
+Normal alignment, word rotation, odd-halfword behavior, and sign extension still apply.
+Loads preserve CPSR and use normal load timing. Device clocks advance after the read, with IRQ sampling on the next step.
+Read diagnostics leave CPU state and device clocks unchanged under the existing atomic-error policy.
+Stores with matching base/source still store the original base value before writeback.
+PC writeback, byte/halfword PC destinations, and unimplemented user-transfer encodings remain diagnostics.
+These alias rules implement ARM7 compatibility behavior, not a recommendation for portable ARM assembly.
+
 Block transfers assign the lowest-numbered register to the lowest memory address.
 They align addresses down without rotating loaded words, and preserve low base bits during writeback.
 On ARM7, an empty register list transfers PC but uses a 64-byte span for addressing and writeback.
