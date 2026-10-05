@@ -75,8 +75,10 @@ Known-bit tests reject incomplete words. Transaction tests verify discarded part
 Control-flow tests distinguish taken/untaken branches and refill Thumb IWRAM targets even when the target equals fallthrough.
 Refill tests cover ARM/Thumb BX, Thumb branches and BL, high-register PC writes, stack/block PC loads, and saved-state returns.
 They check both target alignments, mirrors/wrap, captured target+2 versus later target+4, widths, sign extension, and rotation.
-Original SWI/IRQ handlers verify return-time history. Failed returns, cold entry, region boundaries, DMA invalidation, and BIOS isolation retain checks.
-DMA and IRQ tests check conservative invalidation; timed/untimed tests verify CPU results and nominal clock costs.
+Original SWI/IRQ handlers verify return-time history. Failed returns, cold entry, region boundaries, DMA lane effects, and BIOS isolation retain checks.
+DMA tests compare source/destination lane updates against a byte-array reference, then apply the resumed PC+4 fetch.
+They cover channel preemption, blocked sources, failures, mirrors, partial/cold continuations, and other-region snapshot isolation.
+IRQ and PC-discontinuity tests retain conservative invalidation; timed/untimed tests verify CPU results and nominal clock costs.
 Host/fetch isolation, separate BIOS history, unsupported stores/data regions, nominal device progression, and DMA diagnostics also have checks.
 The pinned public ARM ROM now reaches its completion checkpoint with r12 = 0 in debug and release builds.
 The pinned public Thumb ROM also reaches its ARM-state checkpoint with r7 = 0 in both builds.

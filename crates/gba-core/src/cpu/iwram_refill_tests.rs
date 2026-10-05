@@ -3,7 +3,7 @@ use super::*;
 use crate::{
     dma::{DMA_BASE, DMA_STRIDE},
     io::{IE, IME, TIMER_BASE},
-    machine::{Machine, MachineError, StepKind},
+    machine::{Machine, StepKind},
     memory::{BIOS_SIZE, ROM_START},
 };
 
@@ -373,7 +373,7 @@ fn target_pair_refill_does_not_replace_the_separate_bios_retained_word() {
 }
 
 #[test]
-fn successful_dma_between_refill_and_target_execution_invalidates_refill_history() {
+fn successful_dma_between_refill_and_target_execution_updates_refill_history() {
     let (cpu, mut bus) = branch(ROM_START, false, TARGET);
     bus.write32(STACK, 0x1234_abcd).unwrap();
     let mut machine = Machine::new(cpu, bus);
@@ -383,19 +383,12 @@ fn successful_dma_between_refill_and_target_execution_invalidates_refill_history
     machine.memory_mut().write32(dma + 4, 0x0200_0000).unwrap();
     machine.memory_mut().write32(dma + 8, 0x8400_0001).unwrap();
     assert_eq!(machine.step().unwrap(), StepKind::Dma { channel: 3 });
-    let before = machine.cpu().clone();
-    let timing = machine.last_timing();
     let cycles = machine.cycles();
-    assert_eq!(
-        machine.step(),
-        Err(MachineError::Cpu(CpuError::Memory(MemoryError::Unmapped(
-            UNUSED
-        ))))
-    );
-    assert_eq!(machine.cpu(), &before);
-    assert_eq!(machine.last_timing(), timing);
-    assert_eq!(machine.cycles(), cycles);
-    assert_eq!(machine.cpu().pc(), TARGET);
+    assert_eq!(machine.step().unwrap(), StepKind::Instruction);
+    // DMA reads the whole IWRAM word, then the target+4 fetch replaces its low half.
+    assert_eq!(machine.cpu().registers()[6], 0x1234_d234);
+    assert_eq!(machine.cycles(), cycles + 3);
+    assert_eq!(machine.cpu().pc(), TARGET + 2);
 }
 
 #[test]

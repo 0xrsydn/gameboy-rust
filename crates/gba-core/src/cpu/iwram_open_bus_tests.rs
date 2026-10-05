@@ -338,7 +338,7 @@ fn pc_discontinuities_and_non_iwram_execution_do_not_reuse_old_history() {
 }
 
 #[test]
-fn successful_dma_invalidates_history_but_failed_dma_preserves_it() {
+fn successful_dma_updates_history_and_failed_dma_preserves_it() {
     for fail in [false, true] {
         let (cpu, mut bus) = program(CODE, &[SEED, PROBE, 0x1111, 0x9bcd]);
         bus.write32(TIMER_BASE, 0x0080_0000).unwrap();
@@ -364,8 +364,9 @@ fn successful_dma_invalidates_history_but_failed_dma_preserves_it() {
             assert_eq!(machine.cpu(), &before);
             assert_eq!(machine.memory().read32(0x0200_0000).unwrap(), DATA);
             let cycles = machine.cycles();
-            assert!(machine.step().is_err());
-            assert_eq!(machine.cycles(), cycles);
+            assert_eq!(machine.step().unwrap(), StepKind::Instruction);
+            assert_eq!(machine.cpu().registers()[6], 0x9bcd_80a5);
+            assert_eq!(machine.cycles(), cycles + 3);
         }
         assert_eq!(
             u64::from(machine.memory().read16(TIMER_BASE).unwrap()),

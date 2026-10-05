@@ -52,8 +52,8 @@ The initial sequential-only implementation invalidated history after all refill 
 The extension below now establishes target-pair history for successful refills into Thumb IWRAM.
 The existing ARM/Thumb timing classifiers identify these refills for both timed and untimed CPU stepping.
 Execution outside Thumb IWRAM still ends a sequential history sequence.
-An accepted machine IRQ and each successful DMA unit invalidate history. Failed DMA units preserve it.
-The implementation does not guess DMA latch contents.
+An accepted machine IRQ invalidates history. Failed DMA units preserve it.
+The DMA extension below updates existing continuation lanes from successful IWRAM accesses.
 
 This is not a full IWRAM bus model across all CPU states. ARM-target history and DMA-to-CPU ordering remain incomplete.
 It is not a persistent instruction pipeline. Self-modifying instruction execution and exact per-access device timing remain unverified.
@@ -81,9 +81,40 @@ The interpreter still reads instructions when it executes them.
 Changing T+2 after the branch does not replace its captured bus value; changing T+4 before arrival affects the later sample.
 Those original tests verify sample ordering, not hardware-accurate self-modifying instruction execution.
 
-Successful DMA still invalidates history, including between refill and arrival.
-ARM-target refill history, exact pipeline timing, and DMA-to-CPU ordering remain outside this extension.
+The refill-only implementation invalidated history on successful DMA, including between refill and arrival.
+The DMA extension below replaces that invalidation within existing continuations.
+ARM-target refill history, exact pipeline timing, and sub-instruction DMA ordering remain incomplete.
 No external emulator differential run or physical-hardware test was performed.
+
+## DMA continuation extension
+
+Two independent implementations route DMA through the same local IWRAM lane updates as CPU accesses:
+
+- [ares bus dispatch](https://github.com/ares-emulator/ares/blob/6f6786e04f0822a3475463df284f313ab8518d51/ares/gba/cpu/bus.cpp) selects its IWRAM helpers for both CPU and DMA.
+  [Its DMA controller](https://github.com/ares-emulator/ares/blob/6f6786e04f0822a3475463df284f313ab8518d51/ares/gba/cpu/dma.cpp) performs a source read before its destination write.
+- [jgenesis bus at fab6e2cc](https://github.com/jsgroth/jgenesis/blob/fab6e2ccc60e492dd68b7f1e927b0829a6d80195/backend/gba-core/src/bus.rs) routes `AccessCtx::DMA` through `read_iwram` and `write_iwram`.
+  Both call `iwram_update_open_bus`, which changes only addressed lanes and drives the general bus from the local word.
+  Its `try_progress_dma` performs source reads and destination writes in order.
+
+Both run pending DMA before a CPU bus access. The access that resumes determines the subsequent bus value.
+These source reviews support local lane effects, not a universal first-instruction DMA override.
+They do not determine every hardware arbitration edge or validate our instruction-boundary scheduling.
+
+Our bounded model applies those effects only when an existing Thumb IWRAM continuation has an expected next PC.
+After a successful unit, the source and destination independently update their addressed IWRAM lanes.
+DMA elsewhere leaves those lanes unchanged. A blocked source drives no IWRAM read lanes.
+The destination sees the actual selected halfword, not an assumed duplicated full word.
+The next PC+4 sample updates one halfword before the resumed instruction takes its snapshot.
+This also applies between a completed refill and its first target instruction.
+
+Only complete successful units commit history, preserving the project's atomic diagnostic policy.
+Cold direct entry still has no expected continuation PC. DMA does not manufacture one, even after a word access.
+An existing partially known continuation can gain lanes. IRQ entry and CPU discontinuities retain their invalidation rules.
+General DMA open-bus reads, cross-state history, sub-instruction arbitration, and DMA during CPU internal cycles remain outside this subset.
+The interpreter still fetches instructions directly; this extension does not fix self-modifying instruction-buffer behavior.
+
+No physical-hardware measurements or external emulator differential runs were performed.
+All regression programs are original, with a separate byte-array lane reference in the DMA matrix tests.
 
 ## Original regression coverage
 
@@ -96,12 +127,15 @@ No external emulator differential run or physical-hardware test was performed.
 - Taken and untaken branches, PC writes to fallthrough, discontinuities, IRQ entry, and DMA success/failure.
 - ARM/Thumb source regions, both target alignments, refill sample ordering, stack/block returns, and saved User/System banks.
 - Actual SWI/IRQ return handlers, failed refills, unmapped targets, separate BIOS history, and DMA between refill and arrival.
+- DMA source/destination regions and alignments, word/halfword widths, mirrors, blocked-source lane selection, and other-region isolation.
+- Channel preemption, completed-unit order, DMA/instruction failure retention, partial/cold continuations, and unchanged other CPU snapshot rules.
 - Equal timed/untimed CPU results and unchanged nominal data/device costs.
 
 ## Validation result
 
 The sequential-history regressions reproduced the old unsupported-read failures before implementation.
 The refill regressions also failed on the prior invalidation-only path, then passed with target-pair sampling.
+The DMA continuation regressions reproduced unsupported-read failures under unconditional DMA invalidation, then passed with local lane updates.
 Workspace and core/demo tests pass on Darwin arm64 in debug and release builds.
 Formatting, lint checks, rustdoc, preparation tests, native ROM windows, and graphics smoke modes also pass.
 Public ARM, Thumb, memory, and BIOS reports match their previous passing results exactly.

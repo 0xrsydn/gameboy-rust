@@ -137,8 +137,9 @@ ARM data reads from unused address ranges use a bounded [PC+8 open-bus snapshot]
 Thumb reads use [region-dependent snapshots](hardware/cpu.md#thumb-unused-memory-data-reads) and bounded sequential IWRAM lane history.
 Cold or invalidated IWRAM history remains diagnostic until all lanes are known.
 Refills into Thumb IWRAM establish new target-pair history after the instruction succeeds.
-Accepted machine IRQs, successful DMA, unsupported refills, and other execution states/regions invalidate continuation history.
-This is not a fetch pipeline. ARM-target refill history, region-crossing fetches, DMA-to-CPU handoff, and unused/write-only I/O open bus remain unsupported.
+Accepted machine IRQs, unsupported refills, and other execution states/regions invalidate continuation history.
+Successful DMA updates existing Thumb IWRAM continuation lanes for actual IWRAM accesses, before the resumed PC+4 sample.
+This is not a fetch pipeline. ARM-target history, region-crossing fetches, general DMA handoff, and unused/write-only I/O open bus remain unsupported.
 [DMA channel data latches](hardware/dma.md#retained-channel-data) support blocked-source reuse, but never replace CPU bus history.
 BIOS protection uses separate retained BIOS fetch snapshots as described in [BIOS behavior](hardware/bios.md#cpu-bios-read-protection).
 Host inspection and instruction fetches remain strict. Other unmapped reads return errors.
@@ -149,8 +150,8 @@ Writes to cartridge addresses return errors instead of modeling cartridge hardwa
 
 ## Next steps
 
-1. Extend the DMA channel-latch foundation with validated DMA-to-CPU bus ownership and IWRAM effects.
-   General DMA open-bus reads need separate evidence; blocked-source reuse does not establish their values.
+1. Extend bounded IWRAM DMA continuations toward general bus ownership with independent per-access resume tests.
+   General DMA open-bus reads and sub-instruction arbitration remain separate from retained channel data and local IWRAM lanes.
    Keep unknown history diagnostic until fetch ordering and latch ownership have independent coverage.
    Validate BIOS snapshots with independent hardware tests before claiming exact refill or data-access history.
    The desktop runner still uses only the original BIOS. Keep protected reads image-derived for all supplied images.

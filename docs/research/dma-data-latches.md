@@ -33,9 +33,10 @@ Its IWRAM bus and general data register are separate, and pending DMA runs befor
 GBATEK's possible DMA influence on IWRAM is not sufficient to choose CPU resume ordering here.
 Our instruction-boundary scheduler does not yet represent these per-access transitions.
 
-Therefore, this change keeps successful-DMA invalidation of bounded Thumb IWRAM history.
-Failed DMA preserves that history. No channel value is injected into CPU or BIOS snapshots.
-The next CPU-bus work needs independent resume-ordering coverage rather than a universal last-transfer override.
+The initial channel-latch change kept successful-DMA invalidation of bounded Thumb IWRAM history.
+The later [DMA continuation extension](iwram-bus-history.md#dma-continuation-extension) models local IWRAM lanes at instruction boundaries.
+Failed DMA preserves that history. No universal channel-value override is injected into CPU or BIOS snapshots.
+General CPU-bus work still needs independent resume-ordering coverage rather than a universal last-transfer override.
 
 ## Implemented subset
 
@@ -55,7 +56,8 @@ Other unmapped sources and unsupported controls remain diagnostics even with kno
 The existing atomic diagnostic policy commits no new latch value for a failed unit.
 Earlier successful units remain visible. A partial failed read cannot replace their retained value.
 Nominal source/destination costs, CPU pausing, trigger scheduling, and completion IRQs are unchanged.
-General DMA open-bus reads, write-only register readback, local IWRAM lane effects, and CPU resume ownership remain outside this subset.
+General DMA open-bus reads, write-only register readback, and general CPU resume ownership remain outside this subset.
+Local IWRAM lane effects are now covered by the separately bounded continuation extension linked above.
 
 ## Validation scope
 

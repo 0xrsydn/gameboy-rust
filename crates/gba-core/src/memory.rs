@@ -67,7 +67,8 @@ struct CpuAccess {
 /// Protected BIOS reads separately retain the snapshot from BIOS execution.
 /// Sequential Thumb IWRAM accesses retain addressed bus lanes transactionally.
 /// Successful refills into Thumb IWRAM sample the target pair to establish history.
-/// DMA channels retain transfer data separately; CPU bus handoff remains unmodeled.
+/// DMA accesses drive existing Thumb IWRAM continuation lanes before the next fetch.
+/// Channel data remains separate; general and sub-instruction CPU bus handoff is unmodeled.
 /// A full fetch pipeline and ARM-target refill history are not modeled.
 pub struct Memory {
     external_ram: Vec<u8>,
@@ -329,8 +330,13 @@ impl Memory {
             AccessWidth::Byte => unreachable!("DMA is never byte-wide"),
         }
         .map_err(map_error)?;
-        // DMA-to-CPU bus ordering is not modeled. Never reuse pre-DMA IWRAM history.
-        self.invalidate_cpu_bus_history();
+        // DMA runs before the resumed CPU fetch. Only actual IWRAM accesses drive
+        // its local lanes, in read/write order. Channel halfword duplication is not
+        // a full IWRAM bus write. Failed units never reach these history commits.
+        self.iwram_bus
+            .dma_access(transfer.source, transfer.width, data_latch);
+        self.iwram_bus
+            .dma_access(transfer.destination, transfer.width, value);
         // Keep this channel active during its cycles: another edge must not
         // queue a second block while the current block is still transferring.
         self.advance_cycles(timing.total());

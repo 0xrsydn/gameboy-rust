@@ -55,8 +55,10 @@ DMA writes to DMA registers return `DmaError::RegisterDestination`; self-modifyi
 Other accesses use the existing memory map, alignment checks, mirrors, and I/O write rules.
 Other unmapped reads and cartridge writes remain diagnostics, not general DMA open-bus behavior.
 A failed unit changes no memory, device state, or clock. Earlier units remain committed; the failed unit remains pending.
-Successful units invalidate bounded sequential Thumb IWRAM history because DMA-to-CPU latch ordering is not modeled.
-Failed units preserve that history. No DMA value is substituted for a CPU open-bus read.
+Successful units update existing Thumb IWRAM continuation lanes for their actual IWRAM reads and writes, in that order.
+Accesses elsewhere leave those local lanes unchanged. Failed units preserve history.
+The resumed CPU's PC+4 fetch then updates its addressed halfword. No universal DMA-value override is used.
+See [bounded IWRAM DMA history](cpu.md#dma-effects-on-thumb-iwram-continuations) for the scope.
 
 ## Retained channel data
 
@@ -83,5 +85,5 @@ Earlier successful units remain committed. Normal destination validation, nomina
 This error policy is not a model of hardware data aborts.
 
 See [the latch evidence and scope](../research/dma-data-latches.md).
-General DMA open-bus reads, IWRAM lane effects, and CPU bus ownership on resume remain unimplemented.
+General DMA open-bus reads, cross-state IWRAM history, and sub-instruction bus ownership remain unimplemented.
 In particular, the known channel value does not supply unused/write-only I/O reads or CPU open-bus snapshots.

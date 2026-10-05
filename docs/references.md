@@ -130,6 +130,15 @@ DMA data-latch research:
 
 See [DMA data-latch findings](research/dma-data-latches.md). Source review is not a local hardware-test pass.
 
+DMA IWRAM continuation research:
+
+- [jgenesis bus at fab6e2cc](https://github.com/jsgroth/jgenesis/blob/fab6e2ccc60e492dd68b7f1e927b0829a6d80195/backend/gba-core/src/bus.rs), for DMA read/write dispatch through the same lane-retaining IWRAM helpers as CPU accesses.
+  Its [DMA controller](https://github.com/jsgroth/jgenesis/blob/fab6e2ccc60e492dd68b7f1e927b0829a6d80195/backend/gba-core/src/dma.rs) and [memory storage](https://github.com/jsgroth/jgenesis/blob/fab6e2ccc60e492dd68b7f1e927b0829a6d80195/backend/gba-core/src/memory.rs) distinguish channel data from local bus lanes.
+- The pinned ares DMA, bus dispatch, and IWRAM helpers above independently use the same local lane ownership.
+
+See [the bounded DMA continuation extension](research/iwram-bus-history.md#dma-continuation-extension).
+These source reviews do not establish sub-instruction arbitration, exact CPU resume timing, or hardware conformance.
+
 Use [GBATEK](https://problemkaputt.de/gbatek.htm) and ARM7TDMI documentation for further hardware work.
 Only use game ROMs that you may lawfully use. Do not commit game ROMs, BIOS files, or game assets.
 The ignore file excludes `roms/`, common game ROM extensions, and save files.

@@ -22,6 +22,8 @@ mod exception_tests;
 #[cfg(test)]
 mod instruction_tests;
 #[cfg(test)]
+mod iwram_dma_tests;
+#[cfg(test)]
 mod iwram_open_bus_tests;
 #[cfg(test)]
 mod iwram_refill_tests;

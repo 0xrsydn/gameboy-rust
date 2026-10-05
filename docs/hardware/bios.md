@@ -128,7 +128,8 @@ See the [root-cause research](../research/bios-readback.md) for evidence and the
 
 Host/debug reads and ROM-suite memory assertions still inspect raw mapped bytes and do not initialize or change the history.
 Instruction fetches remain strict mapped reads outside the CPU data-access context.
-BIOS writes remain read-only diagnostics. DMA BIOS sources retain their existing unsupported-source diagnostic.
+BIOS writes remain read-only diagnostics. DMA BIOS sources never read image bytes.
+They reuse known [channel data](dma.md#retained-channel-data), or report an unsupported-source diagnostic when channel data is unknown.
 Missing BIOS images remain unmapped. The unused-memory ARM open-bus snapshot is separate from this retained BIOS value.
 
 The Thumb rule follows documented BIOS bus lanes and a source comparison with NanoBoyAdvance.

@@ -1,5 +1,6 @@
 //! Transactional lane history for Thumb IWRAM execution and target-pair refills.
-//! Unknown startup/DMA history is not replaced with guessed memory bytes.
+//! Completed DMA accesses update existing continuation lanes before the next fetch.
+//! Unknown startup history is not replaced with guessed memory bytes.
 use std::cell::Cell;
 
 use crate::timing::AccessWidth;
@@ -73,6 +74,17 @@ impl IwramBus {
         if let Some(mut history) = self.pending.get() {
             history.lanes.drive(address, width, value);
             self.pending.set(Some(history));
+        }
+    }
+
+    /// DMA runs between instructions. Commit only after the entire unit succeeds.
+    /// Keep the expected CPU continuation PC; do not invent one at cold startup.
+    pub(super) fn dma_access(&mut self, address: u32, width: AccessWidth, value: u32) {
+        debug_assert!(self.pending.get().is_none());
+        if address >> 24 == 3 {
+            if let Some(history) = &mut self.committed {
+                history.lanes.drive(address, width, value);
+            }
         }
     }
 
