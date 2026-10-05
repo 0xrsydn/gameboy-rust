@@ -1,6 +1,6 @@
 //! Original, optional ARM BIOS replacement. No Nintendo firmware is included.
 //! Supports interrupt waits, integer arithmetic, memory copy/fill, bit unpacking,
-//! LZ77/run-length decoding, and differential filters.
+//! LZ77/run-length/Huffman decoding, and differential filters.
 //! This is a functional subset, not a complete boot ROM or a timing-compatible BIOS.
 
 use std::collections::BTreeMap;
@@ -9,6 +9,7 @@ mod arithmetic;
 mod bit_unpack;
 mod decompression;
 mod differential;
+mod huffman;
 mod lz77;
 mod run_length;
 
@@ -125,6 +126,7 @@ pub fn image() -> Vec<u8> {
         (0x10, "bit_unpack"),
         (0x11, "lz_wram"),
         (0x12, "lz_vram"),
+        (0x13, "huffman"),
         (0x14, "rl_wram"),
         (0x15, "rl_vram"),
         (0x16, "diff8_wram"),
@@ -226,6 +228,7 @@ pub fn image() -> Vec<u8> {
     lz77::emit(&mut a);
     run_length::emit(&mut a);
     differential::emit(&mut a);
+    huffman::emit(&mut a);
     decompression::emit_writer(&mut a);
 
     a.label("return");
