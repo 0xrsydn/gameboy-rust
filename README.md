@@ -253,7 +253,7 @@ Verified locally on macOS 15.7.3:
 - Nix system: `aarch64-darwin`.
 - Rust host: `aarch64-apple-darwin`.
 - Release executable: native Mach-O `arm64`, without Rosetta.
-- All 705 tests pass in debug and release builds.
+- All 720 tests pass in debug and release builds.
 - All ten native window smoke tests pass. The mosaic test submits 128 frames; the other nine submit 60 frames each.
 - The eight CPU-driven smoke tests check CPU state, every output pixel, and presentation at VBlank entry.
 - The terminal-only CPU and timer IRQ demos run successfully.
@@ -358,7 +358,7 @@ nix develop -c cargo test
 - Game Pak wait-state control (`WAITCNT`) for all three ROM windows.
 - Sequential/non-sequential data accesses, branch refill costs, and variable multiply timing.
 - Optional caller-supplied 16 KiB BIOS mapping for vector code, without CPU BIOS read protection.
-- Optional original BIOS replacement: minimal boot, SoftReset, IRQ dispatch, interrupt waits, memory copy/fill, integer/fixed-point arithmetic, affine matrices, bit unpacking, LZ77/run-length/Huffman decompression, and differential filters.
+- Optional original BIOS replacement: minimal boot, SoftReset, selective RegisterRamReset, IRQ dispatch, interrupt waits, memory copy/fill, integer/fixed-point arithmetic, affine matrices, bit unpacking, LZ77/run-length/Huffman decompression, and differential filters.
 - All 16 ARM data-processing operations, with immediate and shifted-register operands.
 - Logical operations: `AND`, `EOR`, `TST`, `TEQ`, `ORR`, `MOV`, `BIC`, and `MVN`.
 - Arithmetic operations: `SUB`, `RSB`, `ADD`, `ADC`, `SBC`, `RSC`, `CMP`, and `CMN`.
@@ -508,6 +508,7 @@ Supported software interrupt services:
 | Number | Service | Behavior |
 | --- | --- | --- |
 | `0x00` | SoftReset | Clear BIOS work RAM and reset CPU registers/stacks; restart in ROM or RAM without returning |
+| `0x01` | RegisterRamReset | r0 selects RAM and supported I/O resets; force blank; reject serial/sound flags |
 | `0x02` | Halt | Wait for `IE & IF`; preserve IME and caller registers |
 | `0x04` | IntrWait | `r0`: discard old selected flags when nonzero; `r1`: flags to wait for |
 | `0x05` | VBlankIntrWait | IntrWait with discard enabled and the VBlank flag selected |
@@ -535,7 +536,7 @@ Only User/System callers are supported. Calls from exception modes return a diag
 Returning services preserve CPSR and every caller register except the documented arithmetic outputs.
 SoftReset instead initializes CPU registers and status as described below.
 This is deterministic behavior, not a claim about undocumented firmware outputs.
-Supervisor stack use is 28 bytes normally, including ArcTan. Division and ArcTan2 use 40 bytes.
+Supervisor stack use is 28 bytes normally, including ArcTan and RegisterRamReset. Division and ArcTan2 use 40 bytes.
 CpuFastSet, affine-matrix services, BitUnPack, all three decompression formats, and differential filters use 60 bytes.
 They do not reproduce the original firmware's internal stack layout or cycle counts.
 
@@ -597,9 +598,63 @@ The clearing loop performs ordinary word stores; stopping execution partway leav
 Active DMA can still modify memory. Software must stop conflicting transfers before requesting a restart.
 
 Lower internal RAM, external RAM, palette RAM, video RAM, and sprite attribute memory are not cleared by SoftReset.
-Use separate initialization code for those regions. `RegisterRamReset` is not implemented yet.
+Use RegisterRamReset or separate initialization code for those regions.
 Calls from exception modes retain the existing unsupported-service diagnostic.
 Exact firmware timing, bus-protection behavior, and undocumented side effects remain incomplete.
+
+#### RegisterRamReset
+
+`RegisterRamReset` (`SWI 0x01`) selects RAM and supported I/O resets using the low byte of r0.
+Bits 8–31 are ignored. The service preserves all caller registers and status.
+Supported flags can be combined:
+
+| Bit | Action |
+| --- | --- |
+| 0 | Clear external RAM: `0x02000000..0x0203ffff` |
+| 1 | Clear lower internal RAM: `0x03000000..0x03007dff`; exclude the top 512 bytes |
+| 2 | Clear palette RAM: `0x05000000..0x050003ff` |
+| 3 | Clear all 96 KiB of video RAM: `0x06000000..0x06017fff` |
+| 4 | Clear sprite attribute memory (OAM): `0x07000000..0x070003ff` |
+| 5 | Serial reset: unsupported |
+| 6 | Sound reset: unsupported |
+| 7 | Reset supported display, DMA, timer, and interrupt registers as described below |
+
+**Unsupported flags:** any request containing bit 5 or 6 reaches `bios::INVALID_ARGUMENT_TRAP`.
+Validation occurs before forced blank or RAM/I/O reset writes, but after the common SWI stack save.
+This includes the common all-devices request `r0=0xff`; it is not silently treated as a successful full reset.
+Serial and audio devices remain unimplemented. The firmware's unconditional serial-data side effect is not reproduced.
+
+Every supported request first writes `DISPCNT=0x0080`, including requests with no selected flags.
+This forces a white screen and clears other display-control bits.
+RAM clears then run in bit order, using ordinary word stores.
+Zeroed OAM contains regular sprites at the origin, not disabled sprites; software must configure them before enabling objects.
+
+Bit 7 runs after the selected RAM clears:
+
+- Disable IME.
+- Disable all four DMA channels, then zero their source, destination, count, and control registers.
+- Stop all four timers, then zero their reload and control registers.
+- Zero display registers at `0x04000004..0x04000057`, subject to normal read-only register rules.
+- Set BG2/BG3 affine PA and PD to 256; PB, PC, and programmed origins remain zero.
+- Clear IE and WAITCNT, then acknowledge IF with a halfword write of `0xffff`.
+
+Timer counter reads retain the stopped count until a later enable loads the cleared reload value.
+This is normal timer-register behavior, not a host-side replacement of device state.
+Read-only display status and VCOUNT continue to reflect the advancing display clock.
+GREENSWAP, KEYINPUT/button state, POSTFLG, and BIOS IRQ communication words are not reset.
+Keypad interrupt control is not implemented. Bit 7 covers only the listed supported registers.
+
+Without bit 7, device configuration remains unchanged except for DISPCNT.
+IRQ delivery stays CPU-masked during the call. The service restores the caller's mask on return.
+Timers and DMA continue until their reset writes, if selected; this service does not stop clocks or replace frame-capture history.
+Pending IRQs remain pending without bit 7 and can be delivered after return.
+
+The service uses only the common 28-byte Supervisor frame.
+Default BIOS stacks lie in the excluded top 512 bytes, but the entry save still writes its usual frame there.
+Do not put the Supervisor stack or required return code/data in selected RAM.
+The service can erase a RAM caller's instructions and still return to that now-cleared address.
+Stop conflicting DMA transfers before a clear, even when bit 7 is selected: RAM clears occur before device-register resets.
+Stopping emulation midway leaves completed stores committed. Exact firmware write ordering and cycle counts are not reproduced.
 
 #### Integer arithmetic
 
@@ -849,7 +904,7 @@ Unsupported SWIs, unsupported exception vectors, and null/misaligned IRQ callbac
 The CPU reports `CpuError::UnsupportedInstruction` with `bios::UNSUPPORTED_TRAP`, rather than silently treating a service as a no-op.
 Invalid arithmetic/decompression arguments use the same CPU error type with the distinct `bios::INVALID_ARGUMENT_TRAP` instruction.
 Prior boot/service steps remain committed on failure.
-RegisterRamReset, HardReset, and STOP remain unimplemented.
+RegisterRamReset serial/sound flags, HardReset, and STOP remain unimplemented.
 This subset is not sufficient for Pokémon Emerald compatibility.
 
 ### Timers, interrupt registers, and the machine clock
@@ -1600,7 +1655,7 @@ Important timing limits:
 | `src/timer_demo.rs` | Original timer-configuration program and IRQ handler |
 | `src/lib.rs` | Core modules and original demo bytes |
 | `src/bios.rs` | Original ARM BIOS image builder, minimal boot, IRQ dispatch, waits, and memory services |
-| `src/bios/reset.rs` | Emitted ARM SoftReset, BIOS work RAM clearing, bank initialization, and ROM/RAM restart |
+| `src/bios/reset.rs` | Emitted ARM SoftReset and selective RegisterRamReset; CPU banks, RAM clearing, and supported device-register resets |
 | `src/bios/arithmetic.rs` | Emitted ARM division and integer-square-root routines |
 | `src/bios/affine.rs` | Emitted ARM background/sprite matrix services, range checks, and generated sine table |
 | `src/bios/angles.rs` | Emitted ARM ArcTan polynomial, ArcTan2 ratio/quadrant handling, and input validation |
@@ -1661,6 +1716,7 @@ Important timing limits:
 | `tests/dma.rs` | DMA widths, latches, priority, triggers, IRQs, timing, errors, and CPU integration |
 | `tests/halt.rs` | HALT wake masks, idle timing, BIOS-only writes, DMA progress, and STOP diagnostics |
 | `tests/bios.rs` | ARM/Thumb service calls, copy/fill boundaries, wait races, callback contracts, and boot |
+| `tests/bios/ram_reset.rs` | Selective RAM boundaries, flag combinations, I/O reset, display rendering, DMA/timer latches, and diagnostics |
 | `tests/bios/reset.rs` | All restart flags, exact RAM boundaries, CPU banks, restart execution, device continuity, and IRQ masking |
 | `tests/bios/arithmetic.rs` | Arithmetic boundaries, wide-integer references, status restoration, and zero-division diagnostics |
 | `tests/bios/affine.rs` | Matrix/origin references, all angle phases, strides, live rendering, register preservation, and diagnostics |
@@ -1737,12 +1793,12 @@ To test the core without building the window dependency:
 direnv exec . cargo test --locked --no-default-features
 ```
 
-This runs 694 core and integration tests; the eleven desktop and command-line tests are excluded.
+This runs 709 core and integration tests; the eleven desktop and command-line tests are excluded.
 
 On Apple Silicon, `file` must report a Mach-O `arm64` executable.
 Do not set a Linux cross-compilation target for this validation.
 
-The default suite has 705 tests.
+The default suite has 720 tests.
 Angle-service tests compare results with wide-integer polynomial and signed-sector references, plus floating-point accuracy checks in supported ranges.
 They cover a dense ArcTan unit-interval grid, sampled full-domain and seeded inputs, axes, quadrant boundaries, signed extremes, and scale invariance.
 Other tests verify all caller flag combinations, User/System masks, non-result registers, stack bounds, repeated calls, diagnostics, and DMA/IRQ progress.
@@ -1817,6 +1873,11 @@ The CPU demo test checks sprite controls, OAM attributes, disabled unused object
 Tile tests cover both color depths, palette banks, flips, all map sizes, scrolling, transparency, priorities, and register masks.
 They check errors for unsupported features and out-of-range fetches without changing the output image.
 The CPU tile demo test verifies asset copies, every pixel, wrapping, opposite directions, reset, and VBlank synchronization.
+RegisterRamReset tests check full memory regions and all memory-flag combinations from ARM and Thumb.
+They verify forced blank, reserved flag bits, caller preservation, protected BIOS RAM, and serial/sound diagnostics.
+Rendering tests check write-only display state, both identity matrices, and the effect of zeroed sprite attributes.
+Device tests check DMA address/count latches, stopped timer counters, cleared reloads, and IRQ acknowledgement.
+Other checks cover partial clears, preserved input/device state, and callers whose own RAM code is erased.
 SoftReset tests check every restart flag byte from ARM and Thumb, exact RAM clearing, and preserved memory.
 They seed CPU banks and verify stack pointers, link registers, saved status, caller modes, and restart status.
 Other tests execute RAM restart code, call BIOS services again, and restart from code inside the erased region.
@@ -1882,7 +1943,8 @@ These tests do not replace validation against GBA hardware or public hardware te
 
 1. Validate CPU behavior with public ARM7TDMI test programs before claiming instruction compatibility.
 2. Refine nominal timing with a fetch pipeline, Game Pak prefetch, per-access device updates, and verified timer/IRQ delays.
-3. Add RegisterRamReset with explicit limits for unimplemented sound/serial registers; add STOP and remaining DMA device modes.
+3. Add keypad interrupt control and remaining device registers; extend BIOS reset coverage as sound/serial support becomes available.
+   Add STOP and remaining DMA device modes with verified timing and wake-up behavior.
 4. Replace nominal sprite work limits with verified individual fetch timing; add background fetch timing and per-pixel composition.
 5. Expand graphics, audio, cartridge loading, and saves before testing Emerald compatibility.
 
@@ -1893,7 +1955,7 @@ Hardware references used for the core:
 
 - [GBATEK ARM instruction cycle times](https://problemkaputt.de/gbatek-arm-cpu-instruction-cycle-times.htm).
 - [GBATEK GBA system control and WAITCNT](https://problemkaputt.de/gbatek-gba-system-control.htm).
-- [GBATEK BIOS reset functions](https://problemkaputt.de/gbatek-bios-reset-functions.htm), for SoftReset RAM bounds, CPU banks, stack pointers, and restart selection.
+- [GBATEK BIOS reset functions](https://problemkaputt.de/gbatek-bios-reset-functions.htm), for SoftReset state and restart selection, plus RegisterRamReset flags, RAM bounds, and forced blank.
 - [GBATEK BIOS halt functions](https://problemkaputt.de/gbatek-bios-halt-functions.htm), for wait contracts and STOP differences.
 - [GBATEK BIOS function calling conventions](https://problemkaputt.de/gbatek-bios-functions.htm).
 - [GBATEK BIOS memory-copy services](https://problemkaputt.de/gbatek-bios-memory-copy.htm).
@@ -1901,7 +1963,7 @@ Hardware references used for the core:
 - [VisualBoyAdvance-M BIOS services](https://github.com/visualboyadvance-m/visualboyadvance-m/blob/master/src/core/gba/internal/gbaBios.cpp), reviewed for integer affine rounding, signed matrix intermediates, and SoftReset status handling. Our sine table is generated mathematically.
 - [GBATEK BIOS arithmetic services](https://problemkaputt.de/gbatek-bios-arithmetic-functions.htm).
 - [GBATEK BIOS decompression services](https://problemkaputt.de/gbatek-bios-decompression-functions.htm), including BitUnPack descriptor fields, differential-filter headers, Huffman tree layout, and width constraints.
-- [mGBA BIOS service implementation](https://github.com/mgba-emu/mgba/blob/master/src/gba/bios.c), reviewed for angle-polynomial coefficients and quadrant conventions, BitUnPack ordering/offsets, and Huffman tree layout and packing.
+- [mGBA BIOS service implementation](https://github.com/mgba-emu/mgba/blob/master/src/gba/bios.c), reviewed for RegisterRamReset register defaults, angle-polynomial coefficients and quadrant conventions, BitUnPack ordering/offsets, and Huffman tree layout and packing.
 - [HALTCNT hardware-access tests](https://github.com/mgba-emu/mgba/issues/2309), for BIOS-only writes and halfword access.
 - [GBATEK display status and IRQs](https://problemkaputt.de/gbatek-lcd-i-o-interrupts-and-status.htm).
 - [GBATEK display dimensions and timings](https://problemkaputt.de/gbatek-lcd-dimensions-and-timings.htm).

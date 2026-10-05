@@ -1,5 +1,5 @@
 //! Original, optional ARM BIOS replacement. No Nintendo firmware is included.
-//! Supports SoftReset, interrupt waits, integer/fixed-point arithmetic, affine matrices,
+//! Supports SoftReset, selective RegisterRamReset, interrupt waits, arithmetic, affine matrices,
 //! memory copy/fill, bit unpacking, LZ77/run-length/Huffman decoding, and differential filters.
 //! This is a functional subset, not a complete boot ROM or a timing-compatible BIOS.
 
@@ -30,7 +30,7 @@ pub const IRQ_FLAGS: u32 = 0x0300_7ff8;
 pub const IRQ_HANDLER: u32 = 0x0300_7ffc;
 /// An intentional undefined instruction used for unsupported SWIs/vectors and invalid IRQ pointers.
 pub const UNSUPPORTED_TRAP: u32 = 0xe7f0_00f0;
-/// A diagnostic trap for invalid arithmetic or asset-conversion arguments.
+/// A diagnostic trap for invalid service arguments, including unsupported reset flags.
 pub const INVALID_ARGUMENT_TRAP: u32 = 0xe7f0_00f1;
 
 /// Start at reset with our optional firmware. Call Machine::step to execute boot.
@@ -51,6 +51,8 @@ pub fn boot(rom: Vec<u8>) -> Result<Machine, MemoryError> {
 /// and registers other than each arithmetic service's documented outputs.
 /// SoftReset instead clears BIOS work RAM, resets specified CPU banks, and enters
 /// ROM or RAM in ARM System mode with IRQ masked. It does not reset devices.
+/// RegisterRamReset clears selected RAM and supported I/O registers. Serial/sound
+/// reset flags reach a diagnostic before display or reset writes.
 /// IRQ callbacks must preserve r4–r11, acknowledge IF, update IRQ_FLAGS for wait
 /// services, and return with BX lr. Nested IRQs and SWIs from callbacks are unsupported.
 /// Service routines use the Supervisor stack; exact firmware stack layout and
@@ -122,6 +124,7 @@ pub fn image() -> Vec<u8> {
     a.emit(0xe20c_c0ff); // AND r12,r12,#0xff
     for (number, target) in [
         (0, "soft_reset"),
+        (1, "register_ram_reset"),
         (2, "halt"),
         (4, "intr_wait"),
         (5, "vblank_wait"),
@@ -238,6 +241,8 @@ pub fn image() -> Vec<u8> {
     // pool here so reset/dispatcher loads stay within ARM's 4 KiB reach.
     a.flush_literals();
     reset::emit(&mut a);
+    // Both reset routines end without fallthrough; keep their literals local.
+    a.flush_literals();
     arithmetic::emit(&mut a);
     affine::emit(&mut a);
     angles::emit(&mut a);
