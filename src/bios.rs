@@ -1,13 +1,12 @@
 //! Original, optional ARM BIOS replacement. No Nintendo firmware is included.
-//! Supports interrupt waits and memory copy/fill.
-//! Includes integer arithmetic services.
-//! Includes LZ77 decoding.
-//! Includes run-length decoding.
+//! Supports interrupt waits, integer arithmetic, memory copy/fill, bit unpacking,
+//! and LZ77/run-length decoding.
 //! This is a functional subset, not a complete boot ROM or a timing-compatible BIOS.
 
 use std::collections::BTreeMap;
 
 mod arithmetic;
+mod bit_unpack;
 mod decompression;
 mod lz77;
 mod run_length;
@@ -122,6 +121,7 @@ pub fn image() -> Vec<u8> {
         (8, "sqrt"),
         (0x0b, "cpu_set"),
         (0x0c, "cpu_fast_set"),
+        (0x10, "bit_unpack"),
         (0x11, "lz_wram"),
         (0x12, "lz_vram"),
         (0x14, "rl_wram"),
@@ -218,6 +218,7 @@ pub fn image() -> Vec<u8> {
     );
 
     arithmetic::emit(&mut a);
+    bit_unpack::emit(&mut a);
     lz77::emit(&mut a);
     run_length::emit(&mut a);
     decompression::emit_writer(&mut a);
