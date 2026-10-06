@@ -57,8 +57,8 @@ Host inspection and setup never drive the latch.
 Initial lanes remain unknown until observed accesses establish them.
 Byte/halfword accesses may establish only part of the word; a word access establishes all lanes.
 All unused-memory reads within an instruction still use one entry snapshot.
-A Thumb fetch crossing a 16 MiB region boundary leaves that instruction's unused-memory snapshot unsupported.
-Successful IWRAM accesses still update the local latch independently of this conservative snapshot policy.
+The [boundary extension](fetch-region-boundaries.md) selects the bus observation from the actual new fetch region.
+An EWRAM-to-IWRAM lookahead uses the resulting local lanes; incomplete lanes still leave that instruction's snapshot unknown.
 
 ## Thumb IWRAM refill extension
 
@@ -102,7 +102,7 @@ Sub-instruction arbitration and DMA during CPU internal cycles remain unmodeled.
 This is persistent local IWRAM history, not a complete general-bus implementation or cycle-accurate pipeline.
 ARM unused-memory reads still use their supported PC+8 snapshot.
 BIOS protection remains separately retained and image-derived.
-General DMA open bus, unused/write-only I/O, disabled RAM, exact region-crossing snapshots, and per-access timing remain incomplete.
+General DMA open bus, unused/write-only I/O, disabled RAM, unsupported-region snapshots, and per-access timing remain incomplete.
 Nominal CPU/DMA costs do not change.
 
 Original tests cover:
@@ -117,7 +117,7 @@ Original tests cover:
 
 The persistent-history regressions failed under the previous Thumb-continuation-only implementation.
 Existing cold-entry tests now assert captured lane values instead of the removed unsupported-history diagnostic.
-Region-crossing and strict unmapped-fetch diagnostics remain covered.
+Unknown-lane boundary cases and strict unmapped-fetch diagnostics remain covered.
 
 ## Validation result
 

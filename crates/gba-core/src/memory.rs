@@ -396,11 +396,12 @@ impl Memory {
             }
         }
         self.drive_iwram_fetch(fetch);
-        let same_region = fetch.address >> 24 == pc >> 24;
+        // The newly accessed bus supplies the snapshot, even across a region boundary.
+        // Unknown local lanes and unavailable/unsupported fetch observations stay diagnostic.
         let prefetch = match instruction_set {
             InstructionSet::Arm => fetch.bus_word,
-            InstructionSet::Thumb if !same_region => None,
-            InstructionSet::Thumb if pc >> 24 == 3 => self.iwram_bus.snapshot(),
+            InstructionSet::Thumb if fetch.instruction.is_err() => None,
+            InstructionSet::Thumb if fetch.address >> 24 == 3 => self.iwram_bus.snapshot(),
             InstructionSet::Thumb => fetch.bus_word,
         };
         self.cpu_access = Some(CpuAccess { pc, prefetch });

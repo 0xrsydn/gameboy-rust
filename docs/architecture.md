@@ -46,6 +46,7 @@ The repository is a Cargo workspace with three crates:
 | `crates/gba-core/src/memory/fetch.rs` | Strict instruction samples with captured region-dependent bus observations |
 | `crates/gba-core/src/memory/fetch_tests.rs` | Fetch widths, bus lanes, captured refill/BIOS values, strict errors, and side-effect isolation |
 | `crates/gba-core/src/cpu/fetch_history_tests.rs` | Shared sample consumption, no execution-entry rereads, and failed-step retry |
+| `crates/gba-core/src/cpu/fetch_boundary_tests.rs` | Actual fetch-region snapshots, split refills, IWRAM lane requirements, ROM-window boundaries, and nominal timing |
 | `crates/gba-core/src/io.rs` | I/O registers, timers, HALT/STOP wake-up, next-event bounds, and IRQ latches |
 | `crates/gba-core/src/display.rs` | Display clock, scanline status, comparison edges, and display IRQ events |
 | `crates/gba-core/src/dma.rs` | DMA registers, internal pointers, retained channel data, trigger state, priority, and completion IRQs |

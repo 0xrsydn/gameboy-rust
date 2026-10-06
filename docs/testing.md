@@ -68,7 +68,11 @@ ARM open-bus regressions cover unused-range boundaries, PC+8 source regions, byt
 They check branch-target resampling, missing lookahead, skipped conditions, nominal timing, device progress, and retained host/fetch/DMA diagnostics.
 Thumb open-bus tests cover supported code regions, both instruction alignments, ROM windows, mirrors, and physical memory wrap.
 They check widths, sign extension, rotation, block/stack/PC loads, aliases, modes, state preservation, and sequential/branch resampling.
-Short-ROM tests require only the fetched halfword in 16-bit regions. Region-crossing tests retain explicit diagnostics.
+Short-ROM tests require only the fetched halfword in 16-bit regions, including OAM-to-ROM boundaries.
+Mapped boundary tests cover palette/VRAM/OAM/ROM transitions, EWRAM-to-IWRAM lanes, and ROM page/wait-window crossings.
+They verify cold/retained pipelines, load widths and rotation, block/stack loads, split refills, rollback, and nominal timing.
+Unknown IWRAM lanes, missing ROM bytes, and unsupported I/O fetch values retain explicit diagnostics.
+See [fetch-region boundaries](research/fetch-region-boundaries.md) for source evidence and hardware-validation limits.
 Cold IWRAM tests now assert actual current/decode/lookahead lane updates before the first data read.
 Sequential IWRAM regressions check retained lanes across fetches, reads, writes, mirrors, and physical RAM wrap.
 They cover raw bus values before load rotation/sign extension, all modes, block transfers, and isolation from other memory regions.

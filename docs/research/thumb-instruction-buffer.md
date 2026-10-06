@@ -57,7 +57,8 @@ Refill bus history and instruction buffering now consume the same captured targe
 Buffer samples add no nominal cycles or data accesses.
 Timed and untimed execution use the same buffer logic.
 Destination-based refill summaries and one-shot non-sequential CPU resume costs remain unchanged.
-Complete fetch-driven bus history, exact region crossings, per-access timing, Game Pak prefetch, and sub-instruction DMA arbitration remain incomplete.
+Mapped boundary snapshots now follow the [actual fetch region](fetch-region-boundaries.md).
+Complete bus history, exact boundary timing, Game Pak prefetch, and sub-instruction DMA arbitration remain incomplete.
 Instruction-state-changing compare quirks also remain hardware-unverified.
 
 ## Original regression coverage

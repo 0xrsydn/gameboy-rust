@@ -152,9 +152,10 @@ Original regressions check the values separately. See [the public ARM result](..
 ## Thumb unused-memory data reads
 
 Thumb data reads use the same unused address ranges and lane rules as ARM reads above.
-The snapshot depends on the executing code region. P below is the executing instruction address, not the visible r15 operand.
+The snapshot depends on the newly fetched region at P+4, even when P lies in the preceding region.
+P below is the executing instruction address, not the visible r15 operand.
 
-| Code region | Snapshot |
+| Fetch region | Snapshot |
 | --- | --- |
 | External work RAM, palette RAM, video RAM, all three ROM windows | Halfword at P+4, repeated in both word lanes |
 | BIOS and object attribute memory (OAM) | Full word at `(P+4) & ~3` |
@@ -169,9 +170,14 @@ The pipeline's new fetch supplies the bus snapshot without rereading its instruc
 BIOS/OAM samples include the other halfword of the aligned bus word, but retain only the selected halfword as an instruction.
 Only the required mapped bytes are sampled. A 16-bit region needs two lookahead bytes, not four.
 Normal memory mirrors apply to these bytes, including physical RAM/video-memory wrap within a mapped region.
-If P+4 crosses a 16 MiB address-region boundary, the snapshot remains unknown.
-This conservative diagnostic policy avoids guessing pipeline behavior during a region transition.
-Missing lookahead or unknown history fails only an unused-memory load; ordinary instructions and mapped loads can still execute.
+Crossing a 16 MiB region boundary does not by itself make the snapshot unknown.
+Palette-to-VRAM fetches repeat the new halfword; VRAM-to-OAM fetches expose the new aligned word.
+OAM-to-ROM and mapped ROM-window crossings repeat the fetched ROM halfword.
+An EWRAM-to-IWRAM fetch drives its addressed local lane and requires the other lanes to be known.
+For example, P=`0x02fffffc` needs prior high-lane history; P=`0x02fffffe` can establish both halves through its fill/refill and lookahead.
+Missing lookahead, unknown IWRAM lanes, and unsupported I/O fetch observations still produce diagnostics for unused-memory loads.
+Ordinary instructions and mapped loads can execute without a usable unused-memory snapshot.
+See [the boundary evidence and original tests](../research/fetch-region-boundaries.md).
 
 All loads in one instruction share the snapshot, including block loads and stack loads.
 Normal sign extension, unaligned-load rotation, writeback, register aliases, and PC-load semantics still apply.
@@ -207,8 +213,9 @@ Each instruction stages all new fetches and data-access changes.
 Success commits history regardless of the resulting PC, instruction state, or region. Failure preserves the previous committed history.
 Block-transfer data accesses stage updates in order; unused-memory reads still use one entry snapshot per instruction.
 This preserves the existing atomic diagnostic policy without adding bus or device cycles.
-Missing or region-crossing Thumb lookahead still leaves that instruction's unused-memory snapshot unsupported.
-It does not erase independently known IWRAM lanes.
+Missing or unsupported Thumb lookahead still leaves that instruction's unused-memory snapshot unknown.
+Mapped boundary fetches into IWRAM use its resulting local lanes, even while the current instruction executes elsewhere.
+Failed or other-region observations do not erase independently known IWRAM lanes.
 
 ### Thumb IWRAM refill history
 

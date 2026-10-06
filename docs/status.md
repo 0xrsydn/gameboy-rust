@@ -76,7 +76,7 @@ Update this file when a feature lands or a limit is removed.
 - The original BIOS exposes documented boot, SoftReset, SWI, and IRQ protected-read words through its actual exit layout.
 - ARM test/compare Rd=15 status restoration, without a PC result write or nominal refill.
 - ARM unused-memory data reads return a PC+8 word snapshot, with normal byte lanes and load rotation.
-- Thumb unused-memory reads use repeated PC+4 halfwords in 16-bit code regions and aligned PC+4 words in BIOS/OAM.
+- Thumb unused-memory reads follow the actual PC+4 fetch region, including mapped boundaries, ROM windows, and IWRAM lane history.
 - Persistent IWRAM lanes track ARM/Thumb fetches, CPU data accesses, and successful DMA, with known-bit tracking and diagnostic rollback.
 - Cold fills and ARM/Thumb target pairs update local history; state changes and BIOS IRQ entry do not erase it.
 - Little-endian byte, halfword, and word reads/writes.
@@ -144,7 +144,8 @@ State changes, other-region execution, and BIOS IRQ entry preserve local history
 Successful DMA can establish lanes before CPU startup. Resumed fetches then update their addressed lanes.
 ARM/Thumb instruction buffering retains sequential instructions and refill target pairs.
 Instruction buffering and supported bus history now consume the same mapped fetch samples, without sharing retained storage.
-Complete ARM bus history, exact region-crossing bus behavior, general DMA handoff, and unused/write-only I/O open bus remain incomplete.
+Mapped boundary snapshots follow the actual fetched bus; unknown IWRAM lanes, missing bytes, and I/O fetch values remain diagnostic.
+Complete general-bus history, exact boundary timing, general DMA handoff, and unused/write-only I/O open bus remain incomplete.
 [DMA channel data latches](hardware/dma.md#retained-channel-data) support blocked-source reuse, but never replace CPU bus history.
 BIOS protection uses separate retained BIOS fetch snapshots as described in [BIOS behavior](hardware/bios.md#cpu-bios-read-protection).
 Host inspection and instruction fetches remain strict. Other unmapped reads return errors.
@@ -155,7 +156,7 @@ Writes to cartridge addresses return errors instead of modeling cartridge hardwa
 
 ## Next steps
 
-1. Extend shared fetch samples to verified general-bus history and region-crossing snapshots.
+1. Extend shared fetch samples to verified general-bus data-access history and unsupported fetch regions.
    General DMA open-bus reads and sub-instruction arbitration remain separate from retained channel data and local IWRAM lanes.
    Keep unknown history diagnostic until fetch ordering and latch ownership have independent coverage.
    Validate BIOS snapshots with independent hardware tests before claiming exact refill or data-access history.

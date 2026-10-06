@@ -319,7 +319,7 @@ fn failed_refill_instructions_preserve_cpu_and_preexisting_history() {
 }
 
 #[test]
-fn cold_fill_establishes_lanes_but_region_crossings_and_unmapped_targets_stay_diagnostic() {
+fn cold_fill_establishes_lanes_but_io_crossings_and_unmapped_targets_stay_diagnostic() {
     let mut bus = Memory::new(vec![]).unwrap();
     target(&mut bus, TARGET, PROBE);
     let mut cpu = Cpu::new(TARGET);

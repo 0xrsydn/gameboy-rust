@@ -50,7 +50,8 @@ Strict instruction reads never use protected BIOS or unused-memory data fallback
 ## Current scope and limits
 
 - Cold fills and cross-state local IWRAM history are now implemented in the [persistent-latch extension](iwram-bus-history.md).
-- Thumb 16 MiB region crossings remain unsupported for bus snapshots.
+- Mapped Thumb region crossings now use the actual fetched bus in the [boundary extension](fetch-region-boundaries.md).
+- Unknown IWRAM lanes and unavailable/unsupported fetch observations remain diagnostic.
 - BIOS history commits after successful BIOS instruction execution; target refills do not establish additional BIOS history.
 - All unused-memory data reads within an instruction still use its entry snapshot.
 - DMA remains scheduled between whole instructions. Sampling does not add an interleaving point.
