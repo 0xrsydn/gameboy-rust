@@ -37,6 +37,7 @@ Use `--test-suite suite.json` for [repeatable headless ROM assertions](docs/rom-
 | Document | Contents |
 | --- | --- |
 | [docs/status.md](docs/status.md) | What works today, deliberate limits, and next steps |
+| [docs/usability-roadmap.md](docs/usability-roadmap.md) | General GBA usability criteria and feature priorities |
 | [docs/demos.md](docs/demos.md) | Every demo, its command, and its controls |
 | [docs/development.md](docs/development.md) | Nix, direnv, and macOS build notes |
 | [docs/testing.md](docs/testing.md) | Validation commands and what the test suites cover |

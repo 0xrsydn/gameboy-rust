@@ -169,6 +169,12 @@ Writes to cartridge addresses return errors instead of modeling cartridge hardwa
 
 ## Next steps
 
+Follow the [general GBA usability roadmap](usability-roadmap.md).
+Prioritize repeatable homebrew gameplay, demonstrated compatibility failures, cartridge saves, and audio.
+The goal is usable emulation across games, not an Emerald-specific implementation.
+
+The remaining hardware-validation backlog includes:
+
 1. Extend shared fetch samples to verified general-bus data-access history and unsupported fetch regions.
    General DMA open-bus reads and sub-instruction arbitration remain separate from retained channel data and local IWRAM lanes.
    Keep unknown history diagnostic until fetch ordering and latch ownership have independent coverage.
@@ -183,7 +189,7 @@ Writes to cartridge addresses return errors instead of modeling cartridge hardwa
 3. Validate keypad retrigger behavior with hardware tests and add remaining device registers; extend BIOS reset coverage as sound/serial support becomes available.
    Validate STOP entry/wake edges and add external wake sources and remaining DMA device modes.
 4. Replace nominal sprite work limits with verified individual fetch timing; add background fetch timing and per-pixel composition.
-5. Validate more original/public test ROMs through the window; add audio, cartridge hardware, and saves before testing Emerald compatibility.
+5. Validate more original/public test ROMs through the window. Expand compatibility evidence across independent programs.
 
 Keep the emulator core independent of window and audio libraries.
 Treat Nintendo DS support as a separate project phase.
