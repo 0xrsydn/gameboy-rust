@@ -64,6 +64,9 @@ direnv exec . python3 -B -m unittest discover -s tools -p 'test_*.py' -v
 They verify suite selection, pinned URLs, hashes, sizes, checkpoint validation, offline copies, destination safety, and non-overwriting output.
 The [Pong adapter](public-pong.md) has additional offline tests for its pinned downloads, retained license, and bounded gameplay scenarios.
 Run the external Pong suite separately; ordinary Cargo and Python tests require no public ROM or network access.
+Device initialization regressions use original instructions to check disabled sound, wave RAM, disconnected serial pins, and reset flags.
+They verify explicit activation errors and atomic byte/word/block-store/DMA failure behavior.
+The optional [local Emerald startup check](research/emerald-reset.md) now reaches sound activation but still fails deliberately there.
 Thumb cases also verify the return-to-ARM bridge. Command-line tests cover default ARM selection, explicit Thumb/memory/BIOS selection, and errors.
 Compare/status CPU regressions verify saved flags/masks, bank switching, sequential PC/timing, User/System fallback, and atomic diagnostics.
 Load-alias regressions cover widths, signed/unaligned values, immediate/register offsets, pre/post-indexing, every non-PC register bank, and address wrapping.
@@ -204,7 +207,8 @@ Tile tests cover both color depths, palette banks, flips, all map sizes, scrolli
 They check errors for unsupported features and out-of-range fetches without changing the output image.
 The CPU tile demo test verifies asset copies, every pixel, wrapping, opposite directions, reset, and VBlank synchronization.
 RegisterRamReset tests check full memory regions and all memory-flag combinations from ARM and Thumb.
-They verify forced blank, reserved flag bits, caller preservation, protected BIOS RAM, and serial/sound diagnostics.
+They verify forced blank, reserved flag bits, caller preservation, protected BIOS RAM, and selective serial/sound initialization.
+All-device reset returns from ARM and Thumb; active sound and serial operations remain separately tested diagnostics.
 Rendering tests check write-only display state, both identity matrices, and the effect of zeroed sprite attributes.
 Device tests check DMA address/count latches, stopped timer counters, cleared reloads, and IRQ acknowledgement.
 Other checks cover partial clears, preserved input/device state, and callers whose own RAM code is erased.

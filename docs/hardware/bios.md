@@ -40,7 +40,7 @@ Supported software interrupt services:
 | Number | Service | Behavior |
 | --- | --- | --- |
 | `0x00` | SoftReset | Clear BIOS work RAM and reset CPU registers/stacks; restart in ROM or RAM without returning |
-| `0x01` | RegisterRamReset | r0 selects RAM and supported I/O resets; force blank; reject serial/sound flags |
+| `0x01` | RegisterRamReset | r0 selects RAM and supported I/O resets, including disabled sound and disconnected serial state |
 | `0x02` | Halt | Wait for `IE & IF`; preserve IME and caller registers |
 | `0x03` | Stop | Freeze system clocks until an enabled live keypad condition wakes the system; preserve caller state |
 | `0x04` | IntrWait | `r0`: discard old selected flags when nonzero; `r1`: flags to wait for |
@@ -215,21 +215,26 @@ Supported flags can be combined:
 | 2 | Clear palette RAM: `0x05000000..0x050003ff` |
 | 3 | Clear all 96 KiB of video RAM: `0x06000000..0x06017fff` |
 | 4 | Clear sprite attribute memory (OAM): `0x07000000..0x070003ff` |
-| 5 | Serial reset: unsupported |
-| 6 | Sound reset: unsupported |
+| 5 | Reset supported idle serial state and select general-purpose inputs |
+| 6 | Reset disabled sound state, mixing control, bias, and accessible wave RAM |
 | 7 | Reset supported display, DMA, timer, and interrupt registers as described below |
 
-**Unsupported flags:** any request containing bit 5 or 6 reaches `bios::INVALID_ARGUMENT_TRAP`.
-Validation occurs before forced blank or RAM/I/O reset writes, but after the common SWI stack save.
-This includes the common all-devices request `r0=0xff`; it is not silently treated as a successful full reset.
-Serial and audio devices remain unimplemented. The firmware's unconditional serial-data side effect is not reproduced.
+All low-byte flag combinations, including `r0=0xff`, are accepted within the supported device subset.
+This is not full audio or serial support. [Sound activation](audio.md) and [serial transfers](serial.md) still fail explicitly.
+The firmware always clears the low halfword of SIODATA32, even when bit 5 is clear; its upper halfword is preserved.
 
 Every supported request first writes `DISPCNT=0x0080`, including requests with no selected flags.
 This forces a white screen and clears other display-control bits.
 RAM clears then run in bit order, using ordinary word stores.
 Zeroed OAM contains regular sprites at the origin, not disabled sprites; software must configure them before enabling objects.
 
-Bit 7 runs after the selected RAM clears:
+After the RAM clears, bit 5 clears SIOCNT and SIODATA8, writes RCNT=0x8000, and clears supported Joybus reset registers.
+Disconnected general-purpose inputs read high, so RCNT reads back as 0x800f.
+Bit 6 writes SOUNDCNT_X=0, SOUNDCNT_H=0, and SOUNDBIAS=0x0200, then clears the accessible wave RAM bank.
+Disabled PSG registers remain zero. The other wave bank cannot be enabled in the current subset and remains zero.
+Reset does not produce audio, fabricate serial transfers, or bypass normal bus accesses.
+
+Bit 7 runs after the selected RAM and sound/serial resets:
 
 - Disable IME.
 - Disable all four DMA channels, then zero their source, destination, count, and control registers.
@@ -244,7 +249,7 @@ Read-only display status and VCOUNT continue to reflect the advancing display cl
 GREENSWAP, KEYINPUT/button state, KEYCNT, POSTFLG, and BIOS IRQ communication words are not reset.
 Bit 7 covers only the listed registers. A later matching input sample can request keypad IRQ again after IF acknowledgement.
 
-Without bit 7, device configuration remains unchanged except for DISPCNT.
+Without their corresponding reset flags, device configuration remains unchanged except for DISPCNT and the SIODATA32 low halfword.
 IRQ delivery stays CPU-masked during the call. The service restores the caller's mask on return.
 Timers and DMA continue until their reset writes, if selected; this service does not stop clocks or replace frame-capture history.
 Pending IRQs remain pending without bit 7 and can be delivered after return.
@@ -504,5 +509,5 @@ Unsupported SWIs, unsupported exception vectors, and null/misaligned IRQ callbac
 The CPU reports `CpuError::UnsupportedInstruction` with `bios::UNSUPPORTED_TRAP`, rather than silently treating a service as a no-op.
 Invalid arithmetic/decompression arguments use the same CPU error type with the distinct `bios::INVALID_ARGUMENT_TRAP` instruction.
 Prior boot/service steps remain committed on failure.
-RegisterRamReset serial/sound flags, HardReset, and serial/Game Pak STOP wake-up remain unimplemented.
+Active sound, serial transfers, HardReset, and serial/Game Pak STOP wake-up remain unimplemented.
 This subset is not sufficient for Pokémon Emerald compatibility.

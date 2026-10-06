@@ -1,10 +1,13 @@
 //! Original ARM SoftReset and selective RegisterRamReset services.
-//! Serial/sound reset requests are diagnostics until those devices are modeled.
+//! Sound and serial reset use the disabled/disconnected I/O subset.
 
 use super::{ArmImage, IRQ_STACK, ROM_START, SVC_STACK, SYSTEM_STACK};
 use crate::{
     dma::DMA_BASE,
-    io::{DISPCNT, IE, IME, TIMER_BASE},
+    io::{
+        DISPCNT, IE, IME, JOYCNT, JOY_RECV, JOY_TRANS, RCNT, SIOCNT, SIODATA32, SIODATA8,
+        SOUNDBIAS, SOUNDCNT_H, SOUNDCNT_X, TIMER_BASE, WAVE_RAM,
+    },
 };
 
 pub(super) fn emit(a: &mut ArmImage) {
@@ -47,14 +50,15 @@ pub(super) fn emit(a: &mut ArmImage) {
 
 fn emit_ram_reset(a: &mut ArmImage) {
     a.label("register_ram_reset");
-    // Validate unsupported devices before forced blank or any reset writes.
     // Higher flag bits are ignored, as in the documented low-byte flag format.
-    a.emit(0xe310_0060); // TST r0,#serial|sound
-    a.branch(1, "invalid_argument");
     a.literal(1, DISPCNT);
     a.emit(0xe3a0_2080); // MOV r2,#forced blank (also clear other DISPCNT bits)
     a.emit(0xe1c1_20b0); // STRH r2,[r1]
     a.emit(0xe3a0_3000); // MOV r3,#0 (shared fill value)
+
+    // Documented BIOS side effect occurs even when serial reset is not selected.
+    a.literal(1, SIODATA32);
+    store_halfword(a, 0);
     for (flag, start, bytes, next) in [
         (1, 0x0200_0000, 0x40000, "ram_reset_iwram"),
         (2, 0x0300_0000, 0x7e00, "ram_reset_palette"),
@@ -67,6 +71,35 @@ fn emit_ram_reset(a: &mut ArmImage) {
         clear_words(a, start, bytes);
         a.label(next);
     }
+    a.emit(0xe310_0020); // TST r0,#serial
+    a.branch(0, "ram_reset_sound");
+    a.literal(1, SIOCNT);
+    store_halfword(a, 0);
+    a.literal(1, SIODATA8);
+    store_halfword(a, 0);
+    a.literal(1, RCNT);
+    a.emit(0xe3a0_3902); // MOV r3,#0x8000 (GPIO, all pins inputs)
+    store_halfword(a, 0);
+    a.emit(0xe3a0_3000); // MOV r3,#0
+    a.literal(1, JOYCNT);
+    store_halfword(a, 0);
+    clear_words(a, JOY_RECV, 4);
+    clear_words(a, JOY_TRANS, 4);
+
+    a.label("ram_reset_sound");
+    a.emit(0xe310_0040); // TST r0,#sound
+    a.branch(0, "ram_reset_other");
+    a.literal(1, SOUNDCNT_X);
+    store_halfword(a, 0); // Disable sound; PSG register state is held in reset.
+    a.literal(1, SOUNDCNT_H);
+    store_halfword(a, 0);
+    a.literal(1, SOUNDBIAS);
+    a.emit(0xe3a0_3c02); // MOV r3,#0x200 (bias default)
+    store_halfword(a, 0);
+    a.emit(0xe3a0_3000); // MOV r3,#0
+    clear_words(a, WAVE_RAM, 16); // Accessible inactive bank; other bank cannot be enabled yet.
+
+    a.label("ram_reset_other");
     a.emit(0xe310_0080); // TST r0,#other registers
     a.branch(0, "return");
 

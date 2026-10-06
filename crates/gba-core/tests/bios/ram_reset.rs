@@ -1,6 +1,5 @@
 use super::*;
 use gba_core::{
-    bios::INVALID_ARGUMENT_TRAP,
     dma::{DmaError, DMA_BASE, DMA_STRIDE},
     input::Buttons,
     io::{
@@ -185,34 +184,57 @@ fn internal_ram_clear_preserves_bios_work_area_except_common_swi_frame() {
 }
 
 #[test]
-fn all_serial_sound_requests_fail_before_forced_blank_or_memory_clear() {
+fn serial_sound_reset_flags_are_selective_and_all_devices_return() {
+    use gba_core::io::{
+        RCNT, SIOCNT, SIODATA32, SIODATA8, SOUNDBIAS, SOUNDCNT_H, SOUNDCNT_X, WAVE_RAM,
+    };
     for thumb in [false, true] {
-        for flags in (0..256).filter(|flags| flags & 0x60 != 0) {
-            let (mut m, _) = prepare(flags, thumb, 0x1f);
+        for flags in [
+            0, 0x20, 0x40, 0x60, 0x80, 0xff, 0xffffff20, 0xffffff40, 0xffffffff,
+        ] {
+            let (mut m, pc) = prepare(flags, thumb, 0x1f);
             seed_samples(&mut m);
-            m.memory_mut().write16(DISPCNT, 0x0403).unwrap();
-            for _ in 0..1000 {
-                let before = m.cpu().clone();
-                let cycles = m.cycles();
-                let timing = m.last_timing();
-                if let Err(error) = m.step() {
-                    assert!(matches!(
-                        error,
-                        MachineError::Cpu(CpuError::UnsupportedInstruction {
-                            instruction: INVALID_ARGUMENT_TRAP,
-                            ..
-                        })
-                    ));
-                    assert_eq!(m.cpu(), &before);
-                    assert_eq!(m.cycles(), cycles);
-                    assert_eq!(m.last_timing(), timing);
-                    assert_eq!(m.step(), Err(error));
-                    break;
-                }
+            let bus = m.memory_mut();
+            bus.write32(SIODATA32, MARKER).unwrap();
+            bus.write16(SIODATA8, 0x55).unwrap();
+            bus.write16(SIOCNT, 0x500b).unwrap();
+            bus.write16(RCNT, 0x80fa).unwrap();
+            bus.write16(SOUNDCNT_H, 0xffff).unwrap();
+            bus.write16(SOUNDBIAS, 0xffff).unwrap();
+            for offset in 0..16 {
+                bus.write8(WAVE_RAM + offset, 0x5a).unwrap();
             }
-            assert!(m.step().is_err());
-            assert_eq!(m.memory().read16(DISPCNT).unwrap(), 0x0403);
-            check_samples(&m, 0);
+            complete(&mut m, pc);
+            check_samples(&m, flags);
+            let bus = m.memory();
+            assert_eq!(bus.read32(SIODATA32).unwrap(), MARKER & 0xffff0000); // Unconditional low-halfword clear.
+            assert_eq!(
+                bus.read16(SIODATA8).unwrap(),
+                if flags & 0x20 != 0 { 0 } else { 0x55 }
+            );
+            assert_eq!(
+                bus.read16(SIOCNT).unwrap(),
+                if flags & 0x20 != 0 { 4 } else { 0x500b }
+            );
+            assert_eq!(
+                bus.read16(RCNT).unwrap(),
+                if flags & 0x20 != 0 { 0x800f } else { 0x80fa }
+            );
+            assert_eq!(
+                bus.read16(SOUNDCNT_H).unwrap(),
+                if flags & 0x40 != 0 { 0 } else { 0x770f }
+            );
+            assert_eq!(
+                bus.read16(SOUNDBIAS).unwrap(),
+                if flags & 0x40 != 0 { 0x200 } else { 0xc3fe }
+            );
+            assert_eq!(bus.read16(SOUNDCNT_X).unwrap(), 0);
+            for offset in 0..16 {
+                assert_eq!(
+                    bus.read8(WAVE_RAM + offset).unwrap(),
+                    if flags & 0x40 != 0 { 0 } else { 0x5a }
+                );
+            }
         }
     }
 }

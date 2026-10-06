@@ -50,6 +50,8 @@ The repository is a Cargo workspace with three crates:
 | `crates/gba-core/src/cpu/fetch_history_tests.rs` | Shared sample consumption, no execution-entry rereads, and failed-step retry |
 | `crates/gba-core/src/cpu/fetch_boundary_tests.rs` | Actual fetch-region snapshots, split refills, IWRAM lane requirements, ROM-window boundaries, and nominal timing |
 | `crates/gba-core/src/io.rs` | I/O registers, timers, HALT/STOP wake-up, next-event bounds, and IRQ latches |
+| `crates/gba-core/src/io/inactive.rs` | Disabled sound and disconnected serial initialization with explicit unsupported-activity validation |
+| `crates/gba-core/tests/inactive_devices.rs` | Device masks, wave RAM, GPIO pull-ups, serial data, and failed CPU/DMA write isolation |
 | `crates/gba-core/src/io/timer_step.rs` | Staged timer bank, shared divider phase, and timer IF bits at ordered CPU/DMA bus phases |
 | `crates/gba-core/src/memory/timer_step_tests.rs` | Timer access phases, coherent lanes, cascades, IF ordering, rollback, DMA, idle, and clock ownership |
 | `crates/gba-core/src/display.rs` | Display clock, scanline status, comparison edges, and display IRQ events |

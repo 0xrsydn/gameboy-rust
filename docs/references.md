@@ -239,6 +239,13 @@ General gameplay and boot graphics:
 - [tolik518/GBA_Pong](https://github.com/tolik518/GBA_Pong/tree/422e22a5d1f7d11710e03ffc19d5bff6ac95240f): a future homebrew candidate found during research. It has not been built or tested here.
 - [Paperdomo101/2048-GBA at ae36800d](https://github.com/Paperdomo101/2048-GBA/tree/ae36800dfa1314f96c4c8785b5c2d077fb731aff): reviewed its CC0 license, README, `main.c`, `global.h`, and `storage.c` for SRAM byte accesses and Maxmod initialization. This is a source-level requirement, not a runtime result. The [linked release page](https://basil-termini.itch.io/2048-advance) returned HTTP 522 during download research.
 
+Disabled sound and disconnected serial reset:
+
+- [GBATEK BIOS reset functions](https://problemkaputt.de/gbatek-bios-reset-functions.htm), for flag selection and unconditional SIODATA32 low-halfword destruction.
+- [GBATEK sound control](https://problemkaputt.de/gbatek-gba-sound-control-registers.htm), for disabled PSG state, master enable, mixing masks, and bias.
+- [GBATEK normal serial mode](https://problemkaputt.de/gbatek-sio-normal-mode.htm) and its [general-purpose register chapter](https://mgba-emu.github.io/gbatek/), for data widths, control fields, and disconnected input pull-ups.
+- [mGBA BIOS implementation at 3a5e34be](https://github.com/mgba-emu/mgba/blob/3a5e34be33dc7f8f707e5bc9db69e8a430046f21/src/gba/bios.c), for functional serial and sound reset defaults. Exact firmware ordering and timing remain unverified.
+
 Use [GBATEK](https://problemkaputt.de/gbatek.htm) and ARM7TDMI documentation for further hardware work.
 Only use game ROMs that you may lawfully use. Do not commit game ROMs, BIOS files, or game assets.
 The ignore file excludes `roms/`, common game ROM extensions, and save files.

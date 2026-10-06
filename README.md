@@ -54,6 +54,8 @@ Use `--test-suite suite.json` for [repeatable headless ROM assertions](docs/rom-
 | [docs/hardware/bios.md](docs/hardware/bios.md) | The original BIOS replacement and each supported service |
 | [docs/hardware/timers-irq.md](docs/hardware/timers-irq.md) | Timers, interrupt registers, HALT/STOP, and power control |
 | [docs/hardware/dma.md](docs/hardware/dma.md) | DMA channels, triggers, and timing |
+| [docs/hardware/audio.md](docs/hardware/audio.md) | Disabled sound initialization and remaining audio work |
+| [docs/hardware/serial.md](docs/hardware/serial.md) | Disconnected serial initialization and transfer limits |
 | [docs/hardware/display-timing.md](docs/hardware/display-timing.md) | Display clock, status, IRQs, and scanline capture |
 | [docs/hardware/video.md](docs/hardware/video.md) | Backgrounds, sprites, mosaic, windows, color effects, and input |
 | [docs/references.md](docs/references.md) | External hardware references and emulator sources consulted |

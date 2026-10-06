@@ -52,8 +52,9 @@ pub fn boot(rom: Vec<u8>) -> Result<Machine, MemoryError> {
 /// and registers other than each arithmetic service's documented outputs.
 /// SoftReset instead clears BIOS work RAM, resets specified CPU banks, and enters
 /// ROM or RAM in ARM System mode with IRQ masked. It does not reset devices.
-/// RegisterRamReset clears selected RAM and supported I/O registers. Serial/sound
-/// reset flags reach a diagnostic before display or reset writes.
+/// RegisterRamReset clears selected RAM and supported I/O registers, including
+/// disabled sound and disconnected serial reset state. Active audio/link operations
+/// remain diagnostic in the device model.
 /// IRQ callbacks must preserve r4–r11, acknowledge IF, update IRQ_FLAGS for wait
 /// services, and return with BX lr. Nested IRQs and SWIs from callbacks are unsupported.
 /// Service routines use the Supervisor stack; exact firmware stack layout and
