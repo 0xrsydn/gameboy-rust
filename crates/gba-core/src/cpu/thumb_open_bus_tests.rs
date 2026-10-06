@@ -84,7 +84,7 @@ fn every_supported_region_and_alignment_supplies_its_own_bus_width() {
             assert_eq!(cpu.pc(), pc + 2);
             assert_eq!(
                 timing.code_cycles,
-                bus_cycles(0, pc, AccessWidth::Halfword, AccessKind::Sequential)
+                bus_cycles(0, pc + 4, AccessWidth::Halfword, AccessKind::Sequential)
             );
             assert_eq!(timing.data_cycles, 1);
             assert_eq!(timing.internal_cycles, 1);
@@ -425,11 +425,11 @@ fn machine_timing_and_dma_remain_separate_from_thumb_snapshot_reads() {
     let mut machine = Machine::new(cpu(ROM_START), bus);
     assert_eq!(machine.step().unwrap(), StepKind::Instruction);
     assert_eq!(machine.cpu().registers()[1], 0x80a5_80a5);
-    assert_eq!(machine.last_timing().code_cycles, 5); // ROM boundary: 1 + 4 wait cycles.
+    assert_eq!(machine.last_timing().code_cycles, 3); // PC+4 fetch: 1 + 2 wait cycles.
     assert_eq!(machine.last_timing().data_cycles, 1);
     assert_eq!(machine.last_timing().internal_cycles, 1);
-    assert_eq!(machine.cycles(), 7);
-    assert_eq!(machine.memory().read16(TIMER_BASE).unwrap(), 7);
+    assert_eq!(machine.cycles(), 5);
+    assert_eq!(machine.memory().read16(TIMER_BASE).unwrap(), 5);
     let before = machine.cpu().clone();
     let timing = machine.last_timing();
     let dma = DMA_BASE + 3 * DMA_STRIDE;
@@ -444,7 +444,7 @@ fn machine_timing_and_dma_remain_separate_from_thumb_snapshot_reads() {
         }))
     );
     assert_eq!(machine.cpu(), &before);
-    assert_eq!(machine.cycles(), 7);
+    assert_eq!(machine.cycles(), 5);
     assert_eq!(machine.last_timing(), timing);
     assert_eq!(machine.memory().read32(RAM).unwrap(), 0);
 }

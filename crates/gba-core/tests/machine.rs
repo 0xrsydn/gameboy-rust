@@ -59,7 +59,7 @@ fn timer_demo_configures_hardware_in_cpu_code_and_handles_exactly_one_irq() {
         }
     }
     assert_eq!(entries, 1);
-    assert_eq!(machine.cycles(), 153);
+    assert_eq!(machine.cycles(), 151); // Initial non-refill ROM fetch is S+S, not N+S.
     assert_eq!(machine.cpu().mode(), Mode::System);
     assert_eq!(machine.cpu().pc(), ROM_START + 0x2c);
     assert_eq!(machine.cpu().registers()[10], 1);
@@ -84,7 +84,7 @@ fn overflow_after_instruction_is_sampled_on_next_step() {
     assert_eq!(machine.step().unwrap(), StepKind::IrqEntry);
     assert_eq!(machine.cpu().registers()[0], 1); // Interrupted instruction did not execute
     assert_eq!(machine.cpu().registers()[14], ROM_START + 8);
-    assert_eq!(machine.cycles(), 11); // First ROM access: 8; BIOS IRQ refill: 3
+    assert_eq!(machine.cycles(), 9); // New ROM fetch at PC+8: 6; nominal BIOS IRQ refill: 3
 }
 
 #[test]
@@ -254,7 +254,7 @@ fn skipped_condition_charges_code_access_but_not_registers() {
     assert_eq!(machine.step().unwrap(), StepKind::Instruction);
     assert_eq!(machine.cpu().registers()[0], 0);
     assert_eq!(machine.cpu().pc(), ROM_START + 4);
-    assert_eq!(machine.cycles(), 8);
+    assert_eq!(machine.cycles(), 6);
     assert_eq!(machine.memory().read16(IF).unwrap(), 8);
 }
 

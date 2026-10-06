@@ -1,6 +1,6 @@
 //! Nominal ARM7 instruction-cycle summaries, separate from instruction semantics.
-//! Data costs come from actual bus accesses. Bus-history samples are separate from timing calculations.
-//! PC writes use target-region code costs, following GBATEK's cycle summary.
+//! Non-refill code costs use the new fetch address; data costs use actual bus accesses.
+//! Access kinds and PC-write refill totals remain instruction-local nominal summaries.
 
 use super::{Cpu, CpuError, InstructionSet};
 use crate::{
@@ -56,7 +56,7 @@ impl Cpu {
             InstructionSet::Arm => self.arm_summary(instruction),
             InstructionSet::Thumb => self.thumb_summary(instruction),
         };
-        let pc = self.pc();
+        let fetch_address = fetched.lookahead.address();
         let width = self.instruction_set.access_width();
         // A WAITCNT store affects subsequent instructions, not this code access.
         let waitcnt = memory.waitcnt();
@@ -68,7 +68,7 @@ impl Cpu {
         let code_cycles = if summary.refill {
             refill_cycles(waitcnt, self.pc(), self.instruction_set.access_width())
         } else {
-            bus_cycles(waitcnt, pc, width, code_kind)
+            bus_cycles(waitcnt, fetch_address, width, code_kind)
         };
         Ok(StepTiming {
             code_cycles,

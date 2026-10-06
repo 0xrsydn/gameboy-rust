@@ -70,7 +70,8 @@ Failed-instruction tests continue to assert full-state preservation.
 This implements persistent ARM instruction words, not a complete cycle-by-cycle pipeline.
 Cold fill and target-pair samples do not add nominal cycles or data accesses.
 The existing destination-based refill summaries and one-shot DMA resume timing remain unchanged.
-The current instruction address still selects nominal code cost rather than a separately scheduled fetch address.
+The later [fetch-address timing extension](fetch-address-timing.md) selects non-refill code cost from the newly sampled address.
+Access kinds, cold-fill startup costs, and refill scheduling remain incomplete.
 
 ARM PC+8 open bus and protected BIOS readback remain separate snapshots.
 The [shared fetch sample](shared-fetch-samples.md) supplies the instruction-buffer entry and supported bus snapshots without duplicate reads.

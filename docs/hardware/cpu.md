@@ -323,6 +323,12 @@ Thumb `BL` charges 1S for its prefix and 1N+2S for its suffix.
 Multiply costs vary with the incoming multiplier's upper bytes; accumulate and long forms add internal cycles.
 ARM uses Rs for this calculation. Thumb multiply uses the incoming destination register.
 
+Non-refill code costs use the new instruction fetch address: P+8 for ARM and P+4 for Thumb.
+The incoming instruction state selects the width. The sampled fetch address selects the memory region and ROM wait-state window.
+A 128 KiB ROM boundary therefore forces N timing when lookahead reaches it, not when execution reaches it later.
+This applies to cold and retained pipelines without adding separate startup-fill costs.
+See [fetch-address timing](../research/fetch-address-timing.md) for evidence, examples, and remaining limits.
+
 Data costs use the addresses and widths of actual CPU bus calls, after alignment handling.
 BIOS, internal work RAM, OAM, and supported I/O accesses cost one cycle.
 External work RAM costs 3 cycles for byte/halfword accesses and 6 for words.
@@ -340,7 +346,7 @@ The new settings apply to subsequent code accesses.
 
 A successful DMA unit marks the next CPU instruction's nominal code access non-sequential.
 This applies even when DMA only accesses RAM. Consecutive units retain one pending resume, not multiple penalties.
-A non-refill instruction uses its normal width and current WAITCNT with N instead of S.
+A non-refill instruction uses its actual lookahead address, incoming width, and current WAITCNT with N instead of S.
 ARM word accesses retain an S cost for their second halfword.
 Stores and ROM boundaries that already use N do not receive an additional cost.
 
@@ -357,8 +363,9 @@ See [the evidence and limitations](../research/dma-resume-timing.md).
 Important timing limits:
 
 - Code S/N counts follow instruction summaries, not a simulated fetch pipeline.
-- Ordinary code costs use the current instruction address. The ARM open-bus PC+8 snapshot has no fetch timing or startup pipeline fill.
-- PC writes use destination-region costs and the restored instruction width for nominal refill accesses.
+- Non-refill code costs follow actual lookahead addresses, but cold current/decode fills have no separate startup charge.
+- PC writes still use destination-region costs and the restored instruction width for nominal refill accesses.
+  Their old-PC fetch and target pair are not yet charged individually; IRQ entry has the same remaining limit.
 - Refill cost calculation does not read target bytes. ARM/Thumb instruction-buffer and local IWRAM bus-history samples add no extra cycles.
 - Target-pair sampling cannot fail the branch early. An invalid branch target still fails on the following instruction fetch.
 - Game Pak prefetch is not implemented. WAITCNT bit 14 is stored but does not accelerate execution.

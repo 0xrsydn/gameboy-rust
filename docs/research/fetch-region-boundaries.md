@@ -76,8 +76,8 @@ A retry takes a new lookahead sample from current memory.
 - Protected BIOS history remains separate and image-derived.
 - All data reads within an instruction still use one entry snapshot.
 
-Nominal timing remains based on the current instruction address and existing refill summaries.
-Crossing a wait-state window does not yet schedule code cost at the actual lookahead address.
+The later [fetch-address timing extension](fetch-address-timing.md) charges non-refill code at the actual lookahead address.
+Refill summaries remain destination-based; the instruction-local access kinds and cold-start costs are still nominal.
 Per-access device updates, video-bus contention, general DMA handoff, and Game Pak prefetch remain incomplete.
 No boundary timing accuracy is claimed.
 

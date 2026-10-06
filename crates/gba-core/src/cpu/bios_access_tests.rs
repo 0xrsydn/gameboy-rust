@@ -302,12 +302,12 @@ fn protected_reads_charge_one_data_access_before_device_progress() {
     assert_eq!(
         machine.last_timing(),
         StepTiming {
-            code_cycles: 8,
+            code_cycles: 6, // New ARM fetch is at ROM_START+8, not the page boundary.
             data_cycles: 1,
             internal_cycles: 1,
             idle_cycles: 0
         }
     );
-    assert_eq!(machine.cycles(), 10);
-    assert_eq!(machine.memory().read16(TIMER_BASE).unwrap(), 10);
+    assert_eq!(machine.cycles(), 8);
+    assert_eq!(machine.memory().read16(TIMER_BASE).unwrap(), 8);
 }

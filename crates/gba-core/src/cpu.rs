@@ -42,6 +42,8 @@ mod fetch_boundary_tests;
 #[cfg(test)]
 mod fetch_history_tests;
 #[cfg(test)]
+mod fetch_timing_tests;
+#[cfg(test)]
 mod instruction_tests;
 #[cfg(test)]
 mod iwram_dma_tests;

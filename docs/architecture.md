@@ -55,7 +55,8 @@ The repository is a Cargo workspace with three crates:
 | `crates/gba-core/src/cpu/pipeline.rs` | CPU-owned ARM/Thumb instructions, PC/state tags, deferred fetch diagnostics, refill sampling, and explicit invalidation |
 | `crates/gba-core/src/cpu/arm_pipeline_tests.rs` | ARM self-modifying code, branches, target pairs, DMA isolation, exceptions, errors, and timing equivalence |
 | `crates/gba-core/src/cpu/thumb_pipeline_tests.rs` | Thumb retained halfwords, BL prefix/suffix, state-tagged refills, DMA isolation, rollback, and timing equivalence |
-| `crates/gba-core/src/cpu/timing.rs` | ARM/Thumb cycle summaries, nominal DMA resume, and data-access accounting |
+| `crates/gba-core/src/cpu/timing.rs` | Fetch-address non-refill costs, nominal refill/DMA summaries, and data-access accounting |
+| `crates/gba-core/src/cpu/fetch_timing_tests.rs` | Fetch-region/page/wait-window costs, DMA resume, WAITCNT stores, deferred errors, and timer/IRQ effects |
 | `crates/gba-core/src/cpu/dma_resume_tests.rs` | One-shot non-sequential DMA resume costs, wait settings, failures, idle, IRQs, and API isolation |
 | `crates/gba-core/src/cpu/timing_tests.rs` | Instruction timing and semantic-equivalence checks |
 | `crates/gba-demos/src/timer_demo.rs` | Original timer-configuration program and IRQ handler |

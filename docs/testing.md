@@ -250,6 +250,11 @@ Integration tests cover CPU/DMA writes, interrupt masks, HALT wake-up, ARM/Thumb
 Failed-store tests check register, IRQ-history, CPU, and clock preservation. BIOS reset tests verify retained KEYCNT state.
 The bounded graphics frame runner is checked for instruction errors and timeouts.
 Timing tests cover every ROM wait-state setting, access width, ROM window, and 128 KiB boundary handling.
+Fetch-address regressions place executing instructions before memory-region and ROM page/wait-window boundaries.
+They check ARM/Thumb widths, cold/retained pipelines, independent N/S tables, DMA resume, and pre-write WAITCNT settings.
+Other checks cover deferred fetch errors, unchanged nominal refill totals, timer advancement, and subsequent IRQ sampling.
+Startup-ROM and timer expectations now use P+8/P+4 rather than the executing address; data and rollback assertions remain intact.
+See [fetch-address timing](research/fetch-address-timing.md) for the bounded scope.
 Instruction timing tests cover arithmetic, shifts, branches, transfers, block operations, multiply, and exception returns.
 Timed and untimed execution are compared across all 65,536 Thumb encodings with fixed initial registers.
 Timer/IRQ tests verify that changing WAITCNT changes when an interrupt is sampled.

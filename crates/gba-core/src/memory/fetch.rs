@@ -11,6 +11,12 @@ pub(crate) struct InstructionFetch {
     pub(super) bus_word: Option<u32>,
 }
 
+impl InstructionFetch {
+    pub(crate) fn address(&self) -> u32 {
+        self.address
+    }
+}
+
 impl Memory {
     pub(crate) fn fetch_instruction(
         &self,

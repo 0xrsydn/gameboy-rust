@@ -190,9 +190,9 @@ fn host_accesses_and_clock_advances_do_not_consume_resume_but_untimed_cpu_does()
 #[test]
 fn skipped_conditions_stores_and_boundaries_consume_resume_without_double_charging() {
     for (pc, instruction, data) in [
-        (PC, 0x0591_0000, 0),                  // LDREQ skipped: Z is clear.
-        (PC, 0xe581_0000, 6),                  // STR already has an N code access.
-        (ROM_START + 0x20000, 0xe1a0_0000, 0), // Boundary already forces N.
+        (PC, 0x0591_0000, 0),                      // LDREQ skipped: Z is clear.
+        (PC, 0xe581_0000, 6),                      // STR already has an N code access.
+        (ROM_START + 0x20000 - 8, 0xe1a0_0000, 0), // PC+8 fetch boundary already forces N.
     ] {
         let (mut cpu, mut bus) = program(false, pc, instruction);
         dma(&mut bus);

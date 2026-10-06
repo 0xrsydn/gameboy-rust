@@ -45,6 +45,7 @@ Update this file when a feature lands or a limit is removed.
 - STOP freezes CPU/DMA/device clocks, retains device phases, and reports a stopped frame runner without spinning.
 - Machine execution to the next VBlank event, with a configurable step limit.
 - CPU/device stepping with nominal ARM7 instruction costs and memory wait states.
+- Non-refill code costs use actual ARM PC+8/Thumb PC+4 fetch addresses, including memory-region and ROM wait-window boundaries.
 - Game Pak wait-state control (`WAITCNT`) for all three ROM windows.
 - Sequential/non-sequential data accesses, branch refill costs, and variable multiply timing.
 - Optional caller-supplied 16 KiB BIOS mapping, with CPU read protection based on retained ARM PC+8 or aligned Thumb PC+4 words.
@@ -161,7 +162,8 @@ Writes to cartridge addresses return errors instead of modeling cartridge hardwa
    Keep unknown history diagnostic until fetch ordering and latch ownership have independent coverage.
    Validate BIOS snapshots with independent hardware tests before claiming exact refill or data-access history.
    The desktop runner still uses only the original BIOS. Keep protected reads image-derived for all supplied images.
-2. Connect instruction buffering to fetch timing, Game Pak prefetch, per-access device updates, and verified timer/IRQ delays.
+2. Replace destination-only refill summaries with verified source-fetch/target-pair timing, including IRQ entry.
+   Then extend access-kind sequencing, startup costs, Game Pak prefetch, per-access device updates, and timer/IRQ delays.
 3. Validate keypad retrigger behavior with hardware tests and add remaining device registers; extend BIOS reset coverage as sound/serial support becomes available.
    Validate STOP entry/wake edges and add external wake sources and remaining DMA device modes.
 4. Replace nominal sprite work limits with verified individual fetch timing; add background fetch timing and per-pixel composition.

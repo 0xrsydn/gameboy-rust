@@ -76,7 +76,7 @@ fn open_bus_loads_select_lanes_rotate_and_sign_extend_normally() {
             assert_cpu_arch_eq!(cpu, expected, "{instruction:#010x}, lane {low}");
             assert_eq!(timing.data_cycles, 1);
             assert_eq!(timing.internal_cycles, 1);
-            assert_eq!(timing.code_cycles, 8); // ROM boundary; no extra lookahead cost
+            assert_eq!(timing.code_cycles, 6); // PC+8 fetch is past the ROM boundary.
             assert_eq!(bus.cycles(), 0);
         }
     }
@@ -115,7 +115,7 @@ fn prefetch_snapshot_uses_the_executing_region_and_rom_window() {
         assert_eq!(timing.data_cycles, 1);
         assert_eq!(
             timing.code_cycles,
-            bus_cycles(0, pc, AccessWidth::Word, AccessKind::Sequential)
+            bus_cycles(0, pc + 8, AccessWidth::Word, AccessKind::Sequential)
         );
     }
 }
@@ -277,8 +277,8 @@ fn machine_charges_one_data_access_and_dma_does_not_inherit_cpu_context() {
     let mut machine = Machine::new(cpu, bus);
     assert_eq!(machine.step().unwrap(), StepKind::Instruction);
     assert_eq!(machine.cpu().registers[1], DATA);
-    assert_eq!(machine.cycles(), 10); // 8 code + 1 data + 1 internal
-    assert_eq!(machine.memory().read16(TIMER_BASE).unwrap(), 10);
+    assert_eq!(machine.cycles(), 8); // 6 code + 1 data + 1 internal
+    assert_eq!(machine.memory().read16(TIMER_BASE).unwrap(), 8);
     let before = machine.cpu().clone();
     let timing = machine.last_timing();
     // DMA3 exposes all 28 source address bits. Save memory is still unsupported.
@@ -294,7 +294,7 @@ fn machine_charges_one_data_access_and_dma_does_not_inherit_cpu_context() {
         }))
     );
     assert_eq!(machine.cpu(), &before);
-    assert_eq!(machine.cycles(), 10);
+    assert_eq!(machine.cycles(), 8);
     assert_eq!(machine.last_timing(), timing);
     assert_eq!(machine.memory().read32(RAM).unwrap(), 0);
 }

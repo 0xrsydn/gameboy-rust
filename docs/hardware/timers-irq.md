@@ -71,7 +71,8 @@ Audio events and interrupt sources other than timers, display events, DMA comple
 `--timer-demo` executes original ARM code that configures Timer 0, IE, and IME.
 The timer overflows after 16 supplied cycles and enters the original handler through vector `0x18`.
 The handler stops Timer 0, acknowledges IF, increments r10, and returns with `SUBS pc, lr, #4`.
-The demo ends after 21 steps and 153 nominal cycles with one handler call, using default WAITCNT settings.
+The demo ends after 21 steps and 151 nominal cycles with one handler call, using default WAITCNT settings.
+Its initial ARM ROM fetch uses PC+8 sequential timing; cold pipeline filling has no separate startup charge.
 These counts test the timing model; they are not hardware timing measurements.
 Its test handler deliberately changes r2 and r10; it does not implement the Nintendo BIOS calling convention.
 

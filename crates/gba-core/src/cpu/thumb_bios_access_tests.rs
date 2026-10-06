@@ -276,13 +276,13 @@ fn machine_steps_charge_thumb_exit_and_protected_load_without_snapshot_accesses(
         assert_eq!(
             machine.last_timing(),
             StepTiming {
-                code_cycles: 8,
+                code_cycles: 6, // Returned ARM code fetches at ROM_START+8.
                 data_cycles: 1,
                 internal_cycles: 1,
                 idle_cycles: 0,
             }
         );
-        assert_eq!(machine.cycles(), cycles + 10);
+        assert_eq!(machine.cycles(), cycles + 8);
         assert_eq!(
             u64::from(machine.memory().read16(TIMER_BASE).unwrap()),
             machine.cycles()

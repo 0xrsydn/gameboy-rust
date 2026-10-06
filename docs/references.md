@@ -172,6 +172,14 @@ Fetch-region boundary research:
 See [fetch-region boundary findings](research/fetch-region-boundaries.md) for source agreement, implementation differences, and retained diagnostics.
 No physical-hardware or external-emulator differential result is claimed.
 
+Fetch-address timing research:
+
+- [ARM7TDMI data-operation timing](https://support.arm.com/documentation/ddi0029/g/instruction-cycle-timings/data-operations), for the normal `pc+2L` instruction prefetch in Table 6.4.
+- The pinned NanoBoyAdvance `Run` loop above, for the new ARM/Thumb lookahead fetch before current-instruction execution.
+- Existing Game Pak wait-state and DMA resume sources above, for applying bus cost and sequence-break rules to the fetched address.
+
+See [fetch-address timing](research/fetch-address-timing.md). This corrects non-refill address selection, not full bus sequencing or refill timing.
+
 Use [GBATEK](https://problemkaputt.de/gbatek.htm) and ARM7TDMI documentation for further hardware work.
 Only use game ROMs that you may lawfully use. Do not commit game ROMs, BIOS files, or game assets.
 The ignore file excludes `roms/`, common game ROM extensions, and save files.

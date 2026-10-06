@@ -92,7 +92,7 @@ fn compare_psr_has_sequential_timing_for_each_operand_form() {
                 .unwrap();
             assert_eq!(
                 timing.code_cycles,
-                bus_cycles(0, ROM_START, AccessWidth::Word, AccessKind::Sequential)
+                bus_cycles(0, ROM_START + 8, AccessWidth::Word, AccessKind::Sequential)
             );
             assert_eq!(timing.internal_cycles, internal);
             assert_eq!(timing.data_cycles, 0);

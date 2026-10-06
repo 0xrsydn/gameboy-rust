@@ -86,7 +86,18 @@ fn mapped_video_and_rom_crossings_use_fetch_region_lanes_for_all_load_widths() {
                             expected,
                             "boundary={boundary_address:#x} pc={pc:#x}"
                         );
-                        assert_eq!(timing.code_cycles, 1);
+                        assert_eq!(
+                            timing.code_cycles,
+                            if boundary_address == ROM_START {
+                                if distance == 4 {
+                                    5
+                                } else {
+                                    3
+                                }
+                            } else {
+                                1
+                            }
+                        );
                         assert_eq!(timing.data_cycles, 1);
                         assert_eq!(timing.internal_cycles, 1);
                         assert_eq!(memory.cycles(), 0);
@@ -177,7 +188,7 @@ fn refill_straddling_ewram_and_iwram_keeps_the_captured_target_lane() {
 }
 
 #[test]
-fn rom_page_and_wait_window_crossings_use_mapped_halfwords_without_changing_nominal_timing() {
+fn rom_page_and_wait_window_crossings_use_mapped_halfwords_and_fetch_address_costs() {
     let mut rom = vec![0; ROM_CAPACITY];
     for offset in [0, 0x0100_0000] {
         rom[offset..offset + 4].copy_from_slice(&DATA.to_le_bytes());
@@ -213,7 +224,7 @@ fn rom_page_and_wait_window_crossings_use_mapped_halfwords_without_changing_nomi
                     timing.code_cycles,
                     bus_cycles(
                         memory.waitcnt(),
-                        pc,
+                        pc + 4,
                         AccessWidth::Halfword,
                         AccessKind::Sequential
                     )

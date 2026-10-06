@@ -45,14 +45,15 @@ A completed DMA WAITCNT store changes the settings before CPU resume.
 ## Limits
 
 The timing model has no per-access fetch scheduling or DMA arbitration.
-The later [ARM](arm-instruction-buffer.md) and [Thumb](thumb-instruction-buffer.md) instruction buffers retain instructions without changing these nominal costs.
-It charges the current instruction address, not a separately scheduled PC+4/PC+8 pipeline fetch.
+The later [ARM](arm-instruction-buffer.md) and [Thumb](thumb-instruction-buffer.md) instruction buffers retain instructions.
+The [fetch-address timing extension](fetch-address-timing.md) now charges non-refill code at PC+4/PC+8 rather than the executing address.
+A resumed access selects that fetch region's wait settings. It is still not a separately scheduled bus event.
 DMA still executes only between instructions, not between data accesses or during CPU internal cycles.
 
 Existing refill summaries remain destination-based `1N+2S` costs.
 A resumed branch or exception consumes pending state without adding another nominal access.
 This prevents double-counting the existing N component, but does not model the discarded old-PC fetch separately.
-Stores and 128 KiB ROM boundaries already use N and receive no duplicate cost.
+Stores and fetches at 128 KiB ROM boundaries already use N and receive no duplicate cost.
 Game Pak prefetch remains unimplemented; WAITCNT bit 14 does not alter this nominal timing path.
 
 This change does not select a DMA value for CPU open-bus reads.

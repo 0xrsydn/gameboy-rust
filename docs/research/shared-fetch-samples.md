@@ -55,7 +55,8 @@ Strict instruction reads never use protected BIOS or unused-memory data fallback
 - BIOS history commits after successful BIOS instruction execution; target refills do not establish additional BIOS history.
 - All unused-memory data reads within an instruction still use its entry snapshot.
 - DMA remains scheduled between whole instructions. Sampling does not add an interleaving point.
-- Current-instruction and destination-based nominal timing remain unchanged.
+- Non-refill timing now consumes the sample's address in the [fetch-address extension](fetch-address-timing.md).
+- Destination-based refill summaries and instruction-local access kinds remain nominal.
 - Per-access device updates, Game Pak prefetch, and exact refill/arbitration timing remain incomplete.
 
 ## Original tests

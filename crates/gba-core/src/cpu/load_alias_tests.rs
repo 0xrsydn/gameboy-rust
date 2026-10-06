@@ -104,7 +104,7 @@ fn load_aliases_keep_loaded_values_for_all_widths_offsets_and_index_modes() {
                         assert_eq!(bus.cycles(), 0);
                         assert_eq!(
                             timing.code_cycles,
-                            bus_cycles(0, ROM_START, AccessWidth::Word, AccessKind::Sequential)
+                            bus_cycles(0, ROM_START + 8, AccessWidth::Word, AccessKind::Sequential)
                         );
                         assert_eq!(
                             timing.data_cycles,
@@ -245,7 +245,7 @@ fn alias_io_load_reads_before_device_progress_and_irq_delivery() {
     assert_eq!(machine.step().unwrap(), StepKind::Instruction);
     assert_eq!(machine.cpu().registers()[0], expected);
     assert_eq!(machine.cpu().pc(), ROM_START + 4);
-    assert_eq!(machine.cycles(), 10); // ROM boundary: 8 code + 1 I/O data + 1 internal
+    assert_eq!(machine.cycles(), 8); // PC+8 fetch: 6 code + 1 I/O data + 1 internal
     assert_ne!(machine.memory().read32(TIMER_BASE).unwrap(), expected);
     assert_eq!(machine.memory().read16(IF).unwrap(), 8);
     assert_eq!(machine.step().unwrap(), StepKind::IrqEntry);

@@ -128,7 +128,8 @@ fn stored_prefetch_phi_and_sram_settings_do_not_change_supported_bus_costs() {
 
 #[test]
 fn wait_states_change_when_a_timer_interrupt_is_sampled() {
-    for (waitcnt, entry_step, instructions, cycles) in [(0, 4, 3, 23), (0x18, 6, 5, 24)] {
+    // 20-cycle timer: four 6-cycle fetches or five 4-cycle fetches, then 3-cycle IRQ entry.
+    for (waitcnt, entry_step, instructions, cycles) in [(0, 5, 4, 27), (0x18, 6, 5, 23)] {
         let mut memory = Memory::new(0xe280_0001_u32.to_le_bytes().repeat(64)).unwrap();
         memory.write16(WAITCNT, waitcnt).unwrap();
         memory.write32(TIMER_BASE, 0x00c0_ffec).unwrap(); // 20 cycles
