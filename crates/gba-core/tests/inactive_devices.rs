@@ -82,8 +82,8 @@ fn unsupported_operations_have_specific_retryable_diagnostics() {
     for (address, value, description) in [
         (SIOCNT, 0x80, "serial transfer start"),
         (SIOCNT + 1, 0x20, "multiplayer/UART"),
-        (RCNT + 1, 0x40, "Joybus serial mode"),
-        (RCNT + 1, 1, "GPIO serial interrupt"),
+        (RCNT + 1, 0xc0, "Joybus serial mode"),
+        (RCNT + 1, 0x81, "GPIO serial interrupt"),
         (JOYCNT, 0x40, "Joybus interrupt"),
         (JOY_RECV, 1, "Joybus data access"),
     ] {

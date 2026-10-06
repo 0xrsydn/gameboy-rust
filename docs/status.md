@@ -142,6 +142,7 @@ The [audio subset](hardware/audio.md) supports Direct Sound, both PSG pulse chan
 It does not yet provide a continuous sample stream. Wave channel 3 playback and unverified sound-DMA pairings remain diagnostic.
 PSG timing and signed mixing are nominal; hardware startup edges and analog behavior remain unverified.
 The [serial initialization subset](hardware/serial.md) supports idle normal data and disconnected general-purpose pins, not active transfers.
+RCNT retains inactive bits 8/14 in normal mode. Effective GPIO interrupt enable and Joybus selection remain diagnostic.
 Mapped I/O covers DMA, timers, interrupts, WAITCNT, display control/status, background control/scroll/affine registers, window/effect registers, KEYINPUT/KEYCNT, POSTFLG, and HALTCNT.
 Keypad IRQs use a documented polling model; hardware retrigger edges and asynchronous input timing remain unverified.
 STOP implements keypad wake only. Serial/Game Pak wake sources, oscillator restart delays, and exact wake timing remain unimplemented or unverified.
@@ -151,9 +152,10 @@ ROM files can run in bounded terminal mode or a window with the original BIOS re
 ROM windows have no demo-specific startup checks. Input is sampled between bounded execution slices.
 Audio, saves, and external BIOS loading remain unavailable. ROM loading does not establish commercial-game compatibility.
 A local Emerald run now completes its all-device reset and master sound enable.
-It also passes the pulse and noise triggers, then stops explicitly at GPIO serial interrupt enable (`0x04000135`).
-No title-screen, gameplay, or audible-game compatibility is established.
-Its captured startup frames do not establish title-screen or gameplay compatibility. See [the startup result](research/emerald-reset.md).
+It also passes the pulse/noise triggers and normal-mode RCNT configuration.
+It next stops on an attempted write to address zero in the BIOS replacement at PC `0x00000378`.
+The cause remains under investigation. No title-screen, gameplay, or audible-game compatibility is established.
+See [the startup result](research/emerald-reset.md) for the bounded run and next investigation.
 See [cartridge loading](hardware/cartridge.md) for file limits, step budgets, and exit status.
 The [ROM suite runner](rom-tests.md) has original regressions and a [pinned public ARM baseline](public-arm-tests.md).
 The pinned public ARM ROM passes its result checkpoint in debug and release builds.

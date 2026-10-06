@@ -28,12 +28,14 @@ impl Inactive {
 
     /// Value-dependent rejection is independent of device state, so batch
     /// stores can validate all values before committing any RAM/I/O writes.
+    /// RCNT mode and IRQ-enable bits share the high byte. Each high-byte write
+    /// supplies the complete selection, independent of the previous low byte.
     pub(super) fn unsupported(address: u32, value: u8) -> Option<&'static str> {
         match address {
             SIOCNT if value & 0x80 != 0 => Some("serial transfer start"),
             0x0400_0129 if value & 0x20 != 0 => Some("multiplayer/UART serial mode"),
-            0x0400_0135 if value & 0x40 != 0 => Some("Joybus serial mode"),
-            0x0400_0135 if value & 1 != 0 => Some("GPIO serial interrupt enable"),
+            0x0400_0135 if value & 0xc0 == 0xc0 => Some("Joybus serial mode"),
+            0x0400_0135 if value & 0x81 == 0x81 => Some("GPIO serial interrupt enable"),
             JOYCNT if value & 0x40 != 0 => Some("Joybus interrupt enable"),
             JOY_RECV..=0x0400_0157 if value != 0 => Some("Joybus data access beyond reset"),
             _ => None,
@@ -83,7 +85,7 @@ impl Inactive {
                 self.serial_control = replace_byte(self.serial_control, address, value) & 0x500b
             }
             SIODATA8 if address & 1 == 0 => self.serial_send = value,
-            RCNT => self.rcnt = replace_byte(self.rcnt, address, value) & 0x80ff,
+            RCNT => self.rcnt = replace_byte(self.rcnt, address, value) & 0xc1ff,
             _ => {} // Unused/read-only bits have no effect.
         }
     }

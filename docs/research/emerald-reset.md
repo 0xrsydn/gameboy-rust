@@ -33,13 +33,18 @@ The earlier reset-only implementation stopped at master sound enable (`0x0400008
 The Direct Sound increment then reached a PSG channel 1 trigger (`0x04000065`, PC `0x082e03bc`).
 Channel 1 support reached the channel 2 trigger (`0x0400006d`, PC `0x082e03c0`).
 Both pulse channels then reached the noise trigger (`0x0400007d`, PC `0x082e03c4`).
-With noise channel 4 implemented, both runs now stop at general-purpose input/output (GPIO) serial interrupt enable:
+Noise channel 4 support then reached an incorrectly rejected RCNT write: `0x0100` at `0x04000134`, PC `0x082e2aac`.
+RCNT bit 15 was clear, so bit 8 did not enable general-purpose input/output (GPIO) interrupts.
+GBATEK documents bits 8 and 14 as writable but unused in normal mode.
+The serial model now retains these inactive bits. Effective GPIO interrupt enable and Joybus selection still return explicit errors.
+
+Both runs pass that write and now stop in the original BIOS replacement:
 
 ```text
-Steps: 395420; instructions: 393690; IRQ entries: 2; DMA units: 1728; HALT idle: 0
-Nominal cycles: 1328057
-PC=0x082e2aac
-unsupported GPIO serial interrupt enable: write 0x01 at 0x04000135
+Steps: 398019; instructions: 396289; IRQ entries: 2; DMA units: 1728; HALT idle: 0
+Nominal cycles: 1334271
+PC=0x00000378
+read-only memory at 0x00000000
 ```
 
 The native run captures five startup frames. These do not establish a working title screen or gameplay.
@@ -54,9 +59,10 @@ Workspace debug/release tests, strict Clippy, public ARM/Thumb/memory/BIOS check
 Native ROM-window tests and graphics smoke modes pass on Darwin arm64.
 The pinned Pong debug/release reports match.
 
-The next observed requirement is [serial control-register behavior](../hardware/serial.md), specifically RCNT bit 8.
-Check mode gating and interrupt-enable semantics before changing the current rejection.
-This diagnostic alone does not establish that the game needs an active link transfer.
+The next investigation is the BIOS replacement's attempted write to address zero at PC `0x00000378`.
+Trace the service arguments and original firmware routine before deciding whether the caller or service behavior is wrong.
+The diagnostic alone does not establish the root cause. Do not make BIOS memory writable to bypass it.
+The corrected RCNT write does not establish a need for active link transfers or GPIO interrupts.
 
 Noise now has deterministic counter clocks and shares tested length/envelope logic with the independent pulse channels.
 Sweep applies only to channel 1. Direct Sound has FIFO clocks and nominal DMA requests.
