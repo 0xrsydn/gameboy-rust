@@ -84,6 +84,64 @@ fn rtc_setup() -> Vec<u32> {
     ]
 }
 
+fn rtc_calendar_setup() -> Vec<u32> {
+    // Original unrolled ARM GPIO driver. Write 2024-02-29 12:34:56, then read the hour.
+    // Keep executable instructions past the GPIO overlay at ROM offsets c4..c9.
+    let mut code = vec![0xe1a00000; 64];
+    code[0] = 0xea00003e; // B 0x08000100
+    code.extend([0xe59f1000, 0xea000000, 0x080000c4]); // LDR r1; skip literal.
+    fn store(code: &mut Vec<u32>, value: u32, offset: u32) {
+        code.extend([0xe3a00000 | value, 0xe1c100b0 | offset]);
+    }
+    fn send(code: &mut Vec<u32>, byte: u8, command: bool) {
+        for bit in 0..8 {
+            let shift = if command { 7 - bit } else { bit };
+            let pins = 4 | (u32::from((byte >> shift) & 1) << 1);
+            store(code, pins, 0);
+            store(code, pins | 1, 0);
+        }
+    }
+    store(&mut code, 1, 4); // Read enable.
+    store(&mut code, 1, 0);
+    store(&mut code, 7, 2);
+    store(&mut code, 5, 0);
+    send(&mut code, 0x64, true);
+    for byte in [0x24, 2, 0x29, 4, 0x12, 0x34, 0x56] {
+        send(&mut code, byte, false);
+    }
+    store(&mut code, 1, 0); // End write and begin time read.
+    store(&mut code, 5, 0);
+    send(&mut code, 0x67, true);
+    store(&mut code, 5, 2);
+    code.push(0xe3a02000); // MOV r2,#0
+    for bit in 0..8 {
+        store(&mut code, 4, 0);
+        store(&mut code, 5, 0);
+        code.extend([0xe1d130b0, 0xe1a030a3, 0xe2033001, 0xe1822003 | (bit << 7)]);
+    }
+    store(&mut code, 1, 0); // Aborting the remaining read bytes preserves calendar state.
+    code.push(0xeafffffe);
+    code
+}
+
+#[test]
+fn rtc_calendar_commands_run_through_original_arm_code_with_host_clock_enabled() {
+    let fixture = Fixture::new();
+    let path = fixture.rom(&rtc_calendar_setup());
+    let output = command()
+        .arg("--rom")
+        .arg(&path)
+        .args(["--rtc", "--steps", "5000"])
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{}", stderr(&output));
+    assert!(
+        stdout(&output).contains("r2=0x00000092"),
+        "{}",
+        stdout(&output)
+    );
+}
+
 #[test]
 fn rtc_selection_is_explicit_and_does_not_modify_the_rom_file() {
     let fixture = Fixture::new();
@@ -100,7 +158,7 @@ fn rtc_selection_is_explicit_and_does_not_modify_the_rom_file() {
         .output()
         .unwrap();
     assert!(selected.status.success(), "{}", stderr(&selected));
-    assert!(stdout(&selected).contains("RTC selected: GPIO and command/control only"));
+    assert!(stdout(&selected).contains("RTC selected: UTC at startup"));
     assert!(stdout(&selected).contains("r2=0x00000001"));
     assert_eq!(fs::read(&path).unwrap(), original);
     let duplicate = command()
@@ -298,6 +356,15 @@ fn native_rom_window_presents_file_bytes_and_reports_stop_cpu_and_video_errors()
     assert!(rtc_output.status.success(), "{}", stderr(&rtc_output));
     assert!(stdout(&rtc_output).contains("Captured ROM frames: 3"));
     assert!(stdout(&rtc_output).contains("r2=0x00000001"));
+    let calendar_path = fixture.rom(&rtc_calendar_setup());
+    let calendar_output = window(&calendar_path, true);
+    assert!(
+        calendar_output.status.success(),
+        "{}",
+        stderr(&calendar_output)
+    );
+    assert!(stdout(&calendar_output).contains("Captured ROM frames: 3"));
+    assert!(stdout(&calendar_output).contains("r2=0x00000092"));
     for (code, error) in [
         (vec![0xef03_0000, 0xeaff_fffe], "entered STOP"),
         (vec![0xee00_0000], "instruction"),

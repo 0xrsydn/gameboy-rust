@@ -65,11 +65,14 @@ They verify suite selection, pinned URLs, hashes, sizes, checkpoint validation, 
 The [Pong adapter](public-pong.md) has additional offline tests for its pinned downloads, retained license, and bounded gameplay scenarios.
 Run the external Pong suite separately; ordinary Cargo and Python tests require no public ROM or network access.
 Device initialization regressions use original instructions to check disabled sound, wave RAM, disconnected serial pins, and reset flags.
-Cartridge GPIO tests use an explicitly attached RTC control subset and original pin sequences, never game code or host time.
-They cover read overlays, unchanged ROM bytes, masks, directions, widths, serial framing, control/reset, aborts, and explicit calendar/IRQ diagnostics.
+Core cartridge GPIO tests use an explicitly attached RTC and original pin sequences, never game code or host time.
+They cover read overlays, unchanged ROM bytes, masks, directions, widths, framing, control/calendar/reset, aborts, and unsupported commands.
+Calendar tests cover all dates in 2000–2099, 12/24-hour representation, PM flags, midnight, leap days, and large/split elapsed durations.
+Payload tests verify read snapshots, complete writes, invalid-date diagnostics, reset, and clock advancement during HALT/STOP.
 ARM/Thumb and DMA3 checks retain Game Pak costs; staged fetches, rejected edges, and block-store preflight retain diagnostic atomicity.
-Desktop tests check explicit `--rtc` selection, duplicate rejection, unchanged files, and native-window configuration.
-Physical pin timing, GPIO aliases, RTC calendar values, and battery behavior remain unverified or unimplemented.
+Desktop tests execute original ARM calendar commands in terminal and native-window modes with explicit `--rtc` selection.
+Host-adapter tests inject UTC epoch values and elapsed durations without sleeping. Guest time changes survive subsequent elapsed updates.
+Physical pin timing, invalid-date hardware correction, GPIO aliases, and battery persistence remain unverified or unimplemented.
 They verify explicit activation errors and atomic byte/word/block-store/DMA failure behavior.
 The optional [local Emerald startup check](research/emerald-reset.md) now reaches sound activation but still fails deliberately there.
 [Jev evidence review](jev-debugging.md) is optional and never changes deterministic test verdicts.

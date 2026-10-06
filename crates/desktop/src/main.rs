@@ -125,7 +125,7 @@ fn run() -> Result<(), Box<dyn Error>> {
                 --rom PATH --steps COUNT  Run a raw ROM in the terminal (1..=100000000 steps)\n\
                 --rom PATH --window       Open a raw ROM with keyboard input\n\
                 --frames COUNT            Exit ROM window after 1..=100000 captured frames\n\
-                --rtc                    Select RTC GPIO/control subset for --rom (no calendar yet)\n\
+                --rtc                    Select cartridge RTC (UTC startup, host elapsed time)\n\
                 --test-suite PATH.json    Run bounded ROM assertions; write a JSON report\n\
                 --cpu-demo     Run the terminal-only ARM/Thumb instruction demo\n\
                 --timer-demo   Run the timer IRQ demo with nominal cycle costs\n\

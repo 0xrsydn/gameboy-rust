@@ -235,7 +235,9 @@ The current desktop demos do not enter STOP; the frontend does not yet provide a
 
 Only keypad wake-up is implemented. General-purpose serial and Game Pak wake sources require their missing external devices.
 Oscillator restart delays, exact entry/wake edges, and hardware-specific IF behavior remain unverified.
-There is no host-thread sleep or wall-clock accounting. STOP freezes the emulated timer-driven audio clock.
+Core STOP does not sleep a host thread or account for wall time. It freezes the emulated timer-driven audio clock.
+The optional [cartridge RTC](cartridge-gpio.md#clock-ownership) uses a separate caller-supplied battery clock that can advance during STOP.
+Desktop `--rtc` continues supplying elapsed time while its native window waits for input. RTC updates do not wake STOP.
 
 The graphics demo now uses the optional original BIOS replacement's VBlankIntrWait service.
 Its IRQ callback acknowledges VBlank and updates the BIOS RAM flag before the service returns.

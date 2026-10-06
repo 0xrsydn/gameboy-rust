@@ -43,7 +43,7 @@ Update this file when a feature lands or a limit is removed.
 - One-shot non-sequential nominal CPU code timing after successful DMA, including RAM-only transfers.
 - HALT with enabled-request wake-up, continued device clocks, and bounded idle steps.
 - BIOS-only CPU writes to POSTFLG/HALTCNT, with HALT and keypad-wake STOP.
-- STOP freezes CPU/DMA/device clocks, retains device phases, and reports a stopped frame runner without spinning.
+- STOP freezes CPU/DMA/GBA-device clocks, retains device phases, and reports a stopped frame runner without spinning.
 - Machine execution to the next VBlank event, with a configurable step limit.
 - CPU/device stepping with nominal ARM7 instruction costs and memory wait states.
 - Ordered CPU timing transactions record source, data, internal, and refill costs, with whole-step diagnostic rollback.
@@ -76,7 +76,9 @@ Update this file when a feature lands or a limit is removed.
 - `SWP`/`SWPB`, including unaligned word rotation and register aliases.
 - 256 KiB external work RAM and 32 KiB internal work RAM, including mirrors.
 - Read-only cartridge bytes in the three GBA cartridge windows.
-- Explicit cartridge RTC selection with first-window GPIO read enable, direction/latch behavior, and serial command/control transactions.
+- Explicit cartridge RTC selection with first-window GPIO read enable, direction/latch behavior, and serial calendar/control transactions.
+- Validated RTC date/time, BCD transfers, read snapshots, complete writes/reset, and caller-supplied battery-clock advancement.
+- Desktop `--rtc` seeds UTC once and supplies host elapsed seconds independently of CPU cycles and STOP.
 - Cartridge GPIO changes participate in CPU/DMA rollback and block-store preflight without modifying ROM bytes.
 - Raw ROM-file loading with original BIOS boot, terminal diagnostics, and final CPU/step reports.
 - Firmware boot initializes BG2/BG3 identity scales for bitmap and affine programs that do not program their own matrices.
@@ -141,8 +143,9 @@ Horizontal window comparators retain four-cycle event history.
 Sprite rows prepare one line ahead with a whole-row cycle40 sample and nominal per-row work limits.
 Individual fetch timing, hardware-accurate work cutoffs, video-bus contention, and per-pixel color composition remain unimplemented.
 There is no host audio output or cartridge save support.
-The optional [cartridge GPIO/RTC subset](hardware/cartridge-gpio.md) supports command/control only, selected with `--rtc` in ROM modes.
-RTC calendar access, clock advancement, persistence, interrupts, GPIO aliases, and byte writes remain unsupported or unverified.
+The optional [cartridge GPIO/RTC subset](hardware/cartridge-gpio.md) supports calendar/control transfers and explicit clock updates, selected with `--rtc` in ROM modes.
+RTC persistence, interrupts, invalid-date correction, physical subsecond timing, GPIO aliases, and byte writes remain unsupported or unverified.
+The core uses deterministic caller time. Desktop RTC runs use host UTC/elapsed time and are not fully deterministic.
 The [audio subset](hardware/audio.md) supports Direct Sound, both PSG pulse channels, noise channel 4, idle wave channel 3 state, and instantaneous digital mixing.
 It does not yet provide a continuous sample stream. Wave channel 3 playback and unverified sound-DMA pairings remain diagnostic.
 PSG timing and signed mixing are nominal; hardware startup edges and analog behavior remain unverified.
@@ -165,8 +168,8 @@ It also passes the pulse/noise triggers and normal-mode RCNT configuration.
 It also completes a CpuSet call to address zero through the corrected ignored BIOS-write behavior.
 It also accepts an external-clock serial request without inventing clock edges or completion.
 It now also completes internally clocked normal transfers and selects idle multiplayer mode.
-With explicit `--rtc` selection, it also passes Game Pak GPIO configuration and reaches an RTC calendar-read command.
-That command remains diagnostic (`0x080000c4`, PC `0x082e28a6`); no date is fabricated.
+With explicit `--rtc` selection, it also passes Game Pak GPIO configuration and RTC calendar reads.
+It next stops at a Flash unlock write (`0x0e005555`, PC `0x082e1892`). Cartridge save devices remain unimplemented.
 Without `--rtc`, cartridge GPIO writes still return read-only diagnostics.
 No title-screen, gameplay, or audible-game compatibility is established.
 See [the startup result](research/emerald-reset.md) for the bounded run and next investigation.

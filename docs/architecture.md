@@ -48,7 +48,11 @@ The repository is a Cargo workspace with three crates:
 | `crates/gba-core/src/cpu/transfer_tests.rs` | Stack, addressing, overlap, empty-list, and swap tests |
 | `crates/gba-core/src/cpu/tests.rs` | Condition truth tables and immediate arithmetic tests |
 | `crates/gba-core/src/cpu/instruction_tests.rs` | Register operations, transfers, branches, and edge cases |
-| `crates/gba-core/src/cartridge.rs` | Explicit GPIO/RTC selection, ROM read overlay, pin directions, serial command/control, and bounded diagnostics |
+| `crates/gba-core/src/cartridge.rs` | Explicit GPIO/RTC selection, ROM read overlay, pin directions, caller-clock routing, and bounded diagnostics |
+| `crates/gba-core/src/cartridge/rtc.rs` | RTC framing, control/calendar commands, read snapshots, complete writes, and reset |
+| `crates/gba-core/src/cartridge/calendar.rs` | Validated decimal calendar, BCD representation, checked epoch conversion, and bounded elapsed-time arithmetic |
+| `crates/gba-core/src/cartridge/calendar/tests.rs` | Calendar field validation, century-wide rollovers, hour modes, and large/split advances |
+| `crates/gba-core/tests/cartridge_gpio/calendar.rs` | Calendar wire transfers, snapshots, aborts, invalid payloads, reset, and independent HALT/STOP time |
 | `crates/gba-core/tests/cartridge_gpio.rs` | GPIO lanes, ROM preservation, RTC framing/control/aborts, unsupported commands, and DMA3 access |
 | `crates/gba-core/src/memory/cartridge_step_tests.rs` | ARM/Thumb GPIO timing, rejected command-edge rollback, block preflight, and staged fetch/read overlays |
 | `crates/gba-core/src/memory.rs` | Memory mapping, I/O routing, write validation, and device clock |
@@ -150,6 +154,7 @@ The repository is a Cargo workspace with three crates:
 | `crates/desktop/src/cartridge/suite/gameplay_tests.rs` | VBlank completion, input snapshots, captured pixels, and rendering failures |
 | `crates/desktop/tests/rom_suite_cli.rs` | File-backed suite execution, case isolation, output schema, determinism, and exit status |
 | `crates/desktop/examples/write_test_suite.rs` | Original ARM/Thumb/BIOS fixture generator with a local JSON suite |
+| `crates/desktop/src/cartridge/rtc_clock.rs` | Host-only UTC seed and monotonic elapsed-time adapter, with injected epoch/duration tests |
 | `crates/desktop/src/cartridge/window.rs` | ROM-window session, bounded slices, capture, STOP/input handling, and progress limits |
 | `crates/desktop/src/cartridge/window/tests.rs` | Original ROM pixels, keyboard mapping, STOP wake, HALT, frame budgets, and diagnostics |
 | `crates/desktop/src/desktop/rom.rs` | Main-thread ROM window, input polling, presentation pacing, and frame-limited exit |

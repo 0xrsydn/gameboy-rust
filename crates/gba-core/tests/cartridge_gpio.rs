@@ -1,4 +1,6 @@
-//! Original GPIO and RTC control transactions. No game code or host clock.
+//! Original GPIO and RTC transactions. No game code or host clock.
+#[path = "cartridge_gpio/calendar.rs"]
+mod calendar;
 use gba_core::{
     cartridge::{CartridgeHardware, GPIO_CONTROL, GPIO_DATA, GPIO_DIRECTION},
     cpu::Cpu,
@@ -180,10 +182,6 @@ fn dropping_select_aborts_partial_commands_and_parameters() {
 #[test]
 fn unsupported_commands_and_control_bits_fail_at_the_last_edge_without_partial_writes() {
     for (byte, description) in [
-        (0x64, "calendar"),
-        (0x65, "calendar"),
-        (0x66, "calendar"),
-        (0x67, "calendar"),
         (0x6c, "force interrupt"),
         (0x68, "unused command"),
         (0xff, "command encoding"),

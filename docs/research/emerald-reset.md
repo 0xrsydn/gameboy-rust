@@ -65,17 +65,19 @@ The send register supports 16-bit data; receive latches do not become invented p
 See [the register model and evidence limits](../hardware/serial.md#disconnected-multiplayer-configuration).
 
 Multiplayer configuration then reached a Game Pak GPIO control write (`0x080000c8`, PC `0x082e29f8`).
-The optional [cartridge GPIO/RTC interface](../hardware/cartridge-gpio.md) now supports read enable, directions, pin latches, and RTC control transactions.
-Select it explicitly with `--rtc`; ordinary ROM bytes and other ROMs' default hardware remain unchanged.
-No host date, RTC calendar, or successful calendar read is invented.
+The optional [cartridge GPIO/RTC interface](../hardware/cartridge-gpio.md) first added read enable, directions, pin latches, and RTC control transactions.
+That reached a calendar-read command at PC `0x082e28a6`.
+The calendar model now supports date/time reads, complete writes, reset, and caller-supplied elapsed seconds.
+Core tests inject deterministic time. Desktop `--rtc` uses UTC startup and monotonic elapsed time, including during GBA STOP.
+Select it explicitly; ordinary ROM bytes and other ROMs' default hardware remain unchanged.
 
-Both terminal and native runs with `--rtc` now reach a calendar-read command:
+Both terminal and native runs with `--rtc` now reach a Flash unlock write:
 
 ```text
-Steps: 957729; instructions: 955049; IRQ entries: 80; DMA units: 2600; HALT idle: 0
-Nominal cycles: 3520685
-PC=0x082e28a6
-unsupported RTC calendar access: write 0x07 at 0x080000c4
+Steps: 964375; instructions: 961679; IRQ entries: 80; DMA units: 2616; HALT idle: 0
+Nominal cycles: 3546961
+PC=0x082e1892
+unmapped memory at 0x0e005555
 ```
 
 The native run captures twelve startup frames. These do not establish a working title screen or gameplay.
@@ -90,9 +92,10 @@ Workspace debug/release tests, strict Clippy, public ARM/Thumb/memory/BIOS check
 Native ROM-window tests and graphics smoke modes pass on Darwin arm64.
 The pinned Pong debug/release reports match.
 
-The next requirement is RTC calendar transfers with an explicit clock-source model.
-Implement validated date/time formats, read snapshots, writes/reset, and clock ownership without putting host time in the core.
-Keep battery persistence and cartridge IRQ behavior explicit; do not equate GBA STOP with stopping a battery-powered RTC.
+The next requirement is a cartridge Flash save device, beginning with command unlock and identification.
+The failing state contains value `0xaa` and address `0x0e005555`, matching the documented unlock sequence.
+Research device selection, IDs, banking, program/erase, busy behavior, and safe persistence before claiming save compatibility.
+RTC persistence and cartridge IRQ behavior remain separate missing features.
 Ordinary ROM writes remain read-only. Without `--rtc`, the earlier GPIO diagnostic is still expected.
 This result does not establish gameplay, linked transfers, or cartridge/serial GPIO interrupt support.
 
@@ -104,3 +107,5 @@ Do not treat digital-level tests as audible-game validation or suppress remainin
 Cartridge saves remain a separate required feature. SRAM alone will not support Emerald's Flash save protocol.
 
 Hardware and emulator references are recorded in the linked subsystem documents.
+[GBATEK backup Flash](https://problemkaputt.de/gbatek-gba-cart-backup-flash-rom.htm) identifies the `0xaa`/`0x5555` unlock and chip-identification sequence.
+The bounded failure establishes an access requirement, not the device's capacity or full save compatibility.

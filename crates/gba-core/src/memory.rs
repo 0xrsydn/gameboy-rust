@@ -27,7 +27,7 @@ use iwram_bus::IwramBus;
 
 use crate::{
     audio::{Audio, StereoLevel},
-    cartridge::{Cartridge, CartridgeHardware},
+    cartridge::{Cartridge, CartridgeHardware, RtcDateTime, RtcError},
     cpu::InstructionSet,
     display::{DisplayPosition, CYCLES_PER_LINE, HBLANK_START, VISIBLE_LINES},
     dma::{DmaError, DMA_BASE, DMA_END},
@@ -193,6 +193,30 @@ impl Memory {
         self.cartridge = Cartridge::new(hardware);
     }
 
+    /// Inspect the live calendar, not an in-progress serial read snapshot.
+    pub fn rtc_datetime(&self) -> Option<RtcDateTime> {
+        self.cartridge_state().rtc_datetime()
+    }
+
+    /// Set the RTC calendar between machine steps. Existing serial read snapshots stay latched.
+    pub fn set_rtc_datetime(&mut self, date: RtcDateTime) -> Result<(), RtcError> {
+        assert!(
+            self.cartridge_step.get().is_none(),
+            "active cartridge transaction"
+        );
+        self.cartridge.set_rtc_datetime(date)
+    }
+
+    /// Supply battery-clock elapsed seconds independently of CPU cycles, HALT, and STOP.
+    /// Call between machine steps. This requests no IRQ and never wakes the CPU.
+    pub fn advance_rtc_seconds(&mut self, seconds: u64) -> Result<(), RtcError> {
+        assert!(
+            self.cartridge_step.get().is_none(),
+            "active cartridge transaction"
+        );
+        self.cartridge.advance_rtc_seconds(seconds)
+    }
+
     fn cartridge_state(&self) -> Cartridge {
         self.cartridge_step.get().unwrap_or(self.cartridge)
     }
@@ -215,14 +239,15 @@ impl Memory {
     }
 
     /// Total elapsed emulated clock cycles, wrapping at u64::MAX. Reads/writes
-    /// alone consume no cycles. STOP discards externally supplied clock advances.
+    /// alone consume no cycles. STOP discards supplied GBA-cycle advances, not independent RTC time.
     pub fn cycles(&self) -> u64 {
         self.cycles
     }
 
     /// Advance devices and optional row capture. Multiple unserviced DMA requests
-    /// coalesce. No CPU or DMA work is executed by this method. STOP freezes all
+    /// coalesce. No CPU or DMA work is executed by this method. STOP freezes GBA-clock
     /// progress: supplied cycles are ignored until an external wake condition.
+    /// The independently supplied RTC battery clock is not advanced by this method.
     /// This device-only API does not advance opcode prefetch. CPU/DMA/HALT steps
     /// account for their own cartridge-bus time before updating device clocks.
     pub fn advance_cycles(&mut self, cycles: u32) {

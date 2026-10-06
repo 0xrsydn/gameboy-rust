@@ -34,8 +34,9 @@ Headerless original programs are accepted.
 Reads past supplied cartridge bytes remain explicit memory errors, not open-bus values.
 All three Game Pak ROM windows use the same supplied bytes and existing wait-state rules.
 Ordinary cartridge bytes remain read-only. Save devices remain unsupported.
-Optional `--rtc` selection enables the bounded [Game Pak GPIO and RTC control interface](cartridge-gpio.md).
-It supports configuration and control transactions, not calendar access, clock advancement, or RTC interrupts.
+Optional `--rtc` selection enables the bounded [Game Pak GPIO and RTC calendar interface](cartridge-gpio.md).
+It supports date/time reads, complete writes, reset, and explicit elapsed-time updates. RTC interrupts and persistence remain unsupported.
+The desktop seeds UTC once, then supplies monotonic host elapsed seconds independently of GBA cycles and STOP.
 
 Both modes call `bios::boot` with the loaded bytes.
 With `--rtc`, the host then selects the cartridge peripheral before the first machine step.

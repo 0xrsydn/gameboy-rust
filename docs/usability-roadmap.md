@@ -41,10 +41,10 @@ This exposed and corrected missing firmware affine-scale initialization, without
 Frame-based scenarios and the preparation adapter now make the result repeatable.
 A local Emerald run now passes its initial all-device reset, master sound enable, and pulse/noise triggers.
 It also passes normal serial transfers and idle multiplayer configuration.
-With `--rtc`, it passes Game Pak GPIO setup and stops at the first unsupported RTC calendar-read command.
+With `--rtc`, it passes Game Pak GPIO setup and RTC calendar reads, then stops at a Flash unlock write.
 The core has tested Direct Sound, both pulse channels, and noise channel 4.
 Wave channel 3, a continuous sample stream, and desktop audio output remain missing.
-See [the runtime result](research/emerald-reset.md). RTC calendar transfers and an explicit clock-source model are the next startup requirement.
+See [the runtime result](research/emerald-reset.md). Flash identification and its save protocol are the next demonstrated startup requirement.
 The separate save requirement remains cartridge SRAM, followed by safe host save persistence.
 SRAM is byte-addressable battery-backed save memory. Flash and EEPROM remain separate protocols.
 

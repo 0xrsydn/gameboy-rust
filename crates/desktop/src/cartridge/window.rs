@@ -50,6 +50,11 @@ impl Session {
         self.machine.memory_mut().set_cartridge_hardware(hardware);
     }
 
+    /// Host adapters may supply independent cartridge time between execution slices.
+    pub fn memory_mut(&mut self) -> &mut gba_core::memory::Memory {
+        self.machine.memory_mut()
+    }
+
     pub fn frame(&self) -> &Framebuffer {
         &self.frame
     }

@@ -36,9 +36,9 @@ fn rejected_rtc_command_edge_rolls_back_arm_and_thumb_steps() {
         memory.write16(GPIO_DATA, 1).unwrap();
         memory.write16(GPIO_DIRECTION, 7).unwrap();
         memory.write16(GPIO_DATA, 5).unwrap();
-        // All but the final rising edge of an original date/time read command (0x65).
+        // All but the final rising edge of an unsupported force-interrupt command (0x6d).
         for bit in (1..8).rev() {
-            let pins = 4 | (((0x65 >> bit) & 1) << 1);
+            let pins = 4 | (((0x6d >> bit) & 1) << 1);
             memory.write16(GPIO_DATA, pins).unwrap();
             memory.write16(GPIO_DATA, pins | 1).unwrap();
         }
@@ -47,13 +47,93 @@ fn rejected_rtc_command_edge_rolls_back_arm_and_thumb_steps() {
         let mut machine = Machine::new(cpu, memory);
         let cpu = machine.cpu().clone();
         let error = machine.step().unwrap_err();
-        assert!(error.to_string().contains("RTC calendar access"));
+        assert!(error.to_string().contains("RTC force interrupt"));
         assert_eq!(machine.step(), Err(error));
         assert_eq!(machine.cpu(), &cpu);
         assert_eq!(machine.memory().cartridge, cartridge);
         assert_eq!(machine.memory().read16(GPIO_DATA).unwrap(), 6);
         assert_eq!(machine.cycles(), 0);
     }
+}
+
+fn prepare_calendar_final_edge(memory: &mut Memory, invalid: bool) {
+    memory.set_cartridge_hardware(CartridgeHardware::Rtc);
+    memory.write16(GPIO_CONTROL, 1).unwrap();
+    memory.write16(GPIO_DATA, 1).unwrap();
+    memory.write16(GPIO_DIRECTION, 7).unwrap();
+    memory.write16(GPIO_DATA, 5).unwrap();
+    let mut bits: Vec<bool> = (0..8).rev().map(|i| 0x64 & (1 << i) != 0).collect();
+    for byte in [
+        0x24,
+        2,
+        0x29,
+        4,
+        0x12,
+        0x34,
+        if invalid { 0x6a } else { 0x56 },
+    ] {
+        bits.extend((0..8).map(|i| byte & (1 << i) != 0));
+    }
+    for (i, bit) in bits.into_iter().enumerate() {
+        let pins = 4 | (u16::from(bit) << 1);
+        memory.write16(GPIO_DATA, pins).unwrap();
+        if i != 63 {
+            memory.write16(GPIO_DATA, pins | 1).unwrap();
+        }
+    }
+}
+
+#[test]
+fn calendar_payload_commits_at_final_arm_or_thumb_edge_and_rejects_invalid_data_atomically() {
+    for thumb in [false, true] {
+        for invalid in [false, true] {
+            let (cpu, mut memory) = prepared(
+                thumb,
+                &[if thumb { 0x8008 } else { 0xe1c100b0 }],
+                &[(0, 5), (1, GPIO_DATA)],
+            );
+            prepare_calendar_final_edge(&mut memory, invalid);
+            let before = memory.cartridge;
+            let mut machine = Machine::new(cpu, memory);
+            let cpu = machine.cpu().clone();
+            if invalid {
+                let error = machine.step().unwrap_err();
+                assert!(error.to_string().contains("invalid calendar data"));
+                assert_eq!(machine.step(), Err(error));
+                assert_eq!(machine.cpu(), &cpu);
+                assert_eq!(machine.memory().cartridge, before);
+                assert_eq!(machine.cycles(), 0);
+            } else {
+                machine.step().unwrap();
+                assert_eq!(
+                    machine.memory().rtc_datetime().unwrap().components(),
+                    [24, 2, 29, 4, 12, 34, 56]
+                );
+                assert_eq!(machine.last_timing().data_cycles, 5);
+            }
+        }
+    }
+}
+
+#[test]
+fn later_block_diagnostic_discards_an_earlier_calendar_commit() {
+    let (_, mut memory) = prepared(false, &[0xe1a00000], &[]);
+    prepare_calendar_final_edge(&mut memory, false);
+    let before = memory.cartridge;
+    assert!(memory
+        .write_words(&[
+            (GPIO_DATA, 0x00070005),
+            (0x02000000, 0x12345678),
+            (crate::io::SIOCNT, 0x3000)
+        ])
+        .is_err());
+    assert_eq!(memory.cartridge, before);
+    assert_eq!(memory.read32(0x02000000).unwrap(), 0);
+    memory.write_words(&[(GPIO_DATA, 0x00070005)]).unwrap();
+    assert_eq!(
+        memory.rtc_datetime().unwrap().components(),
+        [24, 2, 29, 4, 12, 34, 56]
+    );
 }
 
 #[test]

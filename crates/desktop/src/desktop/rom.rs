@@ -13,6 +13,13 @@ pub fn run(
 ) -> Result<(), Box<dyn Error>> {
     let mut session = Session::new(bytes)?;
     session.set_cartridge_hardware(hardware);
+    let mut rtc_clock = if hardware == gba_core::cartridge::CartridgeHardware::Rtc {
+        Some(crate::cartridge::rtc_clock::RtcHostClock::new(
+            session.memory_mut(),
+        )?)
+    } else {
+        None
+    };
     writeln!(
         writer,
         "ROM window: Arrows=D-pad; Z/X=A/B; Q/W=L/R; Enter=Start; Backspace=Select; Escape exits."
@@ -38,6 +45,9 @@ pub fn run(
         // Show a black buffer and pump initial events before boot starts.
         window.update_with_buffer(session.frame().pixels(), WIDTH, HEIGHT)?;
         while window.is_open() && !window.is_key_down(Key::Escape) {
+            if let Some(clock) = rtc_clock.as_mut() {
+                clock.sync(session.memory_mut())?;
+            }
             let buttons = read_buttons(window.is_active(), |key| window.is_key_down(key));
             let update = session.update(buttons)?;
             let stopped = update == Update::Stopped;

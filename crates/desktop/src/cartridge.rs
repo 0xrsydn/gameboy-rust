@@ -1,5 +1,6 @@
 //! Host-only raw ROM loading, execution modes, and diagnostics.
 
+pub(crate) mod rtc_clock;
 pub mod suite;
 pub mod window;
 
@@ -13,7 +14,7 @@ use std::{
 
 use gba_core::{
     bios,
-    cartridge::CartridgeHardware,
+    cartridge::{CartridgeHardware, RtcError},
     machine::{Machine, MachineError, StepKind},
     memory::ROM_CAPACITY,
 };
@@ -176,9 +177,23 @@ struct Report {
     reason: Reason,
 }
 
+#[cfg(test)]
 fn run_bounded(machine: &mut Machine, limit: u64) -> Report {
+    run_bounded_with_clock(machine, limit, None).unwrap()
+}
+
+fn run_bounded_with_clock(
+    machine: &mut Machine,
+    limit: u64,
+    mut clock: Option<&mut rtc_clock::RtcHostClock>,
+) -> Result<Report, RtcError> {
     let mut stats = Stats::default();
     let reason = loop {
+        if stats.steps % 4096 == 0 {
+            if let Some(clock) = clock.as_deref_mut() {
+                clock.sync(machine.memory_mut())?;
+            }
+        }
         // STOP has no host input source here. Do not spin with a frozen clock.
         // Check before the budget so STOP on the last step is reported correctly.
         if machine.stopped() {
@@ -193,7 +208,10 @@ fn run_bounded(machine: &mut Machine, limit: u64) -> Report {
             Err(error) => break Reason::Diagnostic(error),
         }
     };
-    Report { stats, reason }
+    if let Some(clock) = clock {
+        clock.sync(machine.memory_mut())?;
+    }
+    Ok(Report { stats, reason })
 }
 
 fn write_report(writer: &mut impl Write, machine: &Machine, report: &Report) -> io::Result<()> {
@@ -244,7 +262,7 @@ pub fn execute(options: Options, writer: &mut impl Write) -> Result<(), Box<dyn 
         "Original BIOS replacement; no commercial-game compatibility claim."
     )?;
     if options.hardware == CartridgeHardware::Rtc {
-        writeln!(writer, "RTC selected: GPIO and command/control only; calendar and IRQ commands remain diagnostic.")?;
+        writeln!(writer, "RTC selected: UTC at startup, then host elapsed time; no persistence or RTC interrupts.")?;
     }
     let steps = match options.mode {
         Mode::Terminal { steps } => steps,
@@ -257,7 +275,12 @@ pub fn execute(options: Options, writer: &mut impl Write) -> Result<(), Box<dyn 
     machine
         .memory_mut()
         .set_cartridge_hardware(options.hardware);
-    let report = run_bounded(&mut machine, steps);
+    let mut clock = if options.hardware == CartridgeHardware::Rtc {
+        Some(rtc_clock::RtcHostClock::new(machine.memory_mut())?)
+    } else {
+        None
+    };
+    let report = run_bounded_with_clock(&mut machine, steps, clock.as_mut())?;
     write_report(writer, &machine, &report)?;
     writer.flush()?;
     if let Reason::Diagnostic(error) = report.reason {
