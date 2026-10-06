@@ -323,6 +323,78 @@ fn bios_power_store_pays_its_cycles_and_new_timer_irq_wakes_only_halt() {
 }
 
 #[test]
+fn machine_enable_joins_the_shared_phase_and_commits_it_without_duplicate_ticks() {
+    let (cpu, mut memory) = prepared(
+        false,
+        &[0xe581_0000, 0xe591_2000],
+        &[(0, 0x0081_0000), (1, TIMER_BASE)],
+    );
+    memory.advance_cycles(56); // The disabled divider still runs.
+    let mut machine = Machine::new(cpu, memory);
+    machine.step().unwrap(); // Source 6 + store 1: enable at t=63.
+    assert_eq!(machine.cycles(), 63);
+    assert_eq!(machine.memory().read16(TIMER_BASE).unwrap(), 0);
+    machine.step().unwrap(); // N source 8 + read 1 + internal 1: t=73.
+    assert_eq!(machine.cpu().registers()[2], 0x0081_0001);
+    assert_eq!(machine.cycles(), 73);
+    machine.memory_mut().advance_cycles(54);
+    assert_eq!(machine.memory().read16(TIMER_BASE).unwrap(), 1);
+    machine.memory_mut().advance_cycles(1);
+    assert_eq!(machine.memory().read16(TIMER_BASE).unwrap(), 2);
+}
+
+#[test]
+fn failed_cpu_and_dma_work_cannot_consume_a_shared_prescaler_edge() {
+    let (cpu, mut memory) = prepared(false, &[0xe891_0005], &[(1, TIMER_BASE + 12)]);
+    start(&mut memory, 0, 0xffff, 0xc1);
+    memory.advance_cycles(63);
+    let before = memory.io.timer_step();
+    let mut machine = Machine::new(cpu, memory);
+    assert!(machine.step().is_err()); // First data read succeeds after the t=64 overflow; second fails.
+    assert_eq!(machine.memory().io.timer_step(), before);
+    assert_eq!(machine.cycles(), 63);
+    dma(machine.memory_mut(), 0x0e00_0000, RAM, 1);
+    assert!(machine.step().is_err());
+    assert_eq!(machine.memory().io.timer_step(), before);
+    machine.memory_mut().advance_cycles(1);
+    assert_eq!(machine.memory().read16(IF).unwrap(), 8);
+}
+
+#[test]
+fn dma_timer_phases_share_the_divider_with_later_host_clock_advances() {
+    let mut memory = Memory::new(Vec::new()).unwrap();
+    memory.advance_cycles(60);
+    start(&mut memory, 0, 0, 0x81);
+    dma(&mut memory, TIMER_BASE, RAM, 1);
+    memory.step_dma().unwrap().unwrap(); // Read t=63, destination t=64.
+    assert_eq!(memory.read32(RAM).unwrap(), 0x0081_0000);
+    assert_eq!(memory.read16(TIMER_BASE).unwrap(), 1);
+    memory.write32(RAM, 0x0081_0000).unwrap();
+    dma(&mut memory, RAM, TIMER_BASE + 4, 1);
+    memory.step_dma().unwrap().unwrap(); // Enable timer1 at t=68, not at a new divider origin.
+    memory.advance_cycles(59);
+    assert_eq!(memory.cycles(), 127);
+    assert_eq!(memory.read16(TIMER_BASE + 4).unwrap(), 0);
+    memory.advance_cycles(1);
+    assert_eq!(memory.read16(TIMER_BASE).unwrap(), 2);
+    assert_eq!(memory.read16(TIMER_BASE + 4).unwrap(), 1);
+}
+
+#[test]
+fn halt_after_a_machine_timer_start_uses_the_committed_shared_phase() {
+    let (cpu, mut memory) = prepared(false, &[0xe581_0000], &[(0, 0x00c1_ffff), (1, TIMER_BASE)]);
+    memory.advance_cycles(56);
+    memory.write16(IE, 8).unwrap();
+    let mut machine = Machine::new(cpu, memory);
+    machine.step().unwrap(); // Enable at t=63.
+    machine.memory_mut().write8(HALTCNT, 0).unwrap();
+    assert_eq!(machine.step().unwrap(), StepKind::HaltIdle);
+    assert_eq!(machine.last_timing().idle_cycles, 1);
+    assert_eq!(machine.cycles(), 64);
+    assert!(!machine.halted());
+}
+
+#[test]
 fn halt_and_stop_keep_their_clock_ownership() {
     for stop in [false, true] {
         let mut memory = Memory::new(Vec::new()).unwrap();

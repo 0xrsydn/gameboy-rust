@@ -223,6 +223,14 @@ Ordered timer data accesses:
 
 See [staged timer clock ownership](research/ordered-timer-access.md). Relative probe agreement does not establish all absolute timer edges.
 
+Shared timer prescaler phase:
+
+- [Jgenesis timers at fab6e2cc](https://github.com/jsgroth/jgenesis/blob/fab6e2ccc60e492dd68b7f1e927b0829a6d80195/backend/gba-core/src/timers.rs), for absolute-clock divider edges and separate pending-write/enable state.
+- [NanoBoyAdvance timer logic at 55b5cf0a](https://github.com/nba-emu/NanoBoyAdvance/blob/55b5cf0ae3d929582ac5bfd486558173502b8354/src/nba/src/hw/timer/timer.cc) and [channel definitions](https://github.com/nba-emu/NanoBoyAdvance/blob/55b5cf0ae3d929582ac5bfd486558173502b8354/src/nba/src/hw/timer/timer.hh), for shared timestamp alignment and startup overflow corner cases.
+- Search leads: [VBA-M prescaler change](https://github.com/visualboyadvance-m/visualboyadvance-m/commit/92154dcd2ef7fca8c8afa8fced2f350ad2d2452a) and [mGBA timer suite](https://github.com/mgba-emu/suite/blob/04ada216ee13c56d786e54636ac980a71d791145/src/timers.c). Neither was used as a local hardware-test oracle.
+
+See [shared divider scope and tests](research/timer-prescaler.md). The correction does not implement delayed register writes or startup edges.
+
 Use [GBATEK](https://problemkaputt.de/gbatek.htm) and ARM7TDMI documentation for further hardware work.
 Only use game ROMs that you may lawfully use. Do not commit game ROMs, BIOS files, or game assets.
 The ignore file excludes `roms/`, common game ROM extensions, and save files.

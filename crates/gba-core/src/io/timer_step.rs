@@ -7,6 +7,7 @@ pub(super) const TIMER_IRQ_MASK: u16 = 0x78;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct TimerStep {
     pub(super) timers: [Timer; 4],
+    pub(super) phase: u16,
     pub(super) pending: u16,
     elapsed: u32,
 }
@@ -15,6 +16,7 @@ impl TimerStep {
     pub(super) fn new(io: &Io) -> Self {
         Self {
             timers: io.timers,
+            phase: io.timer_phase,
             pending: io.pending & TIMER_IRQ_MASK,
             elapsed: 0,
         }
@@ -22,7 +24,8 @@ impl TimerStep {
 
     pub(crate) fn advance_to(&mut self, elapsed: u32) {
         assert!(elapsed >= self.elapsed, "timer step time must be monotonic");
-        self.pending |= Io::advance_timer_bank(&mut self.timers, elapsed - self.elapsed);
+        self.pending |=
+            Io::advance_timer_bank(&mut self.timers, &mut self.phase, elapsed - self.elapsed);
         self.elapsed = elapsed;
     }
 

@@ -48,7 +48,7 @@ The repository is a Cargo workspace with three crates:
 | `crates/gba-core/src/cpu/fetch_history_tests.rs` | Shared sample consumption, no execution-entry rereads, and failed-step retry |
 | `crates/gba-core/src/cpu/fetch_boundary_tests.rs` | Actual fetch-region snapshots, split refills, IWRAM lane requirements, ROM-window boundaries, and nominal timing |
 | `crates/gba-core/src/io.rs` | I/O registers, timers, HALT/STOP wake-up, next-event bounds, and IRQ latches |
-| `crates/gba-core/src/io/timer_step.rs` | Staged timer bank and timer IF bits at ordered CPU/DMA bus phases |
+| `crates/gba-core/src/io/timer_step.rs` | Staged timer bank, shared divider phase, and timer IF bits at ordered CPU/DMA bus phases |
 | `crates/gba-core/src/memory/timer_step_tests.rs` | Timer access phases, coherent lanes, cascades, IF ordering, rollback, DMA, idle, and clock ownership |
 | `crates/gba-core/src/display.rs` | Display clock, scanline status, comparison edges, and display IRQ events |
 | `crates/gba-core/src/dma.rs` | DMA registers, internal pointers, retained channel data, trigger state, priority, and completion IRQs |
@@ -132,6 +132,7 @@ The repository is a Cargo workspace with three crates:
 | `crates/gba-core/tests/timers.rs` | Timer rules, interrupt registers, and a cycle-by-cycle reference |
 | `crates/gba-core/tests/machine.rs` | Device IRQ entry/return, clock policy, and I/O failure atomicity |
 | `crates/gba-core/tests/timing.rs` | WAITCNT fields, bus costs, and timer/IRQ timing integration |
+| `crates/gba-core/tests/timer_prescaler.rs` | Exhaustive divider phases, staggered starts, control/cascade transitions, independent edge simulation, large batches, and idle ownership |
 | `crates/gba-core/tests/keypad.rs` | Keypad register widths, IRQ sampling, CPU/DMA ordering, HALT wake-up, diagnostics, and BIOS IntrWait |
 | `crates/gba-core/tests/graphics.rs` | Video memory, rendering, KEYINPUT, and CPU-driven graphics integration |
 | `crates/gba-core/tests/tiles.rs` | Mode 0 registers, maps, palettes, composition, diagnostics, and CPU tile/sprite demo |

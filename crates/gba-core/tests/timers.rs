@@ -100,7 +100,7 @@ fn all_prescalers_retain_fractional_cycles_between_advances() {
 }
 
 #[test]
-fn clock_source_changes_and_restart_reset_provisional_phase() {
+fn clock_source_changes_and_restart_keep_the_shared_phase() {
     let mut bus = memory();
     bus.write32(TIMER_BASE, 0x0081_0000).unwrap(); // /64
     bus.advance_cycles(63);
@@ -108,16 +108,17 @@ fn clock_source_changes_and_restart_reset_provisional_phase() {
     bus.advance_cycles(1);
     assert_eq!(bus.read16(TIMER_BASE).unwrap(), 1);
     bus.advance_cycles(63);
-    bus.write16(TIMER_BASE + 2, 0x82).unwrap(); // /256 resets phase
-    bus.advance_cycles(255);
+    bus.write16(TIMER_BASE + 2, 0x82).unwrap(); // t=127: next shared /256 edge is t=256.
+    bus.advance_cycles(128);
     assert_eq!(bus.read16(TIMER_BASE).unwrap(), 1);
     bus.advance_cycles(1);
     assert_eq!(bus.read16(TIMER_BASE).unwrap(), 2);
     bus.write16(TIMER_BASE + 2, 0).unwrap();
-    bus.advance_cycles(255);
+    bus.advance_cycles(255); // t=511; disabled time still advances the divider.
     bus.write16(TIMER_BASE + 2, 0x82).unwrap();
-    bus.advance_cycles(255);
     assert_eq!(bus.read16(TIMER_BASE).unwrap(), 0);
+    bus.advance_cycles(1);
+    assert_eq!(bus.read16(TIMER_BASE).unwrap(), 1);
 }
 
 #[test]

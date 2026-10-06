@@ -35,6 +35,7 @@ Update this file when a feature lands or a limit is removed.
 - CPU interrupt entry, interrupt masks, and FIQ priority.
 - GBA interrupt enable (`IE`), request flags (`IF`), and master enable (`IME`) registers.
 - Four 16-bit timers, with reloads, prescalers, count-up cascading, and timer-generated IRQs.
+- A shared free-running timer divider survives enable and clock-source changes; HALT advances it and STOP freezes it.
 - A 228-line display clock, VCOUNT/DISPSTAT, and VBlank/HBlank/VCount-match interrupts.
 - Four direct memory access (DMA) channels, with immediate, VBlank, and visible-line HBlank triggers.
 - Halfword/word DMA, address controls, repeat, channel priority, CPU pausing, and completion IRQs.
@@ -175,7 +176,8 @@ Writes to cartridge addresses return errors instead of modeling cartridge hardwa
    The desktop runner still uses only the original BIOS. Keep protected reads image-derived for all supplied images.
 2. Validate the active nominal Game Pak prefetch queue against independent timing tests.
    The [cancellation probe](research/prefetch-cancellation.md) now matches after [ordered timer accesses](research/ordered-timer-access.md).
-   Validate absolute timer startup/control edges and extend ordered observations to other devices without duplicate clocks or lost rollback.
+   The [shared timer prescaler](research/timer-prescaler.md) now retains a common clock origin across enable and clock-source changes.
+   Validate delayed timer startup/control edges and extend ordered observations to other devices without duplicate clocks or lost rollback.
    Validate full-buffer restart, page boundaries, live WAITCNT transitions, and cold-start costs.
    See [prefetch behavior and evidence](research/gamepak-prefetch.md); exact bus arbitration and timer/IRQ delays remain separate work.
 3. Validate keypad retrigger behavior with hardware tests and add remaining device registers; extend BIOS reset coverage as sound/serial support becomes available.

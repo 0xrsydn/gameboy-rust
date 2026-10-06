@@ -28,7 +28,8 @@ Those remain explicit validation limits.
 ## Staged clock ownership
 
 `Memory` owns an optional `TimerStep` during each machine instruction, IRQ entry, or DMA unit.
-The transaction copies only the four timers and timer IF bits, not RAM, display state, or the entire I/O object.
+The transaction copies the four timers, shared divider phase, and timer IF bits, not RAM or the entire I/O object.
+The later [shared-prescaler correction](timer-prescaler.md) replaced private timer remainders with this common divider.
 Its elapsed timestamp starts at zero and increases monotonically.
 It has no heap allocation or event log.
 
@@ -44,7 +45,7 @@ One word access has one sampling time for all four byte lanes.
 Reload bytes merge before control bytes at that same time.
 Block transfers have separate completion times for successive words.
 A start write cannot count earlier source cycles. A stop write includes clocks through its completion.
-Prescaler remainders, cascaded overflow pulses, and reload behavior use the existing timer implementation.
+Shared divider edges, cascaded overflow pulses, and reload behavior use the timer-bank implementation.
 
 Timer IF reads include requests raised through the access phase.
 Acknowledgement clears timer requests already present at that phase; later work can raise them again.
@@ -63,7 +64,7 @@ This extends the existing whole-unit scheduler; it does not establish physical D
 
 ### Errors and API isolation
 
-CPU diagnostics discard staged time, counter values, prescaler remainders, and pending timer requests.
+CPU diagnostics discard staged time, counter values, shared divider progress, and pending timer requests.
 This includes failures before instruction fetch and failures after earlier block-load accesses.
 Existing store validation still prevents partial writes when a block transfer has an invalid destination.
 Previously completed machine steps remain committed.

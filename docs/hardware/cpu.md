@@ -422,4 +422,4 @@ Important timing limits:
 - Game Pak prefetch is nominal. Full-buffer restart, page boundaries, cancellation, and live WAITCNT changes need independent hardware validation.
 - PHI and SRAM wait fields are stored; PHI output and SRAM mapping are not implemented.
 - External work RAM timing is fixed. The undocumented memory-control register is not implemented.
-- Exact DMA startup/resumption delays, display-bus contention, shared timer prescaler phase, and timer startup delays remain unmodeled.
+- Exact DMA startup/resumption delays, display-bus contention, and timer startup/register-write delays remain unmodeled.

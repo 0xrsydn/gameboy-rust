@@ -34,7 +34,8 @@ The transaction also owns timer IF bits. Reads see overflows through the current
 A later internal cycle can raise an acknowledged timer request again. Non-timer IF bits retain their existing behavior.
 IRQ delivery still waits until the next machine step. A committed timer request can wake HALT, but not STOP.
 
-Successful steps commit timers and timer IF bits. Failed steps discard staged counters, prescaler phases, reload/control writes, and requests.
+Successful steps commit timers, the shared divider phase, and timer IF bits.
+Failed steps discard staged counters, divider progress, reload/control writes, and requests.
 Display and other device clocks then advance once, without advancing timers again.
 Those devices still use the bulk scheduler. Mid-instruction display events, general bus arbitration, and IRQ synchronization delays remain unmodeled.
 Host clock advances and HALT idle batches retain ordinary bulk timer advancement; STOP idle does not advance timers.
@@ -81,8 +82,16 @@ Entering IRQ mode does not clear IF. Software must acknowledge the request.
 Unused register bits read as zero. Unknown I/O addresses and mirrors remain unmapped.
 Byte, halfword, and word accesses are supported for this register subset.
 
-Timer startup delays and shared prescaler phase are not modeled.
-The provisional timer model resets its private prescaler phase on enable or clock-source changes.
+Independent timers share a free-running divider with a synthetic zero phase at reset.
+The divider advances even when all timers are disabled. Enable, restart, and clock-source changes do not reset it.
+A timer receives selected divider edges after the start of an interval and through its end.
+Changing out of cascade mode uses the existing shared phase; cascade mode ignores the divider selection.
+HALT next-event bounds use that phase. STOP freezes it, and wake resumes without resetting it.
+CPU/DMA timer transactions stage divider progress and commit it only on success, without a second bulk tick.
+See [prescaler evidence and original tests](../research/timer-prescaler.md).
+
+Hardware startup and register-write delays are still not modeled. Writes retain the immediate bus-completion policy.
+The shared-phase tests validate this bounded model, not absolute enable/reload edges on hardware.
 Audio events and interrupt sources other than timers, display events, DMA completion, and keypad input are not implemented.
 
 `--timer-demo` executes original ARM code that configures Timer 0, IE, and IME.
@@ -207,7 +216,7 @@ A later running-state input sample follows the normal keypad IRQ policy.
 Host/debug writes to IE or KEYCNT can also satisfy the wake condition; stopped CPU code cannot execute such writes.
 
 After wake-up, ready DMA again takes priority, then IRQ delivery or CPU execution resumes.
-Timer prescaler phases, display position, RAM, and completed captured frames are retained, not reset.
+The shared timer divider phase, display position, RAM, and completed captured frames are retained, not reset.
 STOP does not automatically set forced blank or clear DISPCNT.
 Software can force blank before STOP if it wants the displayed image disabled.
 

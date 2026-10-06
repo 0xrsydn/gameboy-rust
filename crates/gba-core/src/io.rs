@@ -1,6 +1,6 @@
 //! GBA I/O subset: DMA, timers, interrupts, WAITCNT, display, and keypad input.
-//! Timer phase resets on enable or clock-source changes. Hardware startup delays,
-//! shared prescaler phase, audio events, and interrupt delivery delays are not modeled.
+//! Timers share a free-running prescaler phase. Hardware startup/write delays,
+//! audio events, and interrupt delivery delays are not modeled.
 
 mod timer_step;
 pub(crate) use timer_step::TimerStep;
@@ -67,7 +67,6 @@ struct Timer {
     reload: u16,
     counter: u16,
     control: u8,
-    phase: u32,
 }
 
 impl Timer {
@@ -102,25 +101,22 @@ impl Timer {
         if start {
             self.counter = self.reload;
         }
-        if start || (self.control ^ value) & 7 != 0 {
-            self.phase = 0;
-        }
         self.control = value;
     }
 
     /// Next independently clocked overflow. Cascaded timers receive their
     /// pulses at a predecessor's event and cannot overflow earlier.
-    fn next_overflow(&self) -> Option<u32> {
+    fn next_overflow(&self, phase: u16) -> Option<u32> {
         if !self.enabled() || self.count_up() {
             return None;
         }
         let divisor = [1, 64, 256, 1024][usize::from(self.control & 3)];
-        Some((0x1_0000 - u32::from(self.counter)) * divisor - self.phase)
+        Some((0x1_0000 - u32::from(self.counter)) * divisor - u32::from(phase) % divisor)
     }
 
     /// Advance without looping once per cycle or overflow. Return the number of
     /// overflows, not just a boolean, so cascaded timers receive every pulse.
-    fn advance(&mut self, cycles: u32, previous_overflows: u64) -> u64 {
+    fn advance(&mut self, cycles: u32, previous_overflows: u64, phase: u16) -> u64 {
         if !self.enabled() {
             return 0;
         }
@@ -128,9 +124,9 @@ impl Timer {
             previous_overflows
         } else {
             let divisor = [1, 64, 256, 1024][usize::from(self.control & 3)];
-            let elapsed = u64::from(self.phase) + u64::from(cycles);
-            self.phase = (elapsed % divisor) as u32;
-            elapsed / divisor
+            // Count shared divider edges in (start, end], independently of enable time.
+            let start = u64::from(phase);
+            (start + u64::from(cycles)) / divisor - start / divisor
         };
         let until_overflow = 0x1_0000 - u64::from(self.counter);
         if ticks < until_overflow {
@@ -155,6 +151,8 @@ enum PowerState {
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub(crate) struct Io {
     timers: [Timer; 4],
+    // Low ten system-clock bits cover every supported divider. STOP freezes this phase.
+    timer_phase: u16,
     enable: u16,
     pending: u16,
     master_enable: bool,
@@ -320,7 +318,7 @@ impl Io {
     pub(crate) fn next_event_cycles(&self) -> u32 {
         self.timers
             .iter()
-            .filter_map(Timer::next_overflow)
+            .filter_map(|timer| timer.next_overflow(self.timer_phase))
             .fold(self.display.next_event_cycles(), u32::min)
     }
 
@@ -404,19 +402,22 @@ impl Io {
 
     pub(crate) fn commit_timer_step(&mut self, step: TimerStep) {
         self.timers = step.timers;
+        self.timer_phase = step.phase;
         self.pending = (self.pending & !TIMER_IRQ_MASK) | step.pending;
         self.wake_if_requested();
     }
 
-    fn advance_timer_bank(timers: &mut [Timer; 4], cycles: u32) -> u16 {
+    fn advance_timer_bank(timers: &mut [Timer; 4], phase: &mut u16, cycles: u32) -> u16 {
         let mut pending = 0;
         let mut overflows = 0;
         for (index, timer) in timers.iter_mut().enumerate() {
-            overflows = timer.advance(cycles, overflows);
+            overflows = timer.advance(cycles, overflows, *phase);
             if overflows != 0 && timer.control & 0x40 != 0 {
                 pending |= 1 << (3 + index);
             }
         }
+        // Advance even when every timer is disabled; writes never reset this clock.
+        *phase = ((u64::from(*phase) + u64::from(cycles)) & 1023) as u16;
         pending
     }
 
@@ -453,7 +454,8 @@ impl Io {
         self.dma.trigger(vblank, hblank);
         self.pending |= self.display.advance(cycles);
         if advance_timers {
-            self.pending |= Self::advance_timer_bank(&mut self.timers, cycles);
+            self.pending |=
+                Self::advance_timer_bank(&mut self.timers, &mut self.timer_phase, cycles);
         }
         self.wake_if_requested();
     }

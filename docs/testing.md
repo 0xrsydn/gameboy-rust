@@ -288,6 +288,10 @@ They verify timer IF reads/acknowledgements, preservation of other IF bits, defe
 Failures before fetch and after partial data work must discard staged time and requests. CPU-only APIs must not advance timer devices.
 Display-capture splits must not tick committed timers a second time. See [ordered timer accesses](research/ordered-timer-access.md).
 Bulk timer advancement is compared against an independent cycle-by-cycle reference for each prescaler and cascade configuration.
+Shared-divider tests cover every low-ten-bit phase, staggered enables, source changes, restarts, and cascade transitions.
+A separate literal edge simulation checks randomized control/reload/clock sequences without a per-timer phase accumulator.
+Maximum clock batches, HALT bounds, STOP/keypad retention, and CPU/DMA rollback across divider edges have original regressions.
+See [shared timer prescaler scope](research/timer-prescaler.md); delayed write and startup behavior remains unverified.
 Machine tests cover ARM/Thumb IRQ return, pending-request gating, acknowledgement, and the complete timer demo.
 Failed I/O block transfers are checked for partial register writes, hidden reload changes, and unintended IF acknowledgement.
 Status tests cover all modes, flag combinations, interrupt masks, field selection, privilege rules, and bank isolation.
