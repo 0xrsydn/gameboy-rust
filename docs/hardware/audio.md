@@ -1,7 +1,7 @@
 # Audio device subset
 
-The core models Direct Sound A/B, bounded sound DMA, and programmable sound generator (PSG) pulse channels 1 and 2.
-It does not produce desktop audio. PSG wave channel 3 and noise channel 4 remain unsupported.
+The core models Direct Sound A/B, bounded sound DMA, and programmable sound generator (PSG) pulse channels 1–2 and noise channel 4.
+It does not produce desktop audio. PSG wave channel 3 remains unsupported.
 `Memory::audio_level()` exposes the current digital stereo level for deterministic inspection, not a continuous sample stream.
 
 ## Registers and PSG state
@@ -11,9 +11,12 @@ It does not produce desktop audio. PSG wave channel 3 and noise channel 4 remain
 | `0x04000060..0x04000065` | Pulse channel 1 sweep, duty, length, envelope, frequency, and trigger |
 | `0x04000068..0x04000069` | Pulse channel 2 duty, length, and envelope |
 | `0x0400006c..0x0400006d` | Pulse channel 2 frequency and trigger; no sweep unit |
-| `0x04000070..0x04000081` | Idle channel 3–4 configuration and PSG mixer controls |
+| `0x04000070..0x04000075` | Idle wave channel 3 configuration |
+| `0x04000078..0x04000079` | Noise channel 4 length and envelope |
+| `0x0400007c..0x0400007d` | Noise divider, counter width, shift, length enable, and trigger |
+| `0x04000080..0x04000081` | PSG stereo routing and volume |
 | `0x04000082` (`SOUNDCNT_H`) | Mixing, routing, timer selection, and FIFO reset strobes; readback mask `0x770f` |
-| `0x04000084` (`SOUNDCNT_X`) | Master enable in bit 7; read-only channel 1/2 activity in bits 0/1; channels 3–4 remain inactive |
+| `0x04000084` (`SOUNDCNT_X`) | Master enable in bit 7; channel 1/2/4 activity in read-only bits 0/1/3; channel 3 remains inactive |
 | `0x04000088` (`SOUNDBIAS`) | Bias/resolution configuration with mask `0xc3fe` |
 | `0x04000090..0x0400009f` | CPU wave RAM window, opposite the bank selected by `SOUND3CNT_L` bit 6 |
 | `0x040000a0..0x040000a7` | FIFO A/B writes with byte, halfword, and word access boundaries preserved |
@@ -28,10 +31,10 @@ The CPU then accesses wave bank 1. Idle bank selection can expose bank 0 after m
 The original BIOS reset clears bank 1 and both FIFO queues. It retains bank 0 and any separate in-flight playback word.
 This is a functional reset subset, not a claim of complete firmware ordering or sound-reset equivalence.
 
-An enabled channel 3–4 trigger returns `MemoryError::UnsupportedIo` with the exact address and value.
+An enabled wave channel 3 trigger returns `MemoryError::UnsupportedIo` with the exact address and value.
 This applies even when the configured channel would be inaudible. All PSG writes are ignored while master sound is disabled.
 Reserved PSG volume selection 3 is rejected while master sound is enabled, including enable after disabled configuration.
-Idle channel 3–4 writes do not imply playback support.
+Idle wave channel 3 writes do not imply playback support.
 
 ## Pulse channels 1 and 2
 
@@ -84,6 +87,41 @@ First-trigger output suppression, trigger sub-divider alignment, envelope trigge
 The model samples the selected duty position immediately after trigger and uses a full-period timer reload.
 The consulted implementations differ on some initial phases and envelope/sweep edge cases; no GBA hardware audio recording was used as an oracle.
 
+## Noise channel 4
+
+Noise uses a deterministic linear-feedback shift register (LFSR), not a host random-number generator.
+The nominal counter follows GBATEK's GBA Galois description:
+
+| Width | Trigger seed | Feedback mask | Sequence period |
+| --- | --- | --- | --- |
+| 15-bit | `0x4000` | `0x6000` | 32767 shifts |
+| 7-bit | `0x0040` | `0x0060` | 127 shifts |
+
+At each edge, the old low bit selects the signed output level.
+The counter shifts right and, when that bit was one, XORs the feedback mask.
+The period between edges is `(ratio == 0 ? 32 : 64 * ratio) << shift` system clocks.
+All eight divider fields and sixteen shift fields use this GBA formula, including shifts 14 and 15.
+No general-purpose timer or IRQ enable is required.
+
+A trigger reloads the selected seed, full edge interval, envelope, and applicable length state.
+The nominal held output starts low and changes at counter edges.
+Live divider/shift writes preserve the remaining interval; the new period applies on the next reload.
+Live width writes preserve the full counter, including transient upper bits, and select the new feedback mask.
+They do not truncate or reseed the counter.
+Exact hardware startup alignment and live-width transition behavior remain unverified.
+The consulted mGBA implementation uses a different counter representation; this model does not claim matching initial sample phases.
+
+Length, envelope, logical DAC gating, and activity use the same tested modulation implementation as the pulse channels.
+All three channels receive the shared sequencer clocks but keep independent state.
+Noise status uses SOUNDCNT_X bit 3. Envelope saturation alone does not clear it.
+Master disable resets noise configuration and counter state. Muting its routing does not stop it.
+The unused halfwords at `0x0400007a` and `0x0400007e` read zero and do not alias noise controls.
+
+Large clock advances combine precomputed powers of the counter transition instead of shifting once per noise sample.
+An independent bit-array reference checks these jump-ahead operations, including live-width transients and the final output carry.
+Both complete sequence periods and maximum clock batches have deterministic regressions.
+This is device-state advancement, not a sampled audio stream or hardware recording comparison.
+
 ## FIFO and timer behavior
 
 Each channel has a seven-word queue, a separate four-byte playback word, and a held signed sample.
@@ -128,12 +166,12 @@ Sub-instruction DMA arbitration and exact refill latency are not modeled.
 ## Mixing and timing ownership
 
 Each routed Direct Sound sample contributes `sample * 2` at 50% volume or `sample * 4` at 100% volume.
-Each active pulse contributes a centered signed amplitude, `+volume` or `-volume`.
-`SOUNDCNT_L` routes channel 1 through bits 8/12 and channel 2 through bits 9/13, for right/left respectively.
+Each active pulse or noise channel contributes a centered signed amplitude, `+volume` or `-volume`.
+`SOUNDCNT_L` routes channel 1 through bits 8/12, channel 2 through bits 9/13, and noise through bits 11/15, for right/left respectively.
 The mixer sums routed PSG amplitudes on each side, then multiplies by that side's volume field plus one.
 `SOUNDCNT_H` applies the PSG ratio: 25%, 50%, or 100%, using one arithmetic right shift after summation.
-Rounding each pulse separately would produce different low-volume levels and is not used.
-At full volume, each pulse spans `-120..120` before mixing with Direct Sound.
+Rounding each PSG channel separately would produce different low-volume levels and is not used.
+At full volume, each supported PSG channel spans `-120..120` before mixing with Direct Sound.
 This centered mixer follows GBATEK's signed range and the NanoBoyAdvance comparison; exact analog offset is not modeled.
 The mixer adds all supported channels and the ten-bit bias, clips each side to `0..1023`, and subtracts 512.
 `StereoLevel` therefore contains signed levels in `-512..511`. Master disable returns zero.
@@ -157,15 +195,20 @@ Pulse tests cover every frequency/duty pair, waveform batching, status, length, 
 They also check bus-completion status reads, retrigger timing, clock ownership, and rollback with both pulse channels running.
 Channel 2 tests cover register gaps, absence of sweep, independent state, shared sequencer phase, and sum-before-rounding mixing.
 Original CPU/DMA tests verify channel 2 activation and rollback when a later block-store value is unsupported.
-BIOS reset tests verify that selected sound reset stops both channels, while unselected sound state remains active.
+Noise tests cover both counter widths, divider/shift fields, complete sequences, jump-ahead arithmetic, retrigger, and live rate/width writes.
+They also cover modulation, independent status, stereo mixing, HALT/STOP, and scanline-capture independence.
+CPU/DMA tests include noise register writes at bus completion and failed-step rollback with a running counter.
+BIOS reset tests verify that selected sound reset stops all supported PSG channels, while unselected sound state remains active.
 
 These tests validate the documented nominal model, not hardware audio fidelity.
-Next work: noise channel 4, wave channel 3, a timestamped or fixed-rate output stream, PWM/mixer sampling, and a Darwin host backend.
-The local Emerald startup now passes both pulse triggers and stops at a noise channel 4 trigger.
+Remaining audio work: wave channel 3, a timestamped or fixed-rate output stream, PWM/mixer sampling, and a Darwin host backend.
+The local Emerald startup now passes the pulse and noise triggers, then stops at GPIO serial interrupt control.
 See [the local runtime result](../research/emerald-reset.md).
 
 ## References
 
+- [GBATEK noise channel 4](https://mgba-emu.github.io/gbatek/): length/envelope registers, divider formula, Galois counter seeds, masks, and sequence periods.
+- [NanoBoyAdvance noise at 55b5cf0a](https://github.com/nba-emu/NanoBoyAdvance/blob/55b5cf0ae3d929582ac5bfd486558173502b8354/src/nba/src/hw/apu/channel/noise_channel.cc) and [noise header](https://github.com/nba-emu/NanoBoyAdvance/blob/55b5cf0ae3d929582ac5bfd486558173502b8354/src/nba/src/hw/apu/channel/noise_channel.hh): GBA divider scaling, counter feedback, trigger, and register behavior comparison.
 - [GBATEK channels 1 and 2](https://mgba-emu.github.io/gbatek/): register fields, duty ratios, modulation rates, channel 2's register gap, and absence of sweep.
 - [Pan Docs audio details](https://gbdev.io/pandocs/Audio_details.html): duty counters, shadow sweep, length edge rules, and GBA digital-mixer differences. GB-only edge details are not treated as verified GBA measurements.
 - [GbdevWiki sound hardware](https://gbdev.gg8.se/wiki/articles/Gameboy_sound_hardware): background sequencer and sweep descriptions.

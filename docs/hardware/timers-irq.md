@@ -39,7 +39,7 @@ Failed steps discard staged counters, divider progress, timer/audio writes, FIFO
 Display and other device clocks then advance once, without advancing timers again.
 Display and remaining devices still use the bulk scheduler. Mid-instruction display events, general bus arbitration, and IRQ synchronization delays remain unmodeled.
 [Direct Sound](audio.md) consumes selected timer overflows in the timer transaction; sound DMA requests commit at step boundaries.
-The same transaction advances both PSG pulse oscillators and their shared 512 Hz sequencer independently of the general-purpose timers.
+The same transaction advances both PSG pulse oscillators, the noise counter, and their shared 512 Hz sequencer independently of the general-purpose timers.
 Host clock advances and HALT idle batches retain ordinary bulk timer advancement; STOP idle does not advance timers.
 
 The unchanged [prefetch cancellation probe](../research/prefetch-cancellation.md) now matches both published interval totals and actual timer samples.

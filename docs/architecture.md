@@ -56,6 +56,9 @@ The repository is a Cargo workspace with three crates:
 | `crates/gba-core/src/audio.rs` | Direct Sound state, PSG sequencer, idle channel/wave banks, and instantaneous stereo mixing |
 | `crates/gba-core/src/audio/pulse.rs` | Shared pulse oscillator; sweep is mapped only for channel 1 |
 | `crates/gba-core/src/audio/modulation.rs` | Shared PSG length, envelope, logical DAC gate, and activity state |
+| `crates/gba-core/src/audio/noise.rs` | Noise channel 4 divider, 7/15-bit counter, and bounded jump-ahead advancement |
+| `crates/gba-core/src/audio/noise/tests.rs` | Counter periods, independent bit-array reference, divider fields, and clock batching |
+| `crates/gba-core/tests/noise_sound.rs` | Noise registers, modulation, stereo mixing, independent status, HALT/STOP, and capture independence |
 | `crates/gba-core/src/audio/pulse/tests.rs` | Exhaustive frequency/duty arithmetic and original modulation edge tests |
 | `crates/gba-core/tests/pulse_sound.rs` | Register masks, stereo mixing, sequencer clocks, idle modes, batching, and explicit limits |
 | `crates/gba-core/tests/pulse_sound/channel2.rs` | Channel 2 mapping, register gaps, independent state, shared clocks, and sum-before-rounding mixing |

@@ -1,7 +1,9 @@
-//! Nominal Direct Sound and PSG pulse channels 1–2. No host audio output.
+//! Nominal Direct Sound, PSG pulse channels 1–2, and noise channel 4. No host audio output.
 
 mod modulation;
+mod noise;
 mod pulse;
+use noise::Noise;
 use pulse::Pulse;
 
 const SEQUENCER_PERIOD: u32 = 32768; // 16,777,216 Hz / 512 Hz.
@@ -80,6 +82,7 @@ pub(crate) struct Audio {
     enabled: bool,
     psg: [u16; 17],
     pulses: [Pulse; 2],
+    noise: Noise,
     sequencer_phase: u16,
     next_step: u8,
     control: u16,
@@ -100,7 +103,7 @@ impl Audio {
         {
             return Some("reserved PSG volume selection");
         }
-        if self.enabled && matches!(address, 0x0400_0075 | 0x0400_007d) && value & 0x80 != 0 {
+        if self.enabled && address == 0x0400_0075 && value & 0x80 != 0 {
             Some("PSG channel trigger (synthesis not implemented)")
         } else {
             None
@@ -123,6 +126,9 @@ impl Audio {
     }
 
     pub(crate) fn read8(&self, address: u32) -> Option<u8> {
+        if (0x0400_0078..=0x0400_007d).contains(&address) {
+            return Some(self.noise.read(address - 0x0400_0078));
+        }
         if let Some((index, offset)) = Self::pulse_register(address) {
             return Some(self.pulses[index].read(offset));
         }
@@ -135,8 +141,6 @@ impl Audio {
                     0x0400_0074 => 0x4000,
                     0x0400_0070 => 0x00e0,
                     0x0400_0072 => 0xe000,
-                    0x0400_0078 => 0xff00,
-                    0x0400_007c => 0x40ff,
                     0x0400_0080 => 0xff77,
                     _ => 0,
                 };
@@ -147,6 +151,7 @@ impl Audio {
                 (u16::from(self.enabled) << 7)
                     | u16::from(self.pulses[0].modulation.active)
                     | (u16::from(self.pulses[1].modulation.active) << 1)
+                    | (u16::from(self.noise.modulation.active) << 3)
             }
             SOUNDBIAS => self.bias,
             0x0400_0086 | 0x0400_008a => 0,
@@ -173,6 +178,13 @@ impl Audio {
                 }
                 continue;
             }
+            if (0x0400_0078..=0x0400_007d).contains(&address) {
+                if self.enabled {
+                    self.noise
+                        .write(address - 0x0400_0078, value, self.next_step);
+                }
+                continue;
+            }
             let shift = (address & 1) * 8;
             let merge = |old: u16| (old & !(255 << shift)) | (u16::from(value) << shift);
             match address & !1 {
@@ -194,6 +206,7 @@ impl Audio {
                     if self.enabled && value & 0x80 == 0 {
                         self.psg = [0; 17];
                         self.pulses = [Pulse::default(); 2];
+                        self.noise = Noise::default();
                         for fifo in &mut self.fifo {
                             fifo.reset_queue();
                         }
@@ -222,12 +235,14 @@ impl Audio {
             for pulse in &mut self.pulses {
                 pulse.advance(count);
             }
+            self.noise.advance(count);
             let phase = u32::from(self.sequencer_phase) + count;
             if phase == SEQUENCER_PERIOD {
                 self.sequencer_phase = 0;
                 for pulse in &mut self.pulses {
                     pulse.clock(self.next_step);
                 }
+                self.noise.clock(self.next_step);
                 self.next_step = (self.next_step + 1) & 7;
             } else {
                 self.sequencer_phase = phase as u16;
@@ -277,6 +292,9 @@ impl Audio {
                 if psg_control & (1 << (8 + side * 4 + index)) != 0 {
                     psg_sample += pulse.sample();
                 }
+            }
+            if psg_control & (1 << (11 + side * 4)) != 0 {
+                psg_sample += self.noise.sample();
             }
             let volume = ((psg_control >> (side * 4)) & 7) as i16 + 1;
             // Sum PSG channels before scaling, so fractional bits are discarded once.

@@ -10,7 +10,7 @@ No ROM bytes, extracted code, or assets were added to the repository.
 ## General correction
 
 The reset correction introduced bounded sound and [disconnected serial](../hardware/serial.md) initialization models.
-The [sound model](../hardware/audio.md) now also supports Direct Sound, bounded FIFO DMA, and both nominal pulse channels.
+The [sound model](../hardware/audio.md) now also supports Direct Sound, bounded FIFO DMA, both pulse channels, and noise channel 4.
 The BIOS performs reset through original ARM stores against that model.
 Bit 5 selects general-purpose input pins and clears supported serial reset registers.
 Bit 6 disables sound, resets FIFO queues, clears mixing configuration and accessible wave RAM, and sets the functional bias default.
@@ -32,16 +32,17 @@ direnv exec . cargo run --locked --release -- --rom roms/pokemon-emerald.gba --w
 The earlier reset-only implementation stopped at master sound enable (`0x04000084`, PC `0x082e0518`).
 The Direct Sound increment then reached a PSG channel 1 trigger (`0x04000065`, PC `0x082e03bc`).
 Channel 1 support reached the channel 2 trigger (`0x0400006d`, PC `0x082e03c0`).
-With both pulse channels implemented, both runs now stop at noise channel 4:
+Both pulse channels then reached the noise trigger (`0x0400007d`, PC `0x082e03c4`).
+With noise channel 4 implemented, both runs now stop at general-purpose input/output (GPIO) serial interrupt enable:
 
 ```text
-Steps: 321163; instructions: 320651; IRQ entries: 0; DMA units: 512; HALT idle: 0
-Nominal cycles: 1038746
-PC=0x082e03c4
-unsupported PSG channel trigger (synthesis not implemented): write 0x80 at 0x0400007d
+Steps: 395420; instructions: 393690; IRQ entries: 2; DMA units: 1728; HALT idle: 0
+Nominal cycles: 1328057
+PC=0x082e2aac
+unsupported GPIO serial interrupt enable: write 0x01 at 0x04000135
 ```
 
-The native run captures three startup frames. These do not establish a working title screen or gameplay.
+The native run captures five startup frames. These do not establish a working title screen or gameplay.
 Audio-device behavior is validated by original tests, not by audible game output.
 The window run does not reach its requested frame limit and correctly exits with failure.
 Terminal execution is also diagnostic, not a compatibility pass.
@@ -53,12 +54,15 @@ Workspace debug/release tests, strict Clippy, public ARM/Thumb/memory/BIOS check
 Native ROM-window tests and graphics smoke modes pass on Darwin arm64.
 The pinned Pong debug/release reports match.
 
-The next observed startup requirement is noise channel 4. Wave channel 3 is also still missing.
-Both pulse channels now have independent nominal waveform, length, envelope, status, and stereo mixing behavior.
-Sweep applies only to channel 1. The two pulses share the sequencer without sharing their channel state.
-Direct Sound has FIFO clocks and nominal DMA requests. All supported channels use the instantaneous digital-level inspection interface.
-A continuous sample stream and desktop output are still missing. Do not treat digital-level tests as audible-game validation.
-Do not suppress the PSG trigger diagnostic without implementing the requested device behavior.
+The next observed requirement is [serial control-register behavior](../hardware/serial.md), specifically RCNT bit 8.
+Check mode gating and interrupt-enable semantics before changing the current rejection.
+This diagnostic alone does not establish that the game needs an active link transfer.
+
+Noise now has deterministic counter clocks and shares tested length/envelope logic with the independent pulse channels.
+Sweep applies only to channel 1. Direct Sound has FIFO clocks and nominal DMA requests.
+All supported channels use the instantaneous digital-level inspection interface.
+Wave channel 3, a continuous sample stream, and desktop output are still missing.
+Do not treat digital-level tests as audible-game validation or suppress remaining diagnostics without implementing their behavior.
 Cartridge saves remain a separate required feature. SRAM alone will not support Emerald's Flash save protocol.
 
 Hardware and emulator references are recorded in the linked subsystem documents.
