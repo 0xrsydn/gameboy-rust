@@ -1,4 +1,6 @@
-//! Original public-bus tests for PSG channel 1; no game code or audio assets.
+//! Original public-bus tests for PSG pulse channels; no game code or audio assets.
+#[path = "pulse_sound/channel2.rs"]
+mod channel2;
 use gba_core::{
     audio::StereoLevel,
     cpu::Cpu,

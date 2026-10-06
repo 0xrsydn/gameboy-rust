@@ -167,7 +167,7 @@ fn wave_banks_and_idle_channel_masks_preserve_explicit_limits() {
     bus.write16(0x04000070, 0x40).unwrap();
     assert_eq!(bus.read32(WAVE_RAM).unwrap(), 0);
     bus.write32(WAVE_RAM, 0xaabbccdd).unwrap();
-    for address in [0x0400006c, 0x04000074, 0x0400007c] {
+    for address in [0x04000074, 0x0400007c] {
         let previous = bus.read16(address).unwrap();
         assert!(bus
             .write16(address, 0xffff)

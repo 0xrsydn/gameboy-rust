@@ -1,7 +1,7 @@
 # Audio device subset
 
-The core models Direct Sound A/B, bounded sound DMA, and programmable sound generator (PSG) pulse channel 1.
-It does not produce desktop audio. PSG channels 2–4 remain unsupported.
+The core models Direct Sound A/B, bounded sound DMA, and programmable sound generator (PSG) pulse channels 1 and 2.
+It does not produce desktop audio. PSG wave channel 3 and noise channel 4 remain unsupported.
 `Memory::audio_level()` exposes the current digital stereo level for deterministic inspection, not a continuous sample stream.
 
 ## Registers and PSG state
@@ -9,14 +9,17 @@ It does not produce desktop audio. PSG channels 2–4 remain unsupported.
 | Address | Behavior |
 | --- | --- |
 | `0x04000060..0x04000065` | Pulse channel 1 sweep, duty, length, envelope, frequency, and trigger |
-| `0x04000066..0x04000081` | Idle channel 2–4 configuration and PSG mixer controls |
+| `0x04000068..0x04000069` | Pulse channel 2 duty, length, and envelope |
+| `0x0400006c..0x0400006d` | Pulse channel 2 frequency and trigger; no sweep unit |
+| `0x04000070..0x04000081` | Idle channel 3–4 configuration and PSG mixer controls |
 | `0x04000082` (`SOUNDCNT_H`) | Mixing, routing, timer selection, and FIFO reset strobes; readback mask `0x770f` |
-| `0x04000084` (`SOUNDCNT_X`) | Master enable in bit 7; read-only channel 1 activity in bit 0; channels 2–4 remain inactive |
+| `0x04000084` (`SOUNDCNT_X`) | Master enable in bit 7; read-only channel 1/2 activity in bits 0/1; channels 3–4 remain inactive |
 | `0x04000088` (`SOUNDBIAS`) | Bias/resolution configuration with mask `0xc3fe` |
 | `0x04000090..0x0400009f` | CPU wave RAM window, opposite the bank selected by `SOUND3CNT_L` bit 6 |
 | `0x040000a0..0x040000a7` | FIFO A/B writes with byte, halfword, and word access boundaries preserved |
 
 Unused mapped register bytes read zero and ignore writes.
+The halfwords at `0x04000066`, `0x0400006a`, and `0x0400006e` do not alias pulse registers or enable channel 2 sweep.
 FIFO reads and the `0x0400008c..0x0400008f` gap remain explicit unmapped-access errors; no FIFO open-bus value is invented.
 Raw memory starts with zero sound state. RegisterRamReset bit 6 sets the functional bias default to `0x0200`.
 
@@ -25,19 +28,23 @@ The CPU then accesses wave bank 1. Idle bank selection can expose bank 0 after m
 The original BIOS reset clears bank 1 and both FIFO queues. It retains bank 0 and any separate in-flight playback word.
 This is a functional reset subset, not a claim of complete firmware ordering or sound-reset equivalence.
 
-An enabled channel 2–4 trigger returns `MemoryError::UnsupportedIo` with the exact address and value.
+An enabled channel 3–4 trigger returns `MemoryError::UnsupportedIo` with the exact address and value.
 This applies even when the configured channel would be inaudible. All PSG writes are ignored while master sound is disabled.
 Reserved PSG volume selection 3 is rejected while master sound is enabled, including enable after disabled configuration.
-Idle channel 2–4 writes do not imply playback support.
+Idle channel 3–4 writes do not imply playback support.
 
-## Pulse channel 1
+## Pulse channels 1 and 2
 
-Channel 1 has four duty patterns: 12.5%, 25%, 50%, and 75%.
+Each pulse channel has four duty patterns: 12.5%, 25%, 50%, and 75%.
 Its eight-position waveform advances every `16 * (2048 - frequency)` system clocks.
+The channels keep independent frequency, duty position, length, envelope, logical DAC gate, and activity state.
+Only channel 1 has sweep. Channel 2 reuses the pulse engine without any mapped sweep register.
 No general-purpose timer must be enabled for PSG playback.
 Frequency writes change the next oscillator reload, not the remaining current interval.
-A trigger reloads the oscillator timer, envelope volume, envelope timer, and sweep shadow/timer state.
-Retrigger preserves the duty position. Master disable resets it.
+A trigger reloads that channel's oscillator timer, envelope volume, and envelope timer.
+Channel 1 also initializes its sweep shadow/timer state.
+Retrigger preserves that channel's duty position and does not restart the other channel.
+Master disable resets both pulse channels.
 
 The modulation sequencer receives a 512 Hz clock, once per 32768 system clocks:
 
@@ -49,7 +56,8 @@ The modulation sequencer receives a 512 Hz clock, once per 32768 system clocks:
 
 The divider starts at synthetic phase zero and continues while master sound is disabled.
 Master enable sets the next sequencer step to zero without resetting that divider.
-Channel trigger does not reset the shared sequencer. HALT continues its clocks; STOP freezes them.
+Neither channel trigger resets the shared sequencer. Both receive length/envelope clocks at the same sequencer phase.
+HALT continues these clocks; STOP freezes them.
 Waveform advancement uses arithmetic batches between sequencer events, not a loop for every system clock.
 
 Length writes load `64 - length_field`. Enabled length expiry clears the channel activity flag.
@@ -64,7 +72,7 @@ Reactivating a stopped envelope loads its new countdown. Trigger loads its confi
 Clearing envelope bits 3–7 disables the channel; setting them again requires a trigger to restart it.
 This is the logical gate often called DAC enable in Game Boy references, not a separate physical GBA DAC.
 
-Sweep uses a shadow frequency independent of later frequency-register writes.
+Channel 1 sweep uses a shadow frequency independent of later frequency-register writes.
 A nonzero shift checks overflow immediately at trigger.
 Timed sweep updates check overflow both before and after committing the new frequency.
 A result above 2047 disables the channel. Period zero suppresses periodic frequency changes, not the trigger-time check.
@@ -120,10 +128,12 @@ Sub-instruction DMA arbitration and exact refill latency are not modeled.
 ## Mixing and timing ownership
 
 Each routed Direct Sound sample contributes `sample * 2` at 50% volume or `sample * 4` at 100% volume.
-Pulse channel 1 contributes a centered signed amplitude, `+volume` or `-volume`, while active.
-`SOUNDCNT_L` routes it independently left/right and multiplies each side by its volume field plus one.
-`SOUNDCNT_H` then applies the PSG ratio: 25%, 50%, or 100%, using an arithmetic right shift.
-At full volume, channel 1 therefore spans `-120..120` before mixing with Direct Sound.
+Each active pulse contributes a centered signed amplitude, `+volume` or `-volume`.
+`SOUNDCNT_L` routes channel 1 through bits 8/12 and channel 2 through bits 9/13, for right/left respectively.
+The mixer sums routed PSG amplitudes on each side, then multiplies by that side's volume field plus one.
+`SOUNDCNT_H` applies the PSG ratio: 25%, 50%, or 100%, using one arithmetic right shift after summation.
+Rounding each pulse separately would produce different low-volume levels and is not used.
+At full volume, each pulse spans `-120..120` before mixing with Direct Sound.
 This centered mixer follows GBATEK's signed range and the NanoBoyAdvance comparison; exact analog offset is not modeled.
 The mixer adds all supported channels and the ten-bit bias, clips each side to `0..1023`, and subtracts 512.
 `StereoLevel` therefore contains signed levels in `-512..511`. Master disable returns zero.
@@ -144,16 +154,19 @@ They also cover cascaded timers, DMA block/repeat behavior, source progress, com
 CPU/DMA failure tests verify transactional rollback and sound writes at bus completion.
 BIOS tests cover disabled FIFO reset and the supported wave-bank policy.
 Pulse tests cover every frequency/duty pair, waveform batching, status, length, envelope, sweep, mixing, and reserved-volume diagnostics.
-They also check bus-completion status reads, retrigger timing, clock ownership, and rollback with a running pulse channel.
+They also check bus-completion status reads, retrigger timing, clock ownership, and rollback with both pulse channels running.
+Channel 2 tests cover register gaps, absence of sweep, independent state, shared sequencer phase, and sum-before-rounding mixing.
+Original CPU/DMA tests verify channel 2 activation and rollback when a later block-store value is unsupported.
+BIOS reset tests verify that selected sound reset stops both channels, while unselected sound state remains active.
 
 These tests validate the documented nominal model, not hardware audio fidelity.
-Next work: PSG channels 2–4, a timestamped or fixed-rate output stream, PWM/mixer sampling, and a Darwin host backend.
-The local Emerald startup now passes the channel 1 trigger and stops at a channel 2 trigger.
+Next work: noise channel 4, wave channel 3, a timestamped or fixed-rate output stream, PWM/mixer sampling, and a Darwin host backend.
+The local Emerald startup now passes both pulse triggers and stops at a noise channel 4 trigger.
 See [the local runtime result](../research/emerald-reset.md).
 
 ## References
 
-- [GBATEK channel 1](https://mgba-emu.github.io/gbatek/): register fields, duty ratios, and modulation rates.
+- [GBATEK channels 1 and 2](https://mgba-emu.github.io/gbatek/): register fields, duty ratios, modulation rates, channel 2's register gap, and absence of sweep.
 - [Pan Docs audio details](https://gbdev.io/pandocs/Audio_details.html): duty counters, shadow sweep, length edge rules, and GBA digital-mixer differences. GB-only edge details are not treated as verified GBA measurements.
 - [GbdevWiki sound hardware](https://gbdev.gg8.se/wiki/articles/Gameboy_sound_hardware): background sequencer and sweep descriptions.
 - [mGBA shared PSG at 3a5e34be](https://github.com/mgba-emu/mgba/blob/3a5e34be33dc7f8f707e5bc9db69e8a430046f21/src/gb/audio.c): GBA-style sequencer, length, envelope, sweep, and waveform comparison.

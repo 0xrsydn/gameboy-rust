@@ -1,4 +1,5 @@
-//! Nominal channel 1 oscillator and modulation units. No host-clock dependency.
+//! Shared nominal pulse oscillator and modulation units. No host-clock dependency.
+//! Channel 2 never receives sweep-register writes, so its sweep remains disabled.
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub(super) struct Pulse {

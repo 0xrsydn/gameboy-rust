@@ -79,8 +79,8 @@ Update this file when a feature lands or a limit is removed.
 - Firmware boot initializes BG2/BG3 identity scales for bitmap and affine programs that do not program their own matrices.
 - RegisterRamReset supports disabled sound and disconnected serial initialization, including the common `r0=0xff` request.
 - Direct Sound A/B support timer-driven FIFO playback, stereo digital levels, and DMA1/A or DMA2/B refill blocks.
-- PSG pulse channel 1 supports nominal frequency/duty playback, length, envelope, sweep, status, and stereo mixing.
-- Channels 2–4 triggers and unsupported serial operations produce explicit address/value diagnostics with whole-access and block-store rollback.
+- PSG pulse channels 1 and 2 support independent nominal frequency/duty playback, length, envelope, status, and stereo mixing. Channel 1 also supports sweep.
+- Channel 3–4 triggers and unsupported serial operations produce explicit address/value diagnostics with whole-access and block-store rollback.
 - ROM windows with scanline capture, keyboard input, focus-loss release, bounded execution slices, and interactive keypad wake from STOP.
 - Optional ROM-window frame limits and an original input-test ROM generator.
 - Headless JSON ROM suites with PC or VBlank completion, register/CPSR/memory/pixel assertions, scheduled buttons, bounded budgets, and structured failure reports.
@@ -137,8 +137,8 @@ Horizontal window comparators retain four-cycle event history.
 Sprite rows prepare one line ahead with a whole-row cycle40 sample and nominal per-row work limits.
 Individual fetch timing, hardware-accurate work cutoffs, video-bus contention, and per-pixel color composition remain unimplemented.
 There is no host audio output or cartridge save support.
-The [audio subset](hardware/audio.md) supports Direct Sound, PSG pulse channel 1, idle channel 2–4 state, wave banking, and instantaneous digital mixing.
-It does not yet provide a continuous sample stream. Channel 2–4 playback and unverified sound-DMA pairings remain diagnostic.
+The [audio subset](hardware/audio.md) supports Direct Sound, both PSG pulse channels, idle channel 3–4 state, wave banking, and instantaneous digital mixing.
+It does not yet provide a continuous sample stream. Channel 3–4 playback and unverified sound-DMA pairings remain diagnostic.
 PSG timing and signed mixing are nominal; hardware startup edges and analog behavior remain unverified.
 The [serial initialization subset](hardware/serial.md) supports idle normal data and disconnected general-purpose pins, not active transfers.
 Mapped I/O covers DMA, timers, interrupts, WAITCNT, display control/status, background control/scroll/affine registers, window/effect registers, KEYINPUT/KEYCNT, POSTFLG, and HALTCNT.
@@ -150,7 +150,7 @@ ROM files can run in bounded terminal mode or a window with the original BIOS re
 ROM windows have no demo-specific startup checks. Input is sampled between bounded execution slices.
 Audio, saves, and external BIOS loading remain unavailable. ROM loading does not establish commercial-game compatibility.
 A local Emerald run now completes its all-device reset and master sound enable.
-It also passes the channel 1 trigger, then stops explicitly at channel 2 (`0x0400006d`).
+It also passes both pulse triggers, then stops explicitly at noise channel 4 (`0x0400007d`).
 No title-screen, gameplay, or audible-game compatibility is established.
 Its captured startup frames do not establish title-screen or gameplay compatibility. See [the startup result](research/emerald-reset.md).
 See [cartridge loading](hardware/cartridge.md) for file limits, step budgets, and exit status.

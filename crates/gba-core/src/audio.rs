@@ -1,4 +1,4 @@
-//! Nominal Direct Sound and PSG pulse channel 1. No host audio output.
+//! Nominal Direct Sound and PSG pulse channels 1–2. No host audio output.
 
 mod pulse;
 use pulse::Pulse;
@@ -78,7 +78,7 @@ impl Fifo {
 pub(crate) struct Audio {
     enabled: bool,
     psg: [u16; 17],
-    pulse: Pulse,
+    pulses: [Pulse; 2],
     sequencer_phase: u16,
     next_step: u8,
     control: u16,
@@ -99,10 +99,7 @@ impl Audio {
         {
             return Some("reserved PSG volume selection");
         }
-        if self.enabled
-            && matches!(address, 0x0400_006d | 0x0400_0075 | 0x0400_007d)
-            && value & 0x80 != 0
-        {
+        if self.enabled && matches!(address, 0x0400_0075 | 0x0400_007d) && value & 0x80 != 0 {
             Some("PSG channel trigger (synthesis not implemented)")
         } else {
             None
@@ -113,9 +110,20 @@ impl Audio {
         1 ^ usize::from((self.psg[8] >> 6) & 1)
     }
 
+    /// Channel 2 has no sweep register. Its register gap must not alias any
+    /// pulse state, particularly the shared engine's sweep configuration.
+    fn pulse_register(address: u32) -> Option<(usize, u32)> {
+        match address {
+            SOUND_START..=0x0400_0065 => Some((0, address - SOUND_START)),
+            0x0400_0068..=0x0400_0069 => Some((1, address - 0x0400_0066)),
+            0x0400_006c..=0x0400_006d => Some((1, address - 0x0400_0068)),
+            _ => None,
+        }
+    }
+
     pub(crate) fn read8(&self, address: u32) -> Option<u8> {
-        if (SOUND_START..=SOUND_START + 5).contains(&address) {
-            return Some(self.pulse.read(address - SOUND_START));
+        if let Some((index, offset)) = Self::pulse_register(address) {
+            return Some(self.pulses[index].read(offset));
         }
         if (WAVE_RAM..FIFO_A).contains(&address) {
             return Some(self.wave[self.wave_bank()][(address - WAVE_RAM) as usize]);
@@ -123,9 +131,7 @@ impl Audio {
         let value = match address & !1 {
             SOUND_START..=0x0400_0080 => {
                 let mask = match address & !1 {
-                    0x0400_0060 => 0x007f,
-                    0x0400_0062 | 0x0400_0068 => 0xffc0,
-                    0x0400_0064 | 0x0400_006c | 0x0400_0074 => 0x4000,
+                    0x0400_0074 => 0x4000,
                     0x0400_0070 => 0x00e0,
                     0x0400_0072 => 0xe000,
                     0x0400_0078 => 0xff00,
@@ -136,7 +142,11 @@ impl Audio {
                 self.psg[((address - SOUND_START) / 2) as usize] & mask
             }
             SOUNDCNT_H => self.control,
-            SOUNDCNT_X => (u16::from(self.enabled) << 7) | u16::from(self.pulse.active),
+            SOUNDCNT_X => {
+                (u16::from(self.enabled) << 7)
+                    | u16::from(self.pulses[0].active)
+                    | (u16::from(self.pulses[1].active) << 1)
+            }
             SOUNDBIAS => self.bias,
             0x0400_0086 | 0x0400_008a => 0,
             _ => return None, // FIFO is write-only; open-bus readback is not modeled.
@@ -156,9 +166,10 @@ impl Audio {
                 self.wave[self.wave_bank()][(address - WAVE_RAM) as usize] = value;
                 continue;
             }
-            if self.enabled && (SOUND_START..=SOUND_START + 5).contains(&address) {
-                self.pulse
-                    .write(address - SOUND_START, value, self.next_step);
+            if let Some((index, offset)) = Self::pulse_register(address) {
+                if self.enabled {
+                    self.pulses[index].write(offset, value, self.next_step);
+                }
                 continue;
             }
             let shift = (address & 1) * 8;
@@ -181,7 +192,7 @@ impl Audio {
                 SOUNDCNT_X if address & 1 == 0 => {
                     if self.enabled && value & 0x80 == 0 {
                         self.psg = [0; 17];
-                        self.pulse = Pulse::default();
+                        self.pulses = [Pulse::default(); 2];
                         for fifo in &mut self.fifo {
                             fifo.reset_queue();
                         }
@@ -207,11 +218,15 @@ impl Audio {
         }
         while cycles != 0 {
             let count = cycles.min(SEQUENCER_PERIOD - u32::from(self.sequencer_phase));
-            self.pulse.advance(count);
+            for pulse in &mut self.pulses {
+                pulse.advance(count);
+            }
             let phase = u32::from(self.sequencer_phase) + count;
             if phase == SEQUENCER_PERIOD {
                 self.sequencer_phase = 0;
-                self.pulse.clock(self.next_step);
+                for pulse in &mut self.pulses {
+                    pulse.clock(self.next_step);
+                }
                 self.next_step = (self.next_step + 1) & 7;
             } else {
                 self.sequencer_phase = phase as u16;
@@ -256,10 +271,15 @@ impl Audio {
         let psg_control = self.psg[16];
         let ratio = [1, 2, 4, 0][usize::from(self.control & 3)];
         for (side, level) in sides.iter_mut().enumerate() {
-            if psg_control & (1 << (8 + side * 4)) != 0 {
-                let volume = ((psg_control >> (side * 4)) & 7) as i16 + 1;
-                *level += (self.pulse.sample() * volume * ratio) >> 2;
+            let mut psg_sample = 0;
+            for (index, pulse) in self.pulses.iter().enumerate() {
+                if psg_control & (1 << (8 + side * 4 + index)) != 0 {
+                    psg_sample += pulse.sample();
+                }
             }
+            let volume = ((psg_control >> (side * 4)) & 7) as i16 + 1;
+            // Sum PSG channels before scaling, so fractional bits are discarded once.
+            *level += (psg_sample * volume * ratio) >> 2;
             *level = (*level + (self.bias & 0x3ff) as i16).clamp(0, 1023) - 512;
         }
         StereoLevel {

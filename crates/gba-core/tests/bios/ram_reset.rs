@@ -20,7 +20,7 @@ const REGIONS: [(u32, u32, u32); 5] = [
 const MARKER: u32 = 0xa55a_c33c;
 
 #[test]
-fn sound_reset_disables_running_pulse_only_when_selected() {
+fn sound_reset_disables_running_pulses_only_when_selected() {
     use gba_core::io::SOUNDCNT_X;
     for thumb in [false, true] {
         for flags in [0, 0x40] {
@@ -29,10 +29,12 @@ fn sound_reset_disables_running_pulse_only_when_selected() {
             bus.write16(SOUNDCNT_X, 0x80).unwrap();
             bus.write16(0x04000062, 0xf080).unwrap();
             bus.write16(0x04000064, 0x87ff).unwrap();
+            bus.write16(0x04000068, 0xf080).unwrap();
+            bus.write16(0x0400006c, 0x87fe).unwrap();
             complete(&mut machine, return_pc);
             assert_eq!(
                 machine.memory().read16(SOUNDCNT_X).unwrap(),
-                if flags == 0 { 0x81 } else { 0 }
+                if flags == 0 { 0x83 } else { 0 }
             );
         }
     }
