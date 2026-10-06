@@ -209,11 +209,19 @@ Game Pak prefetch research:
 - [Jgenesis prefetch at fab6e2cc](https://github.com/jsgroth/jgenesis/blob/fab6e2ccc60e492dd68b7f1e927b0829a6d80195/backend/gba-core/src/prefetch.rs) and its [bus integration](https://github.com/jsgroth/jgenesis/blob/fab6e2ccc60e492dd68b7f1e927b0829a6d80195/backend/gba-core/src/bus.rs), for independent halfword capacity, full-buffer pause/restart, CPU delivery, and cancellation rules.
 - [NanoBoyAdvance boundary test at cc3f4a28](https://codeberg.org/nba-emu/hw-test/src/commit/cc3f4a286cdef823980d9b353bd70befc9927d28/bus/128kb-boundary/source/main.c), reviewed for data LDM/DMA boundaries, not active opcode-queue conformance.
 - [PrefetchAbuse source at 9ca57c13](https://github.com/zaydlang/PrefetchAbuse/blob/9ca57c13da7e3c569937f99a42e7c1caca029a2d/src/main.c), its [README](https://github.com/zaydlang/PrefetchAbuse/blob/9ca57c13da7e3c569937f99a42e7c1caca029a2d/README.md), and [Makefile](https://github.com/zaydlang/PrefetchAbuse/blob/9ca57c13da7e3c569937f99a42e7c1caca029a2d/Makefile), for published read observations, actual multiply delays, and build assumptions. No upstream program or ROM was imported.
-  See [the original cancellation comparison](research/prefetch-cancellation.md) for hashes, correspondence limits, matching nominal intervals, and failing timer samples.
+  See [the original cancellation comparison](research/prefetch-cancellation.md) for hashes, correspondence limits, and the initial timer sampling failure.
+  Both nominal intervals and unadjusted timer samples now match after ordered timer accesses.
 
 See [prefetch behavior and evidence](research/gamepak-prefetch.md).
 The nominal queue is implemented. Source differences and live WAITCNT transitions remain validation questions.
 No hardware conformance result is claimed.
+
+Ordered timer data accesses:
+
+- The pinned [Jgenesis bus at fab6e2cc](https://github.com/jsgroth/jgenesis/blob/fab6e2ccc60e492dd68b7f1e927b0829a6d80195/backend/gba-core/src/bus.rs) charges one I/O cycle before register reads/writes and passes the resulting clock to timers.
+- The pinned PrefetchAbuse read observations above isolate the missing source-fetch interval in the previous bulk timer model.
+
+See [staged timer clock ownership](research/ordered-timer-access.md). Relative probe agreement does not establish all absolute timer edges.
 
 Use [GBATEK](https://problemkaputt.de/gbatek.htm) and ARM7TDMI documentation for further hardware work.
 Only use game ROMs that you may lawfully use. Do not commit game ROMs, BIOS files, or game assets.

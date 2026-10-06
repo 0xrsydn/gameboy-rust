@@ -51,7 +51,8 @@ Update this file when a feature lands or a limit is removed.
 - Persistent fetch access kinds follow CPU data/internal work, compose with DMA resume, and reset after target refills.
 - Game Pak wait-state control (`WAITCNT`) for all three ROM windows.
 - Bit 14 enables a nominal eight-halfword opcode prefetch queue, with partial fetches, cancellation, and DMA/idle integration.
-- An original ARM cancellation probe matches published read interval totals, while separately reporting incorrect bulk timer samples.
+- Staged timer clocks follow CPU and DMA bus-completion phases, including timer IF reads/acknowledgements and failed-step rollback.
+- The unchanged original ARM cancellation probe matches both published read interval totals and its unadjusted timer samples.
 - Sequential/non-sequential data accesses, branch refill costs, and variable multiply timing.
 - Optional caller-supplied 16 KiB BIOS mapping, with CPU read protection based on retained ARM PC+8 or aligned Thumb PC+4 words.
 - Optional original BIOS replacement: minimal boot, SoftReset, selective RegisterRamReset, IRQ dispatch, interrupt waits, memory copy/fill, integer/fixed-point arithmetic, affine matrices, bit unpacking, LZ77/run-length/Huffman decompression, and differential filters.
@@ -121,7 +122,7 @@ CPU/bus costs are nominal estimates, not a cycle-accurate implementation.
 The instruction buffer retains the next fetch kind; cold startup costs and per-access device scheduling remain unmodeled.
 Game Pak prefetch uses source-backed queue rules, not hardware-verified timing.
 Live WAITCNT transitions, page-boundary behavior, and exact DMA/idle ordering still need independent timing validation.
-Timer reads occur before the current instruction's device update. Prefetch cancellation probes expose the resulting sample error.
+Timer data accesses follow ordered nominal bus phases. Other devices remain instruction-batched; exact timer startup and IRQ delays remain unverified.
 Graphics support includes Mode 0–5 debug snapshots and HBlank row capture with sprites, mosaic, windows, and color effects.
 Internal affine origins, vertical window flags, and vertical mosaic counters track line boundaries.
 Horizontal window comparators retain four-cycle event history.
@@ -173,8 +174,8 @@ Writes to cartridge addresses return errors instead of modeling cartridge hardwa
    Validate BIOS snapshots with independent hardware tests before claiming exact refill or data-access history.
    The desktop runner still uses only the original BIOS. Keep protected reads image-derived for all supplied images.
 2. Validate the active nominal Game Pak prefetch queue against independent timing tests.
-   The [cancellation probe](research/prefetch-cancellation.md) isolates a timer sampling gap despite matching nominal interval totals.
-   Move timer observations to ordered bus phases without losing rollback or advancing devices twice.
+   The [cancellation probe](research/prefetch-cancellation.md) now matches after [ordered timer accesses](research/ordered-timer-access.md).
+   Validate absolute timer startup/control edges and extend ordered observations to other devices without duplicate clocks or lost rollback.
    Validate full-buffer restart, page boundaries, live WAITCNT transitions, and cold-start costs.
    See [prefetch behavior and evidence](research/gamepak-prefetch.md); exact bus arbitration and timer/IRQ delays remain separate work.
 3. Validate keypad retrigger behavior with hardware tests and add remaining device registers; extend BIOS reset coverage as sound/serial support becomes available.

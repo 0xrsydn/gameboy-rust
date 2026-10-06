@@ -4,9 +4,9 @@
 
 An original ARM probe reproduces the measured structure of the read cases in `zaydlang/PrefetchAbuse`.
 Its instruction-boundary cycle differences match every published read observation.
-Its actual emulated timer readings do **not** match those observations.
-The difference isolates an existing timer-sampling limitation, not a new queue discrepancy.
-No core timing behavior was changed for this comparison.
+Its actual emulated timer readings now also match, after [ordered timer accesses](ordered-timer-access.md).
+The initial comparison isolated a bulk timer-sampling error, not a queue discrepancy.
+The original program, published observations, and measurement code remain unchanged.
 
 This is not a run or a port of the upstream ROM.
 The expected values are published measurement facts. The program builder and runner are original.
@@ -70,10 +70,10 @@ direnv exec . cargo test --locked -p gba-core --test prefetch_cancellation
 direnv exec . cargo run --locked -p gba-demos --example prefetch_cancellation > /tmp/prefetch-cancellation.csv
 ```
 
-**The example currently exits with status 1 because the timer comparisons fail.**
-That status is expected evidence of a known limit, not a passing hardware-timing test.
-A matching instruction-boundary total cannot override a failed timer comparison.
-Status 0 requires both comparisons to match for every case. Status 2 reports invalid arguments or execution errors.
+**The example now exits with status 0 because both comparisons match.**
+It previously exited with status 1, exposing the bulk timer-sampling error described below.
+A matching instruction-boundary total still cannot override a failed timer comparison.
+Status 0 requires both comparisons to match for every case. Status 1 reports mismatches; status 2 reports invalid arguments or execution errors.
 The example takes no arguments and needs no downloaded files, window, or external assembler.
 
 Use `--release` to repeat the same checks in a release build.
@@ -90,11 +90,11 @@ The CSV columns are:
 No timing correction is applied to `timer_delta`.
 The runner does not hide, patch, or reinterpret failing timer values.
 
-## Root cause of the timer mismatch
+## Historical timer mismatch and correction
 
-The opcode queue sees ordered source, data, and internal costs.
-The timer device still updates only after the entire instruction completes.
-Consequently, the timer load reads the old counter before its own source-fetch cost advances device time.
+Before the correction, the opcode queue saw ordered source, data, and internal costs.
+The timer device updated only after the entire instruction completed.
+Consequently, the timer load read the old counter before its own source-fetch cost advanced device time.
 
 The read run cancels prefetch with ROM data traffic.
 Its subsequent timer load must fetch code from ROM again.
@@ -107,22 +107,24 @@ For a one-cycle multiply and WAITCNT `0x4000`:
 | --- | ---: |
 | Published interval difference | 17 |
 | Machine-clock boundary difference | 17 |
-| Actual timer-sample difference | 14 |
+| Previous timer-sample difference | 14 |
+| Current timer-sample difference | 17 |
 | Timer-load source fetch in the read run | 8 |
 | Timer-load source fetch in the control run | 5 |
 
 The missing three cycles equal `8 - 5`.
-For every compared case, the boundary-minus-timer discrepancy equals the final source-fetch cost difference.
+Before the correction, each boundary-minus-timer discrepancy equaled the final source-fetch cost difference.
 The sample instructions have identical data and internal costs, so those costs cancel in the subtraction.
 
 With prefetch disabled, the two final source-fetch costs match.
 The timer and boundary differences then match each other, and the cancellation-specific extra cycle disappears.
 This negative control helps separate the sampling problem from timer subtraction or multiply decoding errors.
 
-The regression tests explicitly mark the bulk-sampling expectation as a known gap.
-Replace that expectation when timer I/O moves to ordered bus phases.
-Do not make the probe pass by adding an offset to its loaded timer value.
-Timer startup/stop placement, other device events, and atomic failure behavior also need coverage before changing clock ownership.
+Timer data accesses now sample staged device state at bus completion, including the source and data cycles.
+Timer writes use the same phase. Successful steps commit that state; failed steps discard it.
+The regression now requires actual timer values to match the unchanged published observations.
+No offset was added to the loaded value or diagnostic report.
+See [ordered timer accesses](ordered-timer-access.md) for start/stop, IF, DMA, API isolation, and rollback coverage.
 
 ## Coverage and limits
 
@@ -139,5 +141,6 @@ The largest multiply delay here does not establish eight-halfword capacity behav
 Live WAITCNT changes, DMA, HALT/STOP edges, and exact hardware timer startup delays remain outside this probe.
 See [the queue model](gamepak-prefetch.md) for those separate limits.
 
-Next, move timer observations toward ordered bus-access phases with explicit rollback and no duplicate device advancement.
+Ordered timer observations now retain rollback and avoid duplicate device advancement.
+Absolute timer startup and control-edge validation remain necessary.
 Independent full-buffer and page-boundary measurements remain necessary before claiming complete prefetch timing accuracy.

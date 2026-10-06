@@ -42,20 +42,17 @@ fn observed_extra_cycle_is_in_rom_data_cancellation_not_internal_work() {
 }
 
 #[test]
-fn unadjusted_timer_samples_expose_the_instruction_boundary_sampling_limit() {
-    // This is a known-gap regression, not an assertion that hardware behaves this way.
-    // Replace it when timer I/O moves to ordered bus phases; do not correct probe output.
+fn unadjusted_timer_samples_match_published_observations_at_the_bus_access() {
+    // Keep the original program and published values unchanged. No result correction.
     for (index, expected) in PUBLISHED_READ_DELTAS.into_iter().enumerate() {
         for (waitcnt, expected) in WAITCNT_SETTINGS.into_iter().zip(expected) {
             let control = measure(waitcnt, index as u8 + 1, false).unwrap();
             let read = measure(waitcnt, index as u8 + 1, true).unwrap();
             let sampled = i64::from(read.timer_sample) - i64::from(control.timer_sample);
             let boundary = read.boundary_cycles as i64 - control.boundary_cycles as i64;
-            let endpoint_fetch_difference = i64::from(read.sample_timing.code_cycles)
-                - i64::from(control.sample_timing.code_cycles);
-            assert_ne!(sampled, i64::from(expected));
-            assert!(endpoint_fetch_difference > 0);
-            assert_eq!(boundary - sampled, endpoint_fetch_difference);
+            assert_eq!(sampled, i64::from(expected));
+            assert_eq!(boundary, sampled);
+            assert!(read.sample_timing.code_cycles > control.sample_timing.code_cycles);
         }
     }
 }

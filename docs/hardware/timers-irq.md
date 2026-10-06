@@ -15,7 +15,7 @@ Entry charges the discarded incoming-state PC+8/PC+4 fetch and the ARM vector pa
 DMA resume can make the discarded fetch non-sequential. Missing discarded bytes do not prevent IRQ entry.
 See [refill timing](../research/refill-fetch-timing.md) for history effects and remaining limits.
 A device event during a step can trigger IRQ entry once no DMA is ready and CPU masks allow delivery.
-Bus writes take effect before the step's device-clock update.
+Timer accesses use ordered bus-completion phases. Other device writes still take effect before their bulk clock update.
 `StepKind::Dma { channel }` identifies a DMA unit. `StepKind::HaltIdle` identifies one bounded HALT clock advance.
 `StepKind::StopIdle` identifies a stopped system with no clock progress.
 The other step kinds remain `Instruction` and `IrqEntry`.
@@ -23,14 +23,24 @@ The other step kinds remain `Instruction` and `IrqEntry`.
 Failed steps do not advance the clock or partially change CPU or device state. Earlier successful steps remain committed.
 
 **The clock now uses instruction-specific costs, but it is not cycle-accurate.**
-Device clocks update in batches after instructions, exception entries, DMA units, or HALT idle intervals.
-Reads observe register state before that batch.
-Writes, including timer start/stop and IF acknowledgement, take effect before the entire batch.
-This does not reproduce bus-access timing within an instruction or IRQ synchronization delays.
-The [prefetch cancellation probe](../research/prefetch-cancellation.md) makes this limitation measurable.
-Its timer load omits its own source-fetch time, which differs between the read and control runs.
-Nominal instruction-boundary totals match published observations; the actual timer samples do not.
-The diagnostic reports both values and returns failure rather than correcting the timer sample.
+Timers now use a staged clock during machine instructions, IRQ entry, and DMA units.
+Source-fetch cycles advance that clock before data work. Each data access advances it before reading or writing timer registers.
+All byte lanes of one access share the same completion time. Internal and target-fetch cycles follow in order.
+A timer load therefore includes its source and data cycles, but not its trailing internal cycle.
+Timer-start writes do not count preceding cycles. Timer-stop writes count through their own bus completion.
+Block transfers preserve distinct word phases; combined reload/control writes merge at one phase, with reload bytes first.
+
+The transaction also owns timer IF bits. Reads see overflows through the current access; acknowledgements clear earlier timer requests.
+A later internal cycle can raise an acknowledged timer request again. Non-timer IF bits retain their existing behavior.
+IRQ delivery still waits until the next machine step. A committed timer request can wake HALT, but not STOP.
+
+Successful steps commit timers and timer IF bits. Failed steps discard staged counters, prescaler phases, reload/control writes, and requests.
+Display and other device clocks then advance once, without advancing timers again.
+Those devices still use the bulk scheduler. Mid-instruction display events, general bus arbitration, and IRQ synchronization delays remain unmodeled.
+Host clock advances and HALT idle batches retain ordinary bulk timer advancement; STOP idle does not advance timers.
+
+The unchanged [prefetch cancellation probe](../research/prefetch-cancellation.md) now matches both published interval totals and actual timer samples.
+No offset is added to its timer values. See [clock ownership and evidence](../research/ordered-timer-access.md) for the bounded scope.
 
 `Cpu::step` remains a CPU-only API. It does not honor HALT/STOP, execute DMA, advance device clocks, or sample device IRQs.
 `Cpu::step_timed` executes the same operation and returns `StepTiming`, without advancing devices.
@@ -78,9 +88,11 @@ Audio events and interrupt sources other than timers, display events, DMA comple
 `--timer-demo` executes original ARM code that configures Timer 0, IE, and IME.
 The timer overflows after 16 supplied cycles and enters the original handler through vector `0x18`.
 The handler stops Timer 0, acknowledges IF, increments r10, and returns with `SUBS pc, lr, #4`.
-The demo ends after 21 steps and 151 nominal cycles with one handler call, using default WAITCNT settings.
+The demo completes with one handler call, using default WAITCNT settings.
 Its initial ARM ROM fetch uses PC+8 sequential timing; cold pipeline filling has no separate startup charge.
-These counts test the timing model; they are not hardware timing measurements.
+The stopped counter is now `0xfff4`, rather than the earlier bulk-write result `0xfffb`.
+Timer start excludes its preceding nine cycles; timer stop includes its two bus cycles.
+These are nominal regression results, not hardware startup-delay measurements.
 Its test handler deliberately changes r2 and r10; it does not implement the Nintendo BIOS calling convention.
 
 ## Keypad interrupt control

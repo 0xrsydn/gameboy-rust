@@ -2,6 +2,10 @@
 //! Timer phase resets on enable or clock-source changes. Hardware startup delays,
 //! shared prescaler phase, audio events, and interrupt delivery delays are not modeled.
 
+mod timer_step;
+pub(crate) use timer_step::TimerStep;
+use timer_step::TIMER_IRQ_MASK;
+
 use crate::{
     display::{Display, DisplayPosition, CYCLES_PER_LINE, HBLANK_START, VISIBLE_LINES},
     dma::{Dma, DmaError, Transfer, DMA_BASE, DMA_END},
@@ -58,7 +62,7 @@ pub const HALTCNT: u32 = 0x0400_0301;
 
 const IRQ_MASK: u16 = 0x3fff;
 
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 struct Timer {
     reload: u16,
     counter: u16,
@@ -67,6 +71,23 @@ struct Timer {
 }
 
 impl Timer {
+    fn read8(&self, address: u32) -> u8 {
+        let value = if address & 2 == 0 {
+            self.counter
+        } else {
+            u16::from(self.control)
+        };
+        value.to_le_bytes()[(address & 1) as usize]
+    }
+
+    fn write8(&mut self, address: u32, value: u8, index: usize) {
+        if address & 2 == 0 {
+            self.reload = replace_byte(self.reload, address, value);
+        } else if address & 1 == 0 {
+            self.set_control(value, index);
+        }
+    }
+
     fn enabled(&self) -> bool {
         self.control & 0x80 != 0
     }
@@ -162,6 +183,9 @@ impl Io {
         if (DMA_BASE..=DMA_END).contains(&address) {
             return Some(self.dma.read8(address));
         }
+        if (TIMER_BASE..=TIMER_BASE + 15).contains(&address) {
+            return Some(self.timers[((address - TIMER_BASE) / 4) as usize].read8(address));
+        }
         let value = match address & !1 {
             DISPCNT => self.dispcnt,
             GREENSWAP => u16::from(self.greenswap),
@@ -176,14 +200,6 @@ impl Io {
             BLDALPHA => self.effects.alpha,
             KEYINPUT => self.keypad.keyinput(),
             KEYCNT => self.keypad.control(),
-            0x0400_0100..=0x0400_010e => {
-                let timer = &self.timers[((address - TIMER_BASE) / 4) as usize];
-                if address & 2 == 0 {
-                    timer.counter
-                } else {
-                    u16::from(timer.control)
-                }
-            }
             IE => self.enable,
             IF => self.pending,
             WAITCNT => self.waitcnt,
@@ -258,13 +274,7 @@ impl Io {
             }
             0x0400_0100..=0x0400_010e => {
                 let index = ((address - TIMER_BASE) / 4) as usize;
-                let timer = &mut self.timers[index];
-                if address & 2 == 0 {
-                    // Merge into the reload latch, never the visible counter.
-                    timer.reload = replace_byte(timer.reload, address, value);
-                } else if address & 1 == 0 {
-                    timer.set_control(value, index);
-                }
+                self.timers[index].write8(address, value, index);
             }
             IE => self.enable = replace_byte(self.enable, address, value) & IRQ_MASK,
             WAITCNT => self.waitcnt = replace_byte(self.waitcnt, address, value) & 0x5fff,
@@ -388,7 +398,29 @@ impl Io {
         self.wake_if_requested();
     }
 
-    pub(crate) fn advance(&mut self, cycles: u32) {
+    pub(crate) fn timer_step(&self) -> TimerStep {
+        TimerStep::new(self)
+    }
+
+    pub(crate) fn commit_timer_step(&mut self, step: TimerStep) {
+        self.timers = step.timers;
+        self.pending = (self.pending & !TIMER_IRQ_MASK) | step.pending;
+        self.wake_if_requested();
+    }
+
+    fn advance_timer_bank(timers: &mut [Timer; 4], cycles: u32) -> u16 {
+        let mut pending = 0;
+        let mut overflows = 0;
+        for (index, timer) in timers.iter_mut().enumerate() {
+            overflows = timer.advance(cycles, overflows);
+            if overflows != 0 && timer.control & 0x40 != 0 {
+                pending |= 1 << (3 + index);
+            }
+        }
+        pending
+    }
+
+    pub(crate) fn advance(&mut self, cycles: u32, advance_timers: bool) {
         // Hardware state tracks time even when host-side frame capture is disabled.
         let position = self.display.position();
         let phase = u32::from(position.scanline) * CYCLES_PER_LINE + u32::from(position.line_cycle);
@@ -420,13 +452,8 @@ impl Io {
         let (vblank, hblank) = self.display.dma_events(cycles);
         self.dma.trigger(vblank, hblank);
         self.pending |= self.display.advance(cycles);
-        let mut overflows = 0;
-        for (index, timer) in self.timers.iter_mut().enumerate() {
-            overflows = timer.advance(cycles, overflows);
-            if overflows != 0 && timer.control & 0x40 != 0 {
-                // Pending flags latch even if IE, IME, or CPSR.I blocks delivery.
-                self.pending |= 1 << (3 + index);
-            }
+        if advance_timers {
+            self.pending |= Self::advance_timer_bank(&mut self.timers, cycles);
         }
         self.wake_if_requested();
     }

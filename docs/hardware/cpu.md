@@ -56,7 +56,7 @@ The loaded value takes precedence over the updated base. Addresses and register 
 Pre-indexed loads access the adjusted address; post-indexed loads access the original address.
 The discarded post-indexed writeback address is not a second memory access.
 Normal alignment, word rotation, odd-halfword behavior, and sign extension still apply.
-Loads preserve CPSR and use normal load timing. Device clocks advance after the read, with IRQ sampling on the next step.
+Loads preserve CPSR and use normal load timing. Machine timer reads sample at data-access completion; IRQ delivery waits until the next step.
 Read diagnostics leave CPU state and device clocks unchanged under the existing atomic-error policy.
 Stores with matching base/source still store the original base value before writeback.
 PC writeback, byte/halfword PC destinations, and unimplemented user-transfer encodings remain diagnostics.
@@ -359,7 +359,8 @@ The new settings apply to subsequent code accesses.
 Timed CPU execution uses an ordered `CpuTiming` transaction: source fetch, actual data accesses, internal work, then target-pair fetches.
 A failed instruction discards the entire transaction. Target samples do not add duplicate fetch or data costs.
 IRQ entry records its source fetch and vector pair in the same path.
-Device clocks still advance once after the successful step; this is not per-cycle scheduling.
+Machine timer state advances through these events and commits only after success. Other device clocks still advance in bulk afterward.
+This is not a complete per-cycle scheduler.
 The transaction also stages the nominal Game Pak prefetch queue described below.
 
 ### Game Pak opcode prefetch
@@ -387,7 +388,7 @@ Host reads and `Memory::advance_cycles` do not advance the queue; machine steps 
 These are source-backed nominal rules, not a hardware conformance claim.
 See [queue evidence, regression coverage, and limits](../research/gamepak-prefetch.md).
 The [original cancellation probe](../research/prefetch-cancellation.md) matches published read interval totals at instruction boundaries.
-Its unadjusted timer samples still fail because timer reads precede the instruction's device-clock update.
+Its unadjusted timer samples now also match after [ordered timer accesses](../research/ordered-timer-access.md).
 
 ### Nominal CPU resume after DMA
 

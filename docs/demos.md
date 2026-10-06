@@ -10,9 +10,9 @@ direnv exec . cargo run --locked -p gba-demos --example prefetch_cancellation > 
 ```
 
 This headless original ARM probe compares published read-cancellation observations with two separate emulator measurements.
-Instruction-boundary totals match, but actual timer samples currently fail. The example therefore exits with status 1.
-Do not treat the matching totals as a hardware-timing pass.
-See [the protocol, source hashes, and timer sampling gap](research/prefetch-cancellation.md).
+Both instruction-boundary totals and actual timer samples now match; the example exits with status 0.
+This is a bounded comparison with published observations, not a complete hardware-timing pass.
+See [the protocol, source hashes, and timer sampling correction](research/prefetch-cancellation.md).
 The probe needs no downloaded ROM, assets, window, or external assembler.
 
 ## Open the affine raster demo

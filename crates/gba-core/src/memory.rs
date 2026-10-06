@@ -11,6 +11,8 @@ mod iwram_history_tests;
 #[cfg(test)]
 mod prefetch_tests;
 #[cfg(test)]
+mod timer_step_tests;
+#[cfg(test)]
 mod timing_event_tests;
 pub(crate) use fetch::InstructionFetch;
 use iwram_bus::IwramBus;
@@ -20,7 +22,7 @@ use crate::{
     display::{DisplayPosition, CYCLES_PER_LINE, HBLANK_START, VISIBLE_LINES},
     dma::{DmaError, DMA_BASE, DMA_END},
     input::Buttons,
-    io::{Io, HALTCNT, KEYINPUT, POSTFLG},
+    io::{Io, TimerStep, HALTCNT, KEYINPUT, POSTFLG},
     timing::{AccessKind, AccessWidth, CpuTiming, Prefetch, StepTiming},
     video::{self, sprites::pipeline, Framebuffer, VideoError},
 };
@@ -82,7 +84,7 @@ struct CpuAccess {
 /// Successful DMA accesses drive local lanes even before the first CPU instruction.
 /// Channel data remains separate; general and sub-instruction CPU bus handoff is unmodeled.
 /// Instruction buffering and supported bus history consume shared fetch samples.
-/// Complete bus ownership and per-access timing remain unmodeled.
+/// Timer data accesses use staged machine-step time; other per-access device timing remains unmodeled.
 pub struct Memory {
     external_ram: Vec<u8>,
     internal_ram: Vec<u8>,
@@ -94,6 +96,7 @@ pub struct Memory {
     io: Io,
     cycles: u64,
     cpu_timing: Cell<Option<CpuTiming>>,
+    timer_step: Cell<Option<TimerStep>>,
     gamepak_prefetch: Prefetch,
     #[cfg(test)]
     last_cpu_timing: Option<CpuTiming>,
@@ -122,6 +125,7 @@ impl Memory {
             io: Io::default(),
             cycles: 0,
             cpu_timing: Cell::new(None),
+            timer_step: Cell::new(None),
             gamepak_prefetch: Prefetch::default(),
             #[cfg(test)]
             last_cpu_timing: None,
@@ -167,10 +171,41 @@ impl Memory {
     pub(crate) fn complete_cpu_step(&mut self, cycles: u32) {
         // IRQ entry consumes the resume too, without executing an instruction.
         self.cpu_resume_nonsequential = false;
-        self.advance_running_cycles(cycles);
+        self.complete_timer_step(cycles);
+    }
+
+    pub(crate) fn begin_timer_step(&self) {
+        debug_assert!(self.timer_step.get().is_none());
+        self.timer_step.set(Some(self.io.timer_step()));
+    }
+
+    pub(crate) fn discard_timer_step(&self) {
+        self.timer_step.set(None);
+    }
+
+    fn advance_timer_step(&self, cycles: u32) {
+        if let Some(mut step) = self.timer_step.get() {
+            step.advance_to(cycles);
+            self.timer_step.set(Some(step));
+        }
+    }
+
+    fn complete_timer_step(&mut self, cycles: u32) {
+        self.advance_timer_step(cycles);
+        let step = self
+            .timer_step
+            .take()
+            .expect("machine timer transaction is active");
+        self.io.commit_timer_step(step);
+        // Timers already reached this boundary. Advance other devices exactly once.
+        self.advance_running_cycles_with_timers(cycles, false);
     }
 
     fn advance_running_cycles(&mut self, cycles: u32) {
+        self.advance_running_cycles_with_timers(cycles, true);
+    }
+
+    fn advance_running_cycles_with_timers(&mut self, cycles: u32, advance_timers: bool) {
         if cycles != 0 && !self.sprite_pipeline.started {
             // Synthetic reset begins on row0, with no preceding row227 to prepare it.
             self.prepare_sprite_row(0);
@@ -182,14 +217,14 @@ impl Memory {
                 u32::from(position.scanline) * CYCLES_PER_LINE + u32::from(position.line_cycle);
             let mut advanced = 0;
             for (offset, row) in pipeline::latest_events(phase, cycles).into_iter().flatten() {
-                self.io.advance(offset - advanced);
+                self.io.advance(offset - advanced, advance_timers);
                 self.prepare_sprite_row(row);
                 advanced = offset;
             }
-            self.io.advance(cycles - advanced);
+            self.io.advance(cycles - advanced, advance_timers);
         } else {
-            // Split at display and sprite-preparation edges. CPU/DMA writes have
-            // already committed before these nominal clocks; no per-access timing.
+            // Split at display and sprite-preparation edges. Video writes have
+            // already committed. Machine timer transactions skip this bulk timer clock.
             let mut remaining = cycles;
             while remaining != 0 {
                 let position = self.io.display_position();
@@ -202,7 +237,7 @@ impl Memory {
                 let until =
                     display_edge.min(pipeline::next_event(position.scanline, position.line_cycle));
                 let step = remaining.min(until);
-                self.io.advance(step);
+                self.io.advance(step, advance_timers);
                 remaining -= step;
                 if step == until {
                     let position = self.io.display_position();
@@ -316,28 +351,6 @@ impl Memory {
             AccessWidth::Byte => unreachable!("DMA is never byte-wide"),
         }
         .map_err(map_error)?;
-        let data_latch = if transfer.source < 0x0200_0000 {
-            // DMA cannot read BIOS or the lower unused region. Retain this channel's
-            // full word; never read firmware bytes or borrow CPU/another channel's data.
-            transfer
-                .data_latch
-                .expect("unknown blocked source rejected above")
-        } else {
-            match transfer.width {
-                AccessWidth::Halfword => {
-                    u32::from(self.read16(transfer.source).map_err(map_error)?) * 0x0001_0001
-                }
-                AccessWidth::Word => self.read32(transfer.source).map_err(map_error)?,
-                AccessWidth::Byte => unreachable!("DMA is never byte-wide"),
-            }
-        };
-        // A blocked halfword read keeps both old lanes. The destination selects
-        // one lane; mapped halfword reads have already duplicated their source data.
-        let value = match transfer.width {
-            AccessWidth::Halfword => data_latch >> ((transfer.destination & 2) * 8),
-            AccessWidth::Word => data_latch,
-            AccessWidth::Byte => unreachable!("DMA is never byte-wide"),
-        };
         let kind = if transfer.first {
             AccessKind::NonSequential
         } else {
@@ -348,19 +361,50 @@ impl Memory {
         let internal_cycles = if transfer.first { 2 } else { 0 };
         // Keep the existing whole-unit DMA startup model; no sub-instruction arbitration.
         prefetch.advance(internal_cycles);
+        let source_cycles = prefetch.data(transfer.source, transfer.width, kind);
+        let destination_cycles = prefetch.data(transfer.destination, transfer.width, kind);
         let timing = StepTiming {
             code_cycles: 0,
-            data_cycles: prefetch.data(transfer.source, transfer.width, kind)
-                + prefetch.data(transfer.destination, transfer.width, kind),
+            data_cycles: source_cycles + destination_cycles,
             internal_cycles,
             idle_cycles: 0,
         };
-        match transfer.width {
-            AccessWidth::Halfword => self.write16(transfer.destination, value as u16),
-            AccessWidth::Word => self.write32(transfer.destination, value),
-            AccessWidth::Byte => unreachable!("DMA is never byte-wide"),
-        }
-        .map_err(map_error)?;
+        self.begin_timer_step();
+        let result = (|| {
+            self.advance_timer_step(internal_cycles + source_cycles);
+            let data_latch = if transfer.source < 0x0200_0000 {
+                // Blocked reads retain channel data, not firmware or another channel's value.
+                transfer
+                    .data_latch
+                    .expect("unknown blocked source rejected above")
+            } else {
+                match transfer.width {
+                    AccessWidth::Halfword => u32::from(self.read16(transfer.source)?) * 0x0001_0001,
+                    AccessWidth::Word => self.read32(transfer.source)?,
+                    AccessWidth::Byte => unreachable!("DMA is never byte-wide"),
+                }
+            };
+            // Blocked halfword reads retain both lanes; the destination selects a lane.
+            let value = match transfer.width {
+                AccessWidth::Halfword => data_latch >> ((transfer.destination & 2) * 8),
+                AccessWidth::Word => data_latch,
+                AccessWidth::Byte => unreachable!("DMA is never byte-wide"),
+            };
+            self.advance_timer_step(timing.total());
+            match transfer.width {
+                AccessWidth::Halfword => self.write16(transfer.destination, value as u16),
+                AccessWidth::Word => self.write32(transfer.destination, value),
+                AccessWidth::Byte => unreachable!("DMA is never byte-wide"),
+            }?;
+            Ok::<_, MemoryError>((data_latch, value))
+        })();
+        let (data_latch, value) = match result {
+            Ok(result) => result,
+            Err(error) => {
+                self.discard_timer_step();
+                return Err(map_error(error));
+            }
+        };
         // Only a successful unit commits queue progress. A WAITCNT destination can reset it.
         prefetch.configure(self.waitcnt());
         self.gamepak_prefetch = prefetch;
@@ -373,7 +417,7 @@ impl Memory {
             .dma_access(transfer.destination, transfer.width, value);
         // Keep this channel active during its cycles: another edge must not
         // queue a second block while the current block is still transferring.
-        self.advance_cycles(timing.total());
+        self.complete_timer_step(timing.total());
         self.io.complete_dma_unit(channel, data_latch);
         self.cpu_resume_nonsequential = true;
         Ok(Some((channel, timing)))
@@ -566,6 +610,7 @@ impl Memory {
         if let Some(mut trace) = self.cpu_timing.get() {
             trace.code(address, width, kind);
             self.cpu_timing.set(Some(trace));
+            self.advance_timer_step(trace.total.total());
         }
     }
 
@@ -576,6 +621,7 @@ impl Memory {
         if let Some(mut trace) = self.cpu_timing.get() {
             trace.internal(cycles);
             self.cpu_timing.set(Some(trace));
+            self.advance_timer_step(trace.total.total());
         }
     }
 
@@ -583,12 +629,13 @@ impl Memory {
         if let Some(mut trace) = self.cpu_timing.get() {
             trace.data(self.waitcnt(), address, width);
             self.cpu_timing.set(Some(trace));
+            self.advance_timer_step(trace.total.total());
         }
     }
 
     pub fn read8(&self, address: u32) -> Result<u8, MemoryError> {
-        let value = self.read_byte(address)?;
         self.record_access(address, AccessWidth::Byte);
+        let value = self.read_byte(address)?;
         self.iwram_bus
             .access(address, AccessWidth::Byte, u32::from(value));
         Ok(value)
@@ -596,6 +643,13 @@ impl Memory {
 
     // Multi-byte reads use this helper to avoid charging each byte as a bus access.
     fn read_byte(&self, address: u32) -> Result<u8, MemoryError> {
+        if address >> 24 == 0x04 {
+            if let Some(step) = self.timer_step.get() {
+                if let Some(value) = step.read8(address, self.io.read8(address).unwrap_or(0)) {
+                    return Ok(value);
+                }
+            }
+        }
         if address < BIOS_SIZE as u32
             && self.bios.is_some()
             && self
@@ -694,6 +748,13 @@ impl Memory {
                 if matches!(byte_address, POSTFLG | HALTCNT) && !self.can_write_power_control() {
                     continue; // BIOS-only CPU writes; ignored elsewhere, including STOP requests.
                 }
+                if let Some(mut step) = self.timer_step.get() {
+                    let handled = step.write8(byte_address, byte);
+                    self.timer_step.set(Some(step));
+                    if handled {
+                        continue;
+                    }
+                }
                 self.io.write8(byte_address, byte);
             }
             if address & !3 == crate::io::WAITCNT {
@@ -786,8 +847,8 @@ impl Memory {
         if address & 1 != 0 {
             return Err(MemoryError::Unaligned(address));
         }
-        let value = u16::from_le_bytes([self.read_byte(address)?, self.read_byte(address + 1)?]);
         self.record_access(address, AccessWidth::Halfword);
+        let value = u16::from_le_bytes([self.read_byte(address)?, self.read_byte(address + 1)?]);
         self.iwram_bus
             .access(address, AccessWidth::Halfword, u32::from(value));
         Ok(value)
@@ -798,13 +859,13 @@ impl Memory {
         if address & 3 != 0 {
             return Err(MemoryError::Unaligned(address));
         }
+        self.record_access(address, AccessWidth::Word);
         let value = u32::from_le_bytes([
             self.read_byte(address)?,
             self.read_byte(address + 1)?,
             self.read_byte(address + 2)?,
             self.read_byte(address + 3)?,
         ]);
-        self.record_access(address, AccessWidth::Word);
         self.iwram_bus.access(address, AccessWidth::Word, value);
         Ok(value)
     }

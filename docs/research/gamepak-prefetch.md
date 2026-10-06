@@ -24,7 +24,7 @@ Background progress cannot cause an early ROM-file lookup or change instruction 
 - [NanoBoyAdvance 128 KiB boundary test at cc3f4a28](https://codeberg.org/nba-emu/hw-test/src/commit/cc3f4a286cdef823980d9b353bd70befc9927d28/bus/128kb-boundary/source/main.c) tests data LDM and DMA boundaries.
   Reading this test does not validate active opcode-queue crossings. It was not run here.
 - [PrefetchAbuse at 9ca57c13](https://github.com/zaydlang/PrefetchAbuse/blob/9ca57c13da7e3c569937f99a42e7c1caca029a2d/src/main.c) supplies published hardware read-cancellation observations.
-  A later [original probe](prefetch-cancellation.md) matches the instruction-boundary differences, but exposes incorrect bulk timer sampling.
+  The [original probe](prefetch-cancellation.md) matches instruction-boundary differences and, after ordered timer accesses, actual timer samples.
   The source, README, and build assumptions were reviewed. No upstream implementation or ROM was imported.
 
 No external implementation or ROM was added to the repository.
@@ -76,7 +76,7 @@ A later ROM fetch still needs an exact head match to use queued timing.
 
 Success commits queue progress. A diagnostic discards all staged progress, including earlier successful data accesses.
 Missing lookahead or target bytes retain deferred diagnostics and nominal attempted-fetch costs.
-Device clocks still advance once after a successful machine step, not after each timing event.
+Machine timer transactions now follow these events and commit on success. Other devices still advance in bulk after the step.
 
 `Cpu::step_timed` updates the queue and returns costs without advancing devices.
 `Cpu::step` uses the same path when prefetch is enabled, but discards returned costs.
@@ -135,8 +135,8 @@ Public ARM, Thumb, memory, and BIOS reports match the preceding ordered-timing c
 Debug and release reports also match. Original CPU and timer demo traces are unchanged.
 These public checkpoints do not independently validate active prefetch timing.
 
-The later [cancellation comparison](prefetch-cancellation.md) matches published read observations only at instruction boundaries.
-Actual timer readings still fail because device updates occur after the timer-load instruction.
-Next, implement ordered timer observations and validate full-buffer restart and page boundaries independently.
+The [cancellation comparison](prefetch-cancellation.md) originally matched published read observations only at instruction boundaries.
+[Ordered timer accesses](ordered-timer-access.md) now make the unchanged timer readings match as well.
+Next, validate absolute timer edges, full-buffer restart, and page boundaries independently.
 Cold-start timing, live WAITCNT reconfiguration, per-access device scheduling, and sub-instruction DMA arbitration remain incomplete.
 Exact bus history, display contention, configurable EWRAM timing, and timer/IRQ delays remain separate work.

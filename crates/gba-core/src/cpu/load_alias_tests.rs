@@ -233,12 +233,13 @@ fn failed_alias_reads_preserve_register_banks_device_state_and_clock() {
 }
 
 #[test]
-fn alias_io_load_reads_before_device_progress_and_irq_delivery() {
+fn alias_io_load_reads_at_data_completion_before_irq_delivery() {
     let mut bus = memory(0xe5b0_0004); // LDR r0,[r0,#4]!
     bus.write32(TIMER_BASE, 0x00c0_fffa).unwrap();
     bus.write16(IE, 8).unwrap();
     bus.write16(IME, 1).unwrap();
-    let expected = bus.read32(TIMER_BASE).unwrap();
+    // Six source cycles overflow/reload the timer; the data cycle adds one tick.
+    let expected = 0x00c0_fffb;
     let mut cpu = Cpu::new(ROM_START);
     cpu.registers[0] = TIMER_BASE - 4;
     let mut machine = Machine::new(cpu, bus);

@@ -48,6 +48,8 @@ The repository is a Cargo workspace with three crates:
 | `crates/gba-core/src/cpu/fetch_history_tests.rs` | Shared sample consumption, no execution-entry rereads, and failed-step retry |
 | `crates/gba-core/src/cpu/fetch_boundary_tests.rs` | Actual fetch-region snapshots, split refills, IWRAM lane requirements, ROM-window boundaries, and nominal timing |
 | `crates/gba-core/src/io.rs` | I/O registers, timers, HALT/STOP wake-up, next-event bounds, and IRQ latches |
+| `crates/gba-core/src/io/timer_step.rs` | Staged timer bank and timer IF bits at ordered CPU/DMA bus phases |
+| `crates/gba-core/src/memory/timer_step_tests.rs` | Timer access phases, coherent lanes, cascades, IF ordering, rollback, DMA, idle, and clock ownership |
 | `crates/gba-core/src/display.rs` | Display clock, scanline status, comparison edges, and display IRQ events |
 | `crates/gba-core/src/dma.rs` | DMA registers, internal pointers, retained channel data, trigger state, priority, and completion IRQs |
 | `crates/gba-core/src/machine.rs` | Timed CPU/DMA/device stepping and IRQ delivery |
@@ -69,7 +71,7 @@ The repository is a Cargo workspace with three crates:
 | `crates/gba-demos/src/timer_demo.rs` | Original timer-configuration program and IRQ handler |
 | `crates/gba-demos/src/prefetch_probe.rs` | Original bounded ARM read/control probes and pinned published cancellation observations |
 | `crates/gba-demos/examples/prefetch_cancellation.rs` | CSV comparison of published, instruction-boundary, and unadjusted timer intervals; fails on mismatches |
-| `crates/gba-core/tests/prefetch_cancellation.rs` | Published read comparisons, cancellation phase, disabled-prefetch controls, and the known timer sampling gap |
+| `crates/gba-core/tests/prefetch_cancellation.rs` | Published read comparisons, cancellation phase, disabled-prefetch controls, and unadjusted timer samples |
 | `Cargo.toml` | Workspace members and shared package settings |
 | `crates/gba-core/src/lib.rs` | Core modules |
 | `crates/gba-demos/src/lib.rs` | Demo modules, original instruction/exception bytes, and raw input-test ROM |

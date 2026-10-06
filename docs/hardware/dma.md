@@ -47,6 +47,9 @@ CPU delivery waits until no DMA is ready. IRQ entry does not acknowledge IF.
 Timing uses independent source and destination bus costs, including WAITCNT and 128 KiB ROM boundaries.
 The first unit uses non-sequential accesses plus two internal cycles. Later units use sequential accesses.
 Each step reports zero code cycles. Overlapping transfers read each unit after the preceding write; they are not bulk host copies.
+Timers stage progress through startup, source, and destination phases. Timer reads sample after source completion; writes apply after destination completion.
+Timer IF acknowledgements use that same ordering. Success commits the staged bank; failure discards it.
+Other devices then advance in bulk without ticking timers twice. Exact physical DMA startup timing remains unverified.
 A successful unit breaks the next nominal CPU code-access sequence, even if DMA accessed only RAM.
 The resumed instruction requests N once; enabled opcode prefetch can still satisfy a matching request.
 RAM accesses and the nominal startup cycles advance an active prefetch stream; cartridge accesses cancel it.

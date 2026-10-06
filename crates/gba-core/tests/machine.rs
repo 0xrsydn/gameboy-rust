@@ -65,8 +65,8 @@ fn timer_demo_configures_hardware_in_cpu_code_and_handles_exactly_one_irq() {
     assert_eq!(machine.cpu().registers()[10], 1);
     assert_eq!(machine.memory().read16(IF).unwrap(), 0);
     assert_eq!(machine.memory().read16(TIMER_BASE + 2).unwrap(), 0);
-    // Persistent fetch kinds move costs between setup instructions and the running timer.
-    assert_eq!(machine.memory().read16(TIMER_BASE).unwrap(), 0xfffb);
+    // Start no longer pays its preceding nine cycles; stop now pays its two bus cycles.
+    assert_eq!(machine.memory().read16(TIMER_BASE).unwrap(), 0xfff4);
     for _ in 0..100 {
         assert_eq!(machine.step().unwrap(), StepKind::Instruction);
     }

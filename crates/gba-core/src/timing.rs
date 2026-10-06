@@ -93,7 +93,8 @@ pub fn bus_cycles(waitcnt: u16, address: u32, width: AccessWidth, kind: AccessKi
 }
 
 /// One speculative instruction/IRQ timing transaction. Events arrive in source,
-/// data, internal, then target-pair order. Device clocks still advance in bulk.
+/// data, internal, then target-pair order. Machine timers follow these events;
+/// other device clocks still advance in bulk.
 /// Code uses the entry WAITCNT snapshot; data uses settings at each bus access.
 #[derive(Debug, Default, Clone, Copy)]
 pub(crate) struct CpuTiming {
