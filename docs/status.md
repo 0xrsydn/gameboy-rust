@@ -50,7 +50,7 @@ Update this file when a feature lands or a limit is removed.
 - Code costs use actual ARM PC+8/Thumb PC+4 source fetches and branch/exception target pairs, including region and ROM boundaries.
 - IRQ entry samples its discarded incoming-state fetch before the ARM vector pair, with local IWRAM history updates.
 - Persistent fetch access kinds follow CPU data/internal work, compose with DMA resume, and reset after target refills.
-- Game Pak wait-state control (`WAITCNT`) for all three ROM windows.
+- Game Pak wait-state control (`WAITCNT`) for all three ROM windows and supported save-byte accesses.
 - Bit 14 enables a nominal eight-halfword opcode prefetch queue, with partial fetches, cancellation, and DMA/idle integration.
 - Staged timer/audio/serial clocks follow CPU and DMA bus-completion phases, including timer/serial IF reads, acknowledgements, and failed-step rollback.
 - The unchanged original ARM cancellation probe matches both published read interval totals and its unadjusted timer samples.
@@ -79,7 +79,9 @@ Update this file when a feature lands or a limit is removed.
 - Explicit cartridge RTC selection with first-window GPIO read enable, direction/latch behavior, and serial calendar/control transactions.
 - Validated RTC date/time, BCD transfers, read snapshots, complete writes/reset, and caller-supplied battery-clock advancement.
 - Desktop `--rtc` seeds UTC once and supplies host elapsed seconds independently of CPU cycles and STOP.
-- Cartridge GPIO changes participate in CPU/DMA rollback and block-store preflight without modifying ROM bytes.
+- Cartridge GPIO and Flash controller changes participate in CPU/DMA rollback and block-store preflight without modifying ROM bytes.
+- Explicit Macronix Flash64/Flash128 identification, read-only arrays, and 128 KiB bank selection.
+- Exact-size core save-image initialization and inspection; desktop save selection starts erased and performs no save-file access.
 - Raw ROM-file loading with original BIOS boot, terminal diagnostics, and final CPU/step reports.
 - Firmware boot initializes BG2/BG3 identity scales for bitmap and affine programs that do not program their own matrices.
 - RegisterRamReset supports disabled sound and disconnected serial initialization, including the common `r0=0xff` request.
@@ -142,7 +144,9 @@ Internal affine origins, vertical window flags, and vertical mosaic counters tra
 Horizontal window comparators retain four-cycle event history.
 Sprite rows prepare one line ahead with a whole-row cycle40 sample and nominal per-row work limits.
 Individual fetch timing, hardware-accurate work cutoffs, video-bus contention, and per-pixel color composition remain unimplemented.
-There is no host audio output or cartridge save support.
+There is no host audio output or save writing/persistence.
+The [Flash subset](hardware/saves.md) supports explicit device selection, identification, array reads, and banking.
+Flash programming, erase, busy polling, wider accesses, unverified aliases, and other save-device protocols remain diagnostic or unimplemented.
 The optional [cartridge GPIO/RTC subset](hardware/cartridge-gpio.md) supports calendar/control transfers and explicit clock updates, selected with `--rtc` in ROM modes.
 RTC persistence, interrupts, invalid-date correction, physical subsecond timing, GPIO aliases, and byte writes remain unsupported or unverified.
 The core uses deterministic caller time. Desktop RTC runs use host UTC/elapsed time and are not fully deterministic.
@@ -169,7 +173,8 @@ It also completes a CpuSet call to address zero through the corrected ignored BI
 It also accepts an external-clock serial request without inventing clock edges or completion.
 It now also completes internally clocked normal transfers and selects idle multiplayer mode.
 With explicit `--rtc` selection, it also passes Game Pak GPIO configuration and RTC calendar reads.
-It next stops at a Flash unlock write (`0x0e005555`, PC `0x082e1892`). Cartridge save devices remain unimplemented.
+With `--save-type flash128`, it also passes Flash identification and reaches a later startup check.
+It next stops at Joybus mode selection (`0x04000135`, PC `0x082deeca`). Flash writing and persistence remain unimplemented.
 Without `--rtc`, cartridge GPIO writes still return read-only diagnostics.
 No title-screen, gameplay, or audible-game compatibility is established.
 See [the startup result](research/emerald-reset.md) for the bounded run and next investigation.
@@ -201,7 +206,7 @@ Host inspection and instruction fetches remain strict. Other unmapped reads retu
 Reads beyond the supplied cartridge bytes also return errors.
 Direct memory-bus halfword and word accesses require alignment.
 CPU load/store instructions apply ARM7TDMI alignment and rotation rules before accessing the bus.
-Ordinary ROM writes remain read-only. Only the explicitly selected cartridge GPIO register subset accepts writes.
+Ordinary ROM writes remain read-only. Explicitly selected cartridge GPIO and supported Flash command writes are separate from ROM storage.
 
 ## Next steps
 

@@ -41,11 +41,12 @@ This exposed and corrected missing firmware affine-scale initialization, without
 Frame-based scenarios and the preparation adapter now make the result repeatable.
 A local Emerald run now passes its initial all-device reset, master sound enable, and pulse/noise triggers.
 It also passes normal serial transfers and idle multiplayer configuration.
-With `--rtc`, it passes Game Pak GPIO setup and RTC calendar reads, then stops at a Flash unlock write.
+With `--rtc --save-type flash128`, it passes Game Pak GPIO setup, RTC reads, and Flash identification.
+It next stops at Joybus serial-mode selection.
 The core has tested Direct Sound, both pulse channels, and noise channel 4.
 Wave channel 3, a continuous sample stream, and desktop audio output remain missing.
-See [the runtime result](research/emerald-reset.md). Flash identification and its save protocol are the next demonstrated startup requirement.
-The separate save requirement remains cartridge SRAM, followed by safe host save persistence.
+See [the runtime result](research/emerald-reset.md). Disconnected Joybus configuration is the next demonstrated startup requirement.
+The separate save requirement includes Flash programming/erase and safe host persistence. Identification/read support is not successful saving.
 SRAM is byte-addressable battery-backed save memory. Flash and EEPROM remain separate protocols.
 
 [Paperdomo101/2048-GBA at ae36800d](https://github.com/Paperdomo101/2048-GBA/tree/ae36800dfa1314f96c4c8785b5c2d077fb731aff) is the next independent candidate.
@@ -56,8 +57,9 @@ A reproducible source build or an accessible upstream ROM is needed before recor
 
 Next implementation steps:
 
-1. Verify SRAM bus widths, mirroring, erased state, and wait-state behavior against independent references.
-2. Add explicit cartridge save-device selection and original core regressions. Keep absent-device accesses diagnostic.
+1. Research the demonstrated Joybus configuration failure without inventing a connected device.
+2. Extend explicit Flash selection with verified programming, erase, and busy behavior. Keep absent devices and unsupported commands diagnostic.
+   Add SRAM separately when the independent candidate requires it; verify its widths, mirroring, and wait behavior first.
 3. Add bounded save loading and safe persistence in the desktop crate. Do not put file operations in the core.
 4. Test a save/restart/load cycle across processes with original ROM instructions before external-game validation.
 5. Resume the second-game run and implement demonstrated audio requirements rather than accepting writes without behavior.

@@ -11,6 +11,30 @@ fn queue(waitcnt: u16) -> Prefetch {
 }
 
 #[test]
+fn save_wait_changes_preserve_the_queue_until_a_flash_data_access_cancels_it() {
+    for (wait, raw) in [5, 4, 3, 9].into_iter().enumerate() {
+        let mut q = queue(ENABLE);
+        assert_eq!(
+            q.code(PC, AccessWidth::Halfword, AccessKind::NonSequential),
+            5
+        );
+        q.advance(2); // One cycle remains in the nominal three-cycle ROM halfword.
+        let stream = q.stream;
+        q.configure(ENABLE | wait as u16);
+        assert_eq!(q.stream, stream);
+        assert_eq!(
+            q.data(0x0e005555, AccessWidth::Byte, AccessKind::NonSequential),
+            raw + 1
+        );
+        assert_eq!(q.stream, None);
+        assert_eq!(
+            q.code(PC + 2, AccessWidth::Halfword, AccessKind::NonSequential),
+            5
+        );
+    }
+}
+
+#[test]
 fn ready_and_in_progress_fetches_follow_all_rom_wait_settings_and_widths() {
     for window in 0..3 {
         for first in 0..4 {

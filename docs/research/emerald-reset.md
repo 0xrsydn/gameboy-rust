@@ -25,8 +25,8 @@ Byte, halfword, word, block-store, and DMA validation retain explicit errors wit
 Use a local ROM that you may lawfully use:
 
 ```sh
-direnv exec . cargo run --locked --release -- --rom roms/pokemon-emerald.gba --rtc --steps 2000000
-direnv exec . cargo run --locked --release -- --rom roms/pokemon-emerald.gba --rtc --window --frames 60
+direnv exec . cargo run --locked --release -- --rom roms/pokemon-emerald.gba --rtc --save-type flash128 --steps 3000000
+direnv exec . cargo run --locked --release -- --rom roms/pokemon-emerald.gba --rtc --save-type flash128 --window --frames 60
 ```
 
 The earlier reset-only implementation stopped at master sound enable (`0x04000084`, PC `0x082e0518`).
@@ -71,16 +71,22 @@ The calendar model now supports date/time reads, complete writes, reset, and cal
 Core tests inject deterministic time. Desktop `--rtc` uses UTC startup and monotonic elapsed time, including during GBA STOP.
 Select it explicitly; ordinary ROM bytes and other ROMs' default hardware remain unchanged.
 
-Both terminal and native runs with `--rtc` now reach a Flash unlock write:
+RTC support then reached a Flash unlock write (`0xaa` at `0x0e005555`, PC `0x082e1892`).
+The explicit [Flash read subset](../hardware/saves.md) now handles identification, array reads, and bank selection.
+Select `--save-type flash128` for this bounded run; the device begins erased and no save file is opened.
+A later redundant `0xf0` write occurred after returning to idle array mode.
+The subset accepts that no-op without claiming direct Flash128 ID exit or busy-command cancellation.
+
+Both terminal and native runs with these options now reach Joybus mode selection:
 
 ```text
-Steps: 964375; instructions: 961679; IRQ entries: 80; DMA units: 2616; HALT idle: 0
-Nominal cycles: 3546961
-PC=0x082e1892
-unmapped memory at 0x0e005555
+Steps: 1389249; instructions: 1386088; IRQ entries: 89; DMA units: 3072; HALT idle: 0
+Nominal cycles: 4688039
+PC=0x082deeca
+unsupported Joybus serial mode: write 0xc0 at 0x04000135
 ```
 
-The native run captures twelve startup frames. These do not establish a working title screen or gameplay.
+The native run captures sixteen startup frames. These do not establish a working title screen or gameplay.
 Audio-device behavior is validated by original tests, not by audible game output.
 The window run does not reach its requested frame limit and correctly exits with failure.
 Terminal execution is also diagnostic, not a compatibility pass.
@@ -92,9 +98,9 @@ Workspace debug/release tests, strict Clippy, public ARM/Thumb/memory/BIOS check
 Native ROM-window tests and graphics smoke modes pass on Darwin arm64.
 The pinned Pong debug/release reports match.
 
-The next requirement is a cartridge Flash save device, beginning with command unlock and identification.
-The failing state contains value `0xaa` and address `0x0e005555`, matching the documented unlock sequence.
-Research device selection, IDs, banking, program/erase, busy behavior, and safe persistence before claiming save compatibility.
+The next startup requirement is disconnected Joybus configuration, beginning with `RCNT=0xc000`.
+Research idle registers, absent-device status, and mode transitions before implementing them. Do not fabricate a connected peer.
+Flash programming, erase, busy behavior, and safe persistence remain required before claiming save compatibility.
 RTC persistence and cartridge IRQ behavior remain separate missing features.
 Ordinary ROM writes remain read-only. Without `--rtc`, the earlier GPIO diagnostic is still expected.
 This result does not establish gameplay, linked transfers, or cartridge/serial GPIO interrupt support.
@@ -108,4 +114,5 @@ Cartridge saves remain a separate required feature. SRAM alone will not support 
 
 Hardware and emulator references are recorded in the linked subsystem documents.
 [GBATEK backup Flash](https://problemkaputt.de/gbatek-gba-cart-backup-flash-rom.htm) identifies the `0xaa`/`0x5555` unlock and chip-identification sequence.
-The bounded failure establishes an access requirement, not the device's capacity or full save compatibility.
+The selected device is an explicit test configuration, not a cartridge-capacity determination from the filename or unlock write.
+The bounded run does not establish save compatibility.

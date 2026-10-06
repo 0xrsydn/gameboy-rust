@@ -73,6 +73,11 @@ ARM/Thumb and DMA3 checks retain Game Pak costs; staged fetches, rejected edges,
 Desktop tests execute original ARM calendar commands in terminal and native-window modes with explicit `--rtc` selection.
 Host-adapter tests inject UTC epoch values and elapsed durations without sleeping. Guest time changes survive subsequent elapsed updates.
 Physical pin timing, invalid-date hardware correction, GPIO aliases, and battery persistence remain unverified or unimplemented.
+Flash regressions use original command sequences and exact-size generated arrays, not game saves.
+They check device IDs, every byte in both 128 KiB banks, erased state, image validation, reset limits, and unsupported program/erase commands.
+ARM/Thumb probes verify RAM byte reads, ROM command writes, all save wait settings, staged ID state, and failed-step rollback.
+Wide accesses, DMA, instruction fetches, and CPU reads outside work RAM retain explicit diagnostics.
+An original desktop ROM installs its Flash byte reader in IWRAM; terminal/native tests check explicit selection and unchanged files.
 They verify explicit activation errors and atomic byte/word/block-store/DMA failure behavior.
 The optional [local Emerald startup check](research/emerald-reset.md) now reaches sound activation but still fails deliberately there.
 [Jev evidence review](jev-debugging.md) is optional and never changes deterministic test verdicts.

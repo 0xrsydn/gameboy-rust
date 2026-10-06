@@ -62,6 +62,12 @@ impl Memory {
         if address & (width as u32 - 1) != 0 {
             return Err(MemoryError::Unaligned(address));
         }
+        if self.cartridge_state().save_mapped(address) {
+            return Err(MemoryError::UnsupportedCartridgeAccess {
+                address,
+                operation: "Flash instruction fetch",
+            });
+        }
         let mut bytes = [0; 4];
         for (offset, byte) in bytes[..width].iter_mut().enumerate() {
             *byte = self.read_mapped_byte(address.wrapping_add(offset as u32))?;

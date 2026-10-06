@@ -87,6 +87,8 @@ pub fn bus_cycles(waitcnt: u16, address: u32, width: AccessWidth, kind: AccessKi
                     0
                 }
         }
+        // The supported save bus permits byte transfers only; N/S use the same SRAM waits.
+        0x0e | 0x0f => 1 + [4, 3, 2, 8][usize::from(waitcnt & 3)],
         // BIOS, IWRAM, I/O, and OAM use a 32-bit bus. Other areas remain unmapped.
         _ => 1,
     }

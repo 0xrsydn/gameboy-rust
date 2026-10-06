@@ -9,10 +9,12 @@ pub fn run(
     bytes: Vec<u8>,
     frame_limit: Option<u64>,
     hardware: gba_core::cartridge::CartridgeHardware,
+    save_device: gba_core::cartridge::SaveDevice,
     writer: &mut impl Write,
 ) -> Result<(), Box<dyn Error>> {
     let mut session = Session::new(bytes)?;
     session.set_cartridge_hardware(hardware);
+    session.memory_mut().set_save_device(save_device);
     let mut rtc_clock = if hardware == gba_core::cartridge::CartridgeHardware::Rtc {
         Some(crate::cartridge::rtc_clock::RtcHostClock::new(
             session.memory_mut(),

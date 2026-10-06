@@ -49,6 +49,9 @@ The repository is a Cargo workspace with three crates:
 | `crates/gba-core/src/cpu/tests.rs` | Condition truth tables and immediate arithmetic tests |
 | `crates/gba-core/src/cpu/instruction_tests.rs` | Register operations, transfers, branches, and edge cases |
 | `crates/gba-core/src/cartridge.rs` | Explicit GPIO/RTC selection, ROM read overlay, pin directions, caller-clock routing, and bounded diagnostics |
+| `crates/gba-core/src/cartridge/flash.rs` | Explicit save devices, Macronix identification/read controller, bank selection, and unsupported-write diagnostics |
+| `crates/gba-core/tests/flash.rs` | Erased/supplied images, chip IDs, all bank addresses, invalid commands, reset limits, DMA rejection, and RTC independence |
+| `crates/gba-core/src/memory/flash_step_tests.rs` | ARM/Thumb Flash writes and RAM reads, wait costs, staged IDs, fetch restrictions, and failed-step/preflight isolation |
 | `crates/gba-core/src/cartridge/rtc.rs` | RTC framing, control/calendar commands, read snapshots, complete writes, and reset |
 | `crates/gba-core/src/cartridge/calendar.rs` | Validated decimal calendar, BCD representation, checked epoch conversion, and bounded elapsed-time arithmetic |
 | `crates/gba-core/src/cartridge/calendar/tests.rs` | Calendar field validation, century-wide rollovers, hour modes, and large/split advances |

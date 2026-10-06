@@ -33,14 +33,18 @@ It does not decode archives or ELF executables. Supply a raw binary with an ARM 
 Headerless original programs are accepted.
 Reads past supplied cartridge bytes remain explicit memory errors, not open-bus values.
 All three Game Pak ROM windows use the same supplied bytes and existing wait-state rules.
-Ordinary cartridge bytes remain read-only. Save devices remain unsupported.
+Ordinary cartridge bytes remain read-only.
+Optional `--save-type flash64` or `--save-type flash128` enables [Flash identification and array reads](saves.md).
+The desktop starts an erased device and does not load or write save files. Programming and erase remain diagnostic.
 Optional `--rtc` selection enables the bounded [Game Pak GPIO and RTC calendar interface](cartridge-gpio.md).
 It supports date/time reads, complete writes, reset, and explicit elapsed-time updates. RTC interrupts and persistence remain unsupported.
 The desktop seeds UTC once, then supplies monotonic host elapsed seconds independently of GBA cycles and STOP.
 
 Both modes call `bios::boot` with the loaded bytes.
 With `--rtc`, the host then selects the cartridge peripheral before the first machine step.
-Without that option, no cartridge peripheral is attached. Duplicate `--rtc` options are rejected.
+Without that option, no RTC is attached. Duplicate `--rtc` options are rejected.
+Save-device selection is independent of RTC selection. Omitting `--save-type` leaves save memory unmapped.
+Unknown save types and duplicate options fail before file access. No ROM-based hardware detection is used.
 The [original BIOS replacement](bios.md) executes its minimal boot before entering `0x08000000` in ARM System mode.
 There is no command-line option for external BIOS files.
 Unsupported services remain diagnostics. RegisterRamReset now accepts sound/serial reset flags, including `r0=0xff`, within the initialization subset.

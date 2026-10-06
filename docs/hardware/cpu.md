@@ -351,6 +351,8 @@ Palette and video RAM cost 1 cycle for byte/halfword accesses and 2 for words, w
 ROM costs include one cycle plus the configured wait states for each 16-bit transfer.
 A ROM word uses two halfword accesses; its second halfword always uses sequential timing.
 Accesses at 128 KiB ROM boundaries force non-sequential timing for the first halfword.
+Supported save-byte accesses use WAITCNT bits 0–1: one cycle plus 4, 3, 2, or 8 wait states.
+Sequential and non-sequential save requests use the same nominal cost. Flash data accesses cancel the opcode prefetch queue.
 
 `WAITCNT` resets to zero and supports byte, halfword, and word access.
 The writable mask is `0x5fff`; the Game Pak type flag reads as GBA, and the upper halfword reads as zero.
@@ -421,6 +423,7 @@ Important timing limits:
 - Refill cost calculation does not read target bytes. ARM/Thumb instruction-buffer and local IWRAM bus-history samples add no extra cycles.
 - Target-pair sampling cannot fail the branch early. An invalid branch target still fails on the following instruction fetch.
 - Game Pak prefetch is nominal. Full-buffer restart, page boundaries, cancellation, and live WAITCNT changes need independent hardware validation.
-- PHI and SRAM wait fields are stored; PHI output and SRAM mapping are not implemented.
+- Save wait fields drive the supported Flash byte-access costs. PHI output and SRAM mapping remain unimplemented.
+  See [Flash access restrictions](saves.md#bus-behavior); wider save transfers and physical bus timing remain unsupported or unverified.
 - External work RAM timing is fixed. The undocumented memory-control register is not implemented.
 - Exact DMA startup/resumption delays, display-bus contention, and timer startup/register-write delays remain unmodeled.

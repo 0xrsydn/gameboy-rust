@@ -9,7 +9,8 @@ Unsupported operations and invalid calendar payloads return diagnostics.
 ## Selection
 
 `Memory::set_cartridge_hardware(CartridgeHardware::Rtc)` attaches the bounded interface with initial state.
-`CartridgeHardware::None` is the default. Selecting either option replaces peripheral state, without changing ROM bytes.
+`CartridgeHardware::None` is the default. Selecting either option replaces GPIO/RTC state, without changing ROM bytes.
+The separately selected [Flash device](saves.md) and its array remain unchanged.
 Call this API between machine steps. The core does not inspect filenames, game headers, or library signatures to select hardware.
 
 The desktop enables this interface with `--rtc`, in either ROM execution mode:

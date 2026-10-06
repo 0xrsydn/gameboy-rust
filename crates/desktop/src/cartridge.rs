@@ -14,14 +14,14 @@ use std::{
 
 use gba_core::{
     bios,
-    cartridge::{CartridgeHardware, RtcError},
+    cartridge::{CartridgeHardware, RtcError, SaveDevice},
     machine::{Machine, MachineError, StepKind},
     memory::ROM_CAPACITY,
 };
 
 const MAX_STEPS: u64 = 100_000_000;
 const MAX_FRAMES: u64 = 100_000;
-const USAGE: &str = "usage: gameboy-rust --rom PATH [--rtc] (--steps COUNT | --window [--frames COUNT]); steps: 1..=100000000, frames: 1..=100000; do not combine with demo or help options";
+const USAGE: &str = "usage: gameboy-rust --rom PATH [--rtc] [--save-type flash64|flash128] (--steps COUNT | --window [--frames COUNT]); steps: 1..=100000000, frames: 1..=100000; do not combine with demo or help options";
 
 #[derive(Debug, PartialEq, Eq)]
 enum Mode {
@@ -34,6 +34,7 @@ pub struct Options {
     path: PathBuf,
     mode: Mode,
     hardware: CartridgeHardware,
+    save_device: SaveDevice,
 }
 
 pub fn parse_args(args: &[OsString]) -> io::Result<Options> {
@@ -43,6 +44,7 @@ pub fn parse_args(args: &[OsString]) -> io::Result<Options> {
     let mut frames = None;
     let mut window = false;
     let mut hardware = CartridgeHardware::None;
+    let mut save_device = SaveDevice::None;
     let mut args = args.iter();
     while let Some(arg) = args.next() {
         if arg == "--rom" && path.is_none() {
@@ -53,6 +55,12 @@ pub fn parse_args(args: &[OsString]) -> io::Result<Options> {
             path = Some(PathBuf::from(value));
         } else if arg == "--rtc" && hardware == CartridgeHardware::None {
             hardware = CartridgeHardware::Rtc;
+        } else if arg == "--save-type" && save_device == SaveDevice::None {
+            save_device = match args.next().and_then(|value| value.to_str()) {
+                Some("flash64") => SaveDevice::Flash64,
+                Some("flash128") => SaveDevice::Flash128,
+                _ => return Err(invalid()),
+            };
         } else if arg == "--window" && !window {
             window = true;
         } else if (arg == "--steps" && steps.is_none()) || (arg == "--frames" && frames.is_none()) {
@@ -90,6 +98,7 @@ pub fn parse_args(args: &[OsString]) -> io::Result<Options> {
         path: path.ok_or_else(invalid)?,
         mode,
         hardware,
+        save_device,
     })
 }
 
@@ -264,10 +273,19 @@ pub fn execute(options: Options, writer: &mut impl Write) -> Result<(), Box<dyn 
     if options.hardware == CartridgeHardware::Rtc {
         writeln!(writer, "RTC selected: UTC at startup, then host elapsed time; no persistence or RTC interrupts.")?;
     }
+    if options.save_device != SaveDevice::None {
+        writeln!(writer, "Flash selected: {} KiB Macronix, erased array; identification/bank reads only. No programming, erase, or save files.", options.save_device.capacity() / 1024)?;
+    }
     let steps = match options.mode {
         Mode::Terminal { steps } => steps,
         Mode::Window { frames } => {
-            return crate::desktop::run_rom(bytes, frames, options.hardware, writer)
+            return crate::desktop::run_rom(
+                bytes,
+                frames,
+                options.hardware,
+                options.save_device,
+                writer,
+            )
         }
     };
     writeln!(writer, "Machine-step limit: {steps} (includes boot)")?;
@@ -275,6 +293,7 @@ pub fn execute(options: Options, writer: &mut impl Write) -> Result<(), Box<dyn 
     machine
         .memory_mut()
         .set_cartridge_hardware(options.hardware);
+    machine.memory_mut().set_save_device(options.save_device);
     let mut clock = if options.hardware == CartridgeHardware::Rtc {
         Some(rtc_clock::RtcHostClock::new(machine.memory_mut())?)
     } else {

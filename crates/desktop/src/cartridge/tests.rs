@@ -27,7 +27,8 @@ fn options_require_both_flags_in_either_order() {
                 Options {
                     path: "original program.gba".into(),
                     mode: Mode::Terminal { steps: count },
-                    hardware: CartridgeHardware::None
+                    hardware: CartridgeHardware::None,
+                    save_device: SaveDevice::None
                 }
             );
         }

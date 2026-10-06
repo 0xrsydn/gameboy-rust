@@ -28,6 +28,20 @@ fn waitcnt_masks_unused_bits_and_supports_all_bus_widths() {
 }
 
 #[test]
+fn save_byte_access_costs_follow_waitcnt_and_ignore_sequential_kind() {
+    for (wait, cycles) in [5, 4, 3, 9].into_iter().enumerate() {
+        for kind in [AccessKind::NonSequential, AccessKind::Sequential] {
+            for address in [0x0e000000, 0x0e005555, 0x0e00ffff] {
+                assert_eq!(
+                    bus_cycles(wait as u16, address, AccessWidth::Byte, kind),
+                    cycles
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn every_rom_wait_setting_has_the_documented_halfword_and_word_costs() {
     for window in 0..3 {
         for first in 0..4 {
@@ -112,8 +126,8 @@ fn internal_regions_and_ewram_use_fixed_width_specific_costs() {
 }
 
 #[test]
-fn stored_prefetch_phi_and_sram_settings_do_not_change_supported_bus_costs() {
-    // This stateless helper excludes opcode prefetch. PHI output and SRAM remain unmapped.
+fn stored_prefetch_phi_and_save_wait_settings_do_not_change_rom_bus_costs() {
+    // This stateless helper excludes opcode prefetch. Save waits do not affect ROM cycles.
     for width in [AccessWidth::Halfword, AccessWidth::Word] {
         for address in [ROM_START, ROM_START + 4, 0x0a00_0004, 0x0c00_0004] {
             for kind in [AccessKind::NonSequential, AccessKind::Sequential] {

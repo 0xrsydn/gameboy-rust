@@ -8,6 +8,8 @@ mod fetch;
 #[cfg(test)]
 mod fetch_tests;
 #[cfg(test)]
+mod flash_step_tests;
+#[cfg(test)]
 mod irq_fetch_tests;
 mod iwram_bus;
 #[cfg(test)]
@@ -27,7 +29,7 @@ use iwram_bus::IwramBus;
 
 use crate::{
     audio::{Audio, StereoLevel},
-    cartridge::{Cartridge, CartridgeHardware, RtcDateTime, RtcError},
+    cartridge::{Cartridge, CartridgeHardware, RtcDateTime, RtcError, SaveDevice, SaveError},
     cpu::InstructionSet,
     display::{DisplayPosition, CYCLES_PER_LINE, HBLANK_START, VISIBLE_LINES},
     dma::{DmaError, DMA_BASE, DMA_END},
@@ -53,6 +55,10 @@ pub enum MemoryError {
     Unaligned(u32),
     RomTooLarge(usize),
     InvalidBiosSize(usize),
+    UnsupportedCartridgeAccess {
+        address: u32,
+        operation: &'static str,
+    },
     UnsupportedIo {
         address: u32,
         value: u8,
@@ -63,6 +69,9 @@ pub enum MemoryError {
 impl fmt::Display for MemoryError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::UnsupportedCartridgeAccess { address, operation } => {
+                write!(f, "unsupported {operation} at {address:#010x}")
+            }
             Self::UnsupportedIo {
                 address,
                 value,
@@ -122,6 +131,7 @@ pub struct Memory {
     video_ram: Vec<u8>,
     oam: Vec<u8>,
     rom: Vec<u8>,
+    save_image: Vec<u8>,
     cartridge: Cartridge,
     cartridge_step: Cell<Option<Cartridge>>,
     bios: Option<Vec<u8>>,
@@ -153,6 +163,7 @@ impl Memory {
             video_ram: vec![0; VRAM_SIZE],
             oam: vec![0; 1024],
             rom,
+            save_image: Vec::new(),
             cartridge: Cartridge::default(),
             cartridge_step: Cell::new(None),
             bios: None,
@@ -183,14 +194,52 @@ impl Memory {
         Ok(memory)
     }
 
-    /// Replace optional cartridge hardware with its initial state. Call between machine steps.
-    /// This never modifies the supplied ROM bytes or enables a host clock.
+    /// Replace GPIO/RTC hardware with its initial state. Call between machine steps.
+    /// Save hardware/data are preserved. This never modifies ROM bytes or enables a host clock.
     pub fn set_cartridge_hardware(&mut self, hardware: CartridgeHardware) {
         assert!(
             self.cartridge_step.get().is_none(),
             "active cartridge transaction"
         );
-        self.cartridge = Cartridge::new(hardware);
+        self.cartridge.set_hardware(hardware);
+    }
+
+    /// Replace save hardware and its array with erased bytes. GPIO/RTC state is unchanged.
+    /// Call between machine steps; no file is loaded or written by the core.
+    pub fn set_save_device(&mut self, device: SaveDevice) {
+        assert!(
+            self.cartridge_step.get().is_none(),
+            "active cartridge transaction"
+        );
+        self.save_image = vec![0xff; device.capacity()];
+        self.cartridge.set_save_device(device);
+    }
+
+    /// Inspect the complete save array, independently of ID mode and selected bank.
+    pub fn save_image(&self) -> Option<&[u8]> {
+        (self.cartridge.save_device() != SaveDevice::None).then_some(self.save_image.as_slice())
+    }
+
+    /// Replace the entire array and reset Flash command/bank state. RTC state is unchanged.
+    /// A wrong length changes nothing. This setup API does not emulate programming.
+    pub fn load_save_image(&mut self, bytes: &[u8]) -> Result<(), SaveError> {
+        assert!(
+            self.cartridge_step.get().is_none(),
+            "active cartridge transaction"
+        );
+        let device = self.cartridge.save_device();
+        if device == SaveDevice::None {
+            return Err(SaveError::NoDevice);
+        }
+        if bytes.len() != device.capacity() {
+            return Err(SaveError::InvalidSize {
+                expected: device.capacity(),
+                actual: bytes.len(),
+            });
+        }
+        self.save_image.copy_from_slice(bytes);
+        self.cartridge.set_save_device(device);
+        Ok(())
     }
 
     /// Inspect the live calendar, not an in-progress serial read snapshot.
@@ -749,6 +798,16 @@ impl Memory {
 
     // Multi-byte reads use this helper to avoid charging each byte as a bus access.
     fn read_byte(&self, address: u32) -> Result<u8, MemoryError> {
+        if self.cartridge_state().save_mapped(address)
+            && self
+                .cpu_access
+                .is_some_and(|access| !matches!(access.pc >> 24, 0x02 | 0x03))
+        {
+            return Err(MemoryError::UnsupportedCartridgeAccess {
+                address,
+                operation: "Flash CPU read outside work RAM",
+            });
+        }
         if address >> 24 == 0x04 {
             if let Some(step) = self.timer_step.get() {
                 if Serial::mapped(address) {
@@ -784,7 +843,11 @@ impl Memory {
 
     // Strict lookup for host access, instruction fetches, and prefetch snapshots.
     fn read_mapped_byte(&self, address: u32) -> Result<u8, MemoryError> {
-        if let Some(value) = self.cartridge_state().read8(address) {
+        let cartridge = self.cartridge_state();
+        if cartridge.save_mapped(address) {
+            return cartridge.read_save8(address, &self.save_image);
+        }
+        if let Some(value) = cartridge.read8(address) {
             return Ok(value);
         }
         match address >> 24 {
@@ -1001,6 +1064,15 @@ impl Memory {
                 }
                 Ok(0)
             }
+            0x0e if self.cartridge_state().save_mapped(address) => {
+                if N != 1 {
+                    return Err(MemoryError::UnsupportedCartridgeAccess {
+                        address,
+                        operation: "Flash non-byte write",
+                    });
+                }
+                Ok(0)
+            }
             _ => Err(MemoryError::Unmapped(address)),
         }
     }
@@ -1086,6 +1158,7 @@ impl Memory {
         if address & 1 != 0 {
             return Err(MemoryError::Unaligned(address));
         }
+        self.validate_save_read_width(address)?;
         self.record_access(address, AccessWidth::Halfword);
         let value = u16::from_le_bytes([self.read_byte(address)?, self.read_byte(address + 1)?]);
         self.iwram_bus
@@ -1093,11 +1166,22 @@ impl Memory {
         Ok(value)
     }
 
+    fn validate_save_read_width(&self, address: u32) -> Result<(), MemoryError> {
+        if self.cartridge_state().save_mapped(address) {
+            return Err(MemoryError::UnsupportedCartridgeAccess {
+                address,
+                operation: "Flash non-byte read",
+            });
+        }
+        Ok(())
+    }
+
     /// The bus requires alignment; the CPU applies ARM7TDMI load rotation.
     pub fn read32(&self, address: u32) -> Result<u32, MemoryError> {
         if address & 3 != 0 {
             return Err(MemoryError::Unaligned(address));
         }
+        self.validate_save_read_width(address)?;
         self.record_access(address, AccessWidth::Word);
         let value = u32::from_le_bytes([
             self.read_byte(address)?,

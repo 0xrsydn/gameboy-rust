@@ -142,6 +142,75 @@ fn rtc_calendar_commands_run_through_original_arm_code_with_host_clock_enabled()
     );
 }
 
+fn flash_setup() -> Vec<u32> {
+    // Original ARM unlock/identify, then install a byte reader in IWRAM and execute it.
+    let mut code = Vec::new();
+    let mut literals = Vec::new();
+    fn load(code: &mut Vec<u32>, literals: &mut Vec<(usize, u32, u32)>, register: u32, value: u32) {
+        literals.push((code.len(), register, value));
+        code.push(0);
+    }
+    load(&mut code, &mut literals, 1, 0x0e005555);
+    code.extend([0xe3a000aa, 0xe5c10000]);
+    load(&mut code, &mut literals, 2, 0x0e002aaa);
+    code.extend([0xe3a00055, 0xe5c20000, 0xe3a00090, 0xe5c10000]);
+    load(&mut code, &mut literals, 3, 0x0e000000);
+    load(&mut code, &mut literals, 4, 0x03000000);
+    for (offset, instruction) in [(0, 0xe5d35000), (4, 0xe5d36001), (8, 0xeafffffe)] {
+        load(&mut code, &mut literals, 0, instruction);
+        code.push(0xe5840000 | offset);
+    }
+    code.push(0xe12fff14); // BX r4
+    for (at, register, value) in literals {
+        let offset = ((code.len() - at) * 4 - 8) as u32;
+        code[at] = 0xe59f0000 | (register << 12) | offset;
+        code.push(value);
+    }
+    code
+}
+
+#[test]
+fn explicit_flash_selection_runs_ram_byte_reader_and_leaves_files_unchanged() {
+    let fixture = Fixture::new();
+    let path = fixture.rom(&flash_setup());
+    let bytes = fs::read(&path).unwrap();
+    assert!(stderr(&run(&path, "1000")).contains("unmapped memory at 0x0e005555"));
+    for (device, id) in [("flash64", "r6=0x0000001c"), ("flash128", "r6=0x00000009")] {
+        let output = command()
+            .args(["--save-type", device, "--rtc", "--rom"])
+            .arg(&path)
+            .args(["--steps", "1000"])
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "{}", stderr(&output));
+        let text = stdout(&output);
+        assert!(text.contains("identification/bank reads only"));
+        assert!(text.contains("r5=0x000000c2"), "{text}");
+        assert!(text.contains(id), "{text}");
+        assert_eq!(fs::read(&path).unwrap(), bytes);
+    }
+    assert_eq!(fs::read_dir(&fixture.0).unwrap().count(), 1); // No save file is invented.
+}
+
+#[test]
+fn invalid_save_type_options_fail_before_file_access() {
+    for extra in [
+        vec!["--save-type"],
+        vec!["--save-type", "sram"],
+        vec!["--save-type", ""],
+        vec!["--save-type", "flash128", "--save-type", "flash64"],
+    ] {
+        let output = command()
+            .args(["--rom", "missing.gba", "--steps", "1"])
+            .args(extra)
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(1));
+        assert!(stderr(&output).contains("usage:"));
+        assert!(!stderr(&output).contains("cannot load"));
+    }
+}
+
 #[test]
 fn rtc_selection_is_explicit_and_does_not_modify_the_rom_file() {
     let fixture = Fixture::new();
@@ -311,10 +380,13 @@ fn native_rom_window_presents_file_bytes_and_reports_stop_cpu_and_video_errors()
         thread,
         time::{Duration, Instant},
     };
-    fn window(path: &Path, rtc: bool) -> Output {
+    fn window(path: &Path, rtc: bool, save: Option<&str>) -> Output {
         let mut command = command();
         if rtc {
             command.arg("--rtc");
+        }
+        if let Some(device) = save {
+            command.args(["--save-type", device]);
         }
         let mut child = command
             .arg("--rom")
@@ -342,7 +414,7 @@ fn native_rom_window_presents_file_bytes_and_reports_stop_cpu_and_video_errors()
     let fixture = Fixture::new();
     let path = fixture.0.join("original-input.gba");
     fs::write(&path, gba_demos::input_rom()).unwrap();
-    let output = window(&path, false);
+    let output = window(&path, false, None);
     assert!(
         output.status.success(),
         "{} {}",
@@ -352,12 +424,12 @@ fn native_rom_window_presents_file_bytes_and_reports_stop_cpu_and_video_errors()
     assert!(stdout(&output).contains("Captured ROM frames: 3"));
     assert!(stdout(&output).contains("Result: window frame limit reached"));
     let rtc_path = fixture.rom(&rtc_setup());
-    let rtc_output = window(&rtc_path, true);
+    let rtc_output = window(&rtc_path, true, None);
     assert!(rtc_output.status.success(), "{}", stderr(&rtc_output));
     assert!(stdout(&rtc_output).contains("Captured ROM frames: 3"));
     assert!(stdout(&rtc_output).contains("r2=0x00000001"));
     let calendar_path = fixture.rom(&rtc_calendar_setup());
-    let calendar_output = window(&calendar_path, true);
+    let calendar_output = window(&calendar_path, true, None);
     assert!(
         calendar_output.status.success(),
         "{}",
@@ -365,6 +437,12 @@ fn native_rom_window_presents_file_bytes_and_reports_stop_cpu_and_video_errors()
     );
     assert!(stdout(&calendar_output).contains("Captured ROM frames: 3"));
     assert!(stdout(&calendar_output).contains("r2=0x00000092"));
+    let flash_path = fixture.rom(&flash_setup());
+    let flash_output = window(&flash_path, true, Some("flash128"));
+    assert!(flash_output.status.success(), "{}", stderr(&flash_output));
+    assert!(stdout(&flash_output).contains("Captured ROM frames: 3"));
+    assert!(stdout(&flash_output).contains("r5=0x000000c2"));
+    assert!(stdout(&flash_output).contains("r6=0x00000009"));
     for (code, error) in [
         (vec![0xef03_0000, 0xeaff_fffe], "entered STOP"),
         (vec![0xee00_0000], "instruction"),
@@ -380,7 +458,7 @@ fn native_rom_window_presents_file_bytes_and_reports_stop_cpu_and_video_errors()
                 .collect::<Vec<_>>(),
         )
         .unwrap();
-        let output = window(&path, false);
+        let output = window(&path, false, None);
         assert_eq!(output.status.code(), Some(1), "{}", stdout(&output));
         assert!(stdout(&output).contains("Result: ROM window diagnostic"));
         assert!(stdout(&output).contains("Captured ROM frames: 0"));

@@ -3,8 +3,11 @@
 use crate::memory::MemoryError;
 
 mod calendar;
+mod flash;
 mod rtc;
 pub use calendar::{RtcDateTime, RtcError};
+use flash::Flash;
+pub use flash::{SaveDevice, SaveError, SAVE_END, SAVE_START};
 use rtc::Rtc;
 
 pub const GPIO_DATA: u32 = 0x0800_00c4;
@@ -23,13 +26,28 @@ pub enum CartridgeHardware {
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Cartridge {
     gpio: Option<Gpio>,
+    flash: Option<Flash>,
 }
 
 impl Cartridge {
-    pub(crate) fn new(hardware: CartridgeHardware) -> Self {
-        Self {
-            gpio: (hardware == CartridgeHardware::Rtc).then(Gpio::default),
-        }
+    pub(crate) fn set_hardware(&mut self, hardware: CartridgeHardware) {
+        self.gpio = (hardware == CartridgeHardware::Rtc).then(Gpio::default);
+    }
+
+    pub(crate) fn set_save_device(&mut self, device: SaveDevice) {
+        self.flash = Flash::new(device);
+    }
+
+    pub(crate) fn save_device(&self) -> SaveDevice {
+        self.flash.map_or(SaveDevice::None, Flash::device)
+    }
+
+    pub(crate) fn save_mapped(&self, address: u32) -> bool {
+        self.flash.is_some() && (SAVE_START..=SAVE_END).contains(&address)
+    }
+
+    pub(crate) fn read_save8(&self, address: u32, image: &[u8]) -> Result<u8, MemoryError> {
+        self.flash.expect("mapped save device").read(address, image)
     }
 
     pub(crate) fn rtc_datetime(&self) -> Option<RtcDateTime> {
@@ -56,13 +74,14 @@ impl Cartridge {
     }
 
     pub(crate) fn mapped(&self, address: u32) -> bool {
-        self.gpio.is_some() && (GPIO_DATA..GPIO_CONTROL + 2).contains(&address)
+        self.save_mapped(address)
+            || (self.gpio.is_some() && (GPIO_DATA..GPIO_CONTROL + 2).contains(&address))
     }
 
     /// Disabled reads expose the supplied ROM bytes, not a zero-filled replacement.
     pub(crate) fn read8(&self, address: u32) -> Option<u8> {
         let gpio = self.gpio?;
-        if !self.mapped(address) || !gpio.readable {
+        if !(GPIO_DATA..GPIO_CONTROL + 2).contains(&address) || !gpio.readable {
             return None;
         }
         let value = match address & !1 {
@@ -78,6 +97,15 @@ impl Cartridge {
     pub(crate) fn write(&mut self, address: u32, bytes: &[u8]) -> Result<(), MemoryError> {
         if !self.mapped(address) {
             return Ok(()); // Non-cartridge accesses are validated by the bus.
+        }
+        if self.save_mapped(address) {
+            if bytes.len() != 1 {
+                return Err(MemoryError::UnsupportedCartridgeAccess {
+                    address,
+                    operation: "Flash non-byte write",
+                });
+            }
+            return self.flash.as_mut().unwrap().write(address, bytes[0]);
         }
         let fail = |at, value, operation| MemoryError::UnsupportedIo {
             address: at,
