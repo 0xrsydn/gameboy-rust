@@ -53,7 +53,7 @@ fn register_reset_masks_byte_merges_and_combined_word_access() {
     assert_eq!(m.read32(KEYINPUT).unwrap(), 0x0123_01fe);
     assert_eq!(m.cycles(), 0);
     assert_eq!(m.read32(KEYCNT), Err(MemoryError::Unaligned(KEYCNT)));
-    for address in [KEYCNT + 2, KEYCNT + 0x400] {
+    for address in [KEYCNT + 4, KEYCNT + 0x400] {
         assert_eq!(m.read8(address), Err(MemoryError::Unmapped(address)));
         assert_eq!(m.write8(address, 0), Err(MemoryError::Unmapped(address)));
     }
@@ -371,7 +371,7 @@ fn cpu_store_samples_keys_then_irq_enters_on_the_following_step() {
 
 #[test]
 fn failed_block_store_does_not_commit_key_control_irq_history_or_halt_wake() {
-    // STMIA r0!,{r1,r2}: keypad word is valid, next word (serial RCNT) is not mapped.
+    // STMIA r0!,{r1,r2}: keypad word is valid, but RCNT's upper padding is not mapped.
     let mut m = prepared(0xe8a0_0006, KEYINPUT, 0x4001_0000);
     press(m.memory_mut(), 1);
     m.memory_mut().write16(IE, IRQ).unwrap();
@@ -381,7 +381,7 @@ fn failed_block_store_does_not_commit_key_control_irq_history_or_halt_wake() {
     assert_eq!(
         m.step(),
         Err(MachineError::Cpu(CpuError::Memory(MemoryError::Unmapped(
-            KEYINPUT + 4
+            KEYINPUT + 6
         ))))
     );
     assert_eq!(m.cpu(), &before);

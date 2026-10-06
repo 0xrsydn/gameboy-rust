@@ -1,7 +1,13 @@
-//! GBA I/O subset: DMA, timers, interrupts, WAITCNT, display, and keypad input.
+//! GBA I/O subset: DMA, timers, interrupts, WAITCNT, display, keypad input,
+//! disabled sound state, and disconnected serial initialization.
 //! Timers share a free-running prescaler phase. Hardware startup/write delays,
 //! audio events, and interrupt delivery delays are not modeled.
 
+mod inactive;
+pub use inactive::{
+    JOYCNT, JOY_RECV, JOY_TRANS, RCNT, SIOCNT, SIODATA32, SIODATA8, SOUNDBIAS, SOUNDCNT_H,
+    SOUNDCNT_X, SOUND_START, WAVE_RAM,
+};
 mod timer_step;
 pub(crate) use timer_step::TimerStep;
 use timer_step::TIMER_IRQ_MASK;
@@ -150,6 +156,7 @@ enum PowerState {
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub(crate) struct Io {
+    inactive: inactive::Inactive,
     timers: [Timer; 4],
     // Low ten system-clock bits cover every supported divider. STOP freezes this phase.
     timer_phase: u16,
@@ -174,10 +181,18 @@ pub(crate) struct Io {
 
 impl Io {
     pub(crate) fn mapped(address: u32) -> bool {
-        matches!(address, 0x0400_0000..=0x0400_0057 | DMA_BASE..=DMA_END | 0x0400_0100..=0x0400_010f | 0x0400_0130..=0x0400_0133 | 0x0400_0200..=0x0400_020b | POSTFLG..=0x0400_0303)
+        inactive::Inactive::mapped(address)
+            || matches!(address, 0x0400_0000..=0x0400_0057 | DMA_BASE..=DMA_END | 0x0400_0100..=0x0400_010f | 0x0400_0130..=0x0400_0133 | 0x0400_0200..=0x0400_020b | POSTFLG..=0x0400_0303)
+    }
+
+    pub(crate) fn unsupported_write(address: u32, value: u8) -> Option<&'static str> {
+        inactive::Inactive::unsupported(address, value)
     }
 
     pub(crate) fn read8(&self, address: u32) -> Option<u8> {
+        if inactive::Inactive::mapped(address) {
+            return self.inactive.read8(address);
+        }
         if (DMA_BASE..=DMA_END).contains(&address) {
             return Some(self.dma.read8(address));
         }
@@ -216,6 +231,10 @@ impl Io {
     pub(crate) fn write8(&mut self, address: u32, value: u8) {
         debug_assert!(Self::mapped(address));
         debug_assert!(!(KEYINPUT..=KEYCNT + 1).contains(&address));
+        if inactive::Inactive::mapped(address) {
+            self.inactive.write8(address, value);
+            return;
+        }
         if (DMA_BASE..=DMA_END).contains(&address) {
             self.dma.write8(address, value);
             return;

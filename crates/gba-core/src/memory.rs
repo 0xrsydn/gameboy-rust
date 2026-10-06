@@ -43,11 +43,24 @@ pub enum MemoryError {
     Unaligned(u32),
     RomTooLarge(usize),
     InvalidBiosSize(usize),
+    UnsupportedIo {
+        address: u32,
+        value: u8,
+        operation: &'static str,
+    },
 }
 
 impl fmt::Display for MemoryError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::UnsupportedIo {
+                address,
+                value,
+                operation,
+            } => write!(
+                f,
+                "unsupported {operation}: write {value:#04x} at {address:#010x}"
+            ),
             Self::Unmapped(address) => write!(f, "unmapped memory at {address:#010x}"),
             Self::ReadOnly(address) => write!(f, "read-only memory at {address:#010x}"),
             Self::Unaligned(address) => write!(f, "unaligned memory access at {address:#010x}"),
@@ -714,6 +727,7 @@ impl Memory {
         bytes: [u8; N],
     ) -> Result<(), MemoryError> {
         let index = self.write_index::<N>(address)?;
+        Self::validate_io_values(address, &bytes)?;
         self.record_access(
             address,
             match N {
@@ -829,12 +843,29 @@ impl Memory {
         }
     }
 
+    fn validate_io_values(address: u32, bytes: &[u8]) -> Result<(), MemoryError> {
+        if address >> 24 == 0x04 {
+            for (offset, &value) in bytes.iter().enumerate() {
+                let address = address + offset as u32;
+                if let Some(operation) = Io::unsupported_write(address, value) {
+                    return Err(MemoryError::UnsupportedIo {
+                        address,
+                        value,
+                        operation,
+                    });
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// Validate a batch before any RAM or I/O writes. Diagnostic errors cannot
     /// leave a partial block store. This is not a model of hardware data aborts.
     /// Mapped I/O reads currently have no side effects; writes cannot fail after validation.
     pub(crate) fn write_words(&mut self, writes: &[(u32, u32)]) -> Result<(), MemoryError> {
-        for &(address, _) in writes {
+        for &(address, value) in writes {
             self.write_index::<4>(address)?;
+            Self::validate_io_values(address, &value.to_le_bytes())?;
         }
         for &(address, value) in writes {
             // The map cannot change between validation and these writes.
