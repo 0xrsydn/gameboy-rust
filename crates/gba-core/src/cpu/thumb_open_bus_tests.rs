@@ -294,12 +294,21 @@ fn short_rom_needs_only_the_fetched_halfword_and_errors_only_when_used() {
 }
 
 #[test]
-fn cold_iwram_history_and_region_crossing_fetches_remain_diagnostics() {
+fn cold_iwram_fills_establish_lanes_but_region_crossing_fetches_remain_diagnostics() {
     for base in [0x0300_0100, 0x0300_8100, 0x02ff_fffc, 0x05ff_fffc] {
         for offset in [0, 2] {
             let pc = base + offset;
             let mut bus = program(pc, LDR);
             let mut cpu = cpu(pc);
+            if pc >> 24 == 3 {
+                cpu.step(&mut bus).unwrap();
+                assert_eq!(
+                    cpu.registers[1],
+                    if offset == 0 { 0x46c0_80a5 } else { DATA }
+                );
+                assert_eq!(bus.read32(UNUSED), Err(MemoryError::Unmapped(UNUSED)));
+                continue;
+            }
             let before = cpu.clone();
             assert_eq!(
                 cpu.step(&mut bus),

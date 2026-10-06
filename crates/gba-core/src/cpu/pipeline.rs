@@ -15,6 +15,7 @@ pub(super) struct Fetched {
     pub instruction: u32,
     pub continuation: Pipeline,
     pub lookahead: InstructionFetch,
+    pub fill: Option<[InstructionFetch; 2]>,
 }
 
 impl Cpu {
@@ -33,17 +34,17 @@ impl Cpu {
             .pipeline
             .as_ref()
             .filter(|pipe| pipe.pc == pc && pipe.instruction_set == instruction_set);
-        let instruction = match retained {
-            Some(pipe) => pipe.instructions[0].clone(),
-            None => memory.fetch_instruction(pc, instruction_set).instruction,
-        }?;
-        let decode = match retained {
-            Some(pipe) => pipe.instructions[1].clone(),
-            None => {
-                memory
-                    .fetch_instruction(pc.wrapping_add(width), instruction_set)
-                    .instruction
-            }
+        let (instruction, decode, fill) = if let Some(pipe) = retained {
+            (
+                pipe.instructions[0].clone()?,
+                pipe.instructions[1].clone(),
+                None,
+            )
+        } else {
+            let current = memory.fetch_instruction(pc, instruction_set);
+            let instruction = current.instruction.clone()?;
+            let next = memory.fetch_instruction(pc.wrapping_add(width), instruction_set);
+            (instruction, next.instruction.clone(), Some([current, next]))
         };
         let fetched = memory.fetch_instruction(pc.wrapping_add(2 * width), instruction_set);
         Ok(Fetched {
@@ -54,6 +55,7 @@ impl Cpu {
                 instructions: [decode, fetched.instruction.clone()],
             },
             lookahead: fetched,
+            fill,
         })
     }
 

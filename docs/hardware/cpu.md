@@ -136,7 +136,7 @@ Host inspection, ROM-suite memory assertions, instruction fetches, and DMA do no
 
 Limits remain explicit:
 
-- Thumb open bus uses the supported region rules below, including bounded sequential internal-RAM lane history.
+- Thumb open bus uses the supported region rules below, including persistent internal-RAM lane history.
 - [BIOS-protected reads](bios.md#cpu-bios-read-protection) use separate retained ARM PC+8 or aligned Thumb PC+4 word snapshots.
 - Unused/write-only I/O reads, general DMA-to-CPU bus handoff, and disabled-RAM reads are not modeled here.
   [DMA channel data](dma.md#retained-channel-data) is separate and never overrides a CPU snapshot.
@@ -144,7 +144,7 @@ Limits remain explicit:
 - Unused-memory writes remain diagnostics rather than ignored hardware writes. Swaps cannot silently discard their write.
 - ARM/Thumb instruction buffering is persistent, but these data snapshots remain a separate bounded model.
   Thumb IWRAM bus-history samples do not share storage with retained instructions.
-  DMA updates existing IWRAM continuation lanes at instruction boundaries, not during CPU accesses.
+  DMA updates IWRAM lanes at instruction boundaries, not during CPU accesses.
 
 This subset lets public ARM test 362 complete. That test does not assert the loaded data value.
 Original regressions check the values separately. See [the public ARM result](../public-arm-tests.md).
@@ -158,7 +158,7 @@ The snapshot depends on the executing code region. P below is the executing inst
 | --- | --- |
 | External work RAM, palette RAM, video RAM, all three ROM windows | Halfword at P+4, repeated in both word lanes |
 | BIOS and object attribute memory (OAM) | Full word at `(P+4) & ~3` |
-| Internal work RAM (IWRAM) | PC+4 replaces one halfword in known sequential IWRAM history; the other lanes retain their values |
+| Internal work RAM (IWRAM) | PC+4 replaces one halfword in the persistent IWRAM latch; the other lanes retain their values |
 | Other code regions | Unsupported |
 
 For BIOS/OAM, aligned instructions expose halfwords at P+4 and P+6.
@@ -184,77 +184,75 @@ Do not substitute P+2 for that history: it is only the usual case, not a general
 The original Nintendo DS also differs from GBA-family IWRAM behavior; this core targets GBA.
 
 Bus history remains bounded despite sharing samples with the persistent instruction buffer.
-Refill timing, general DMA-to-CPU transitions, cross-state IWRAM history, unused/write-only I/O, and disabled RAM remain incomplete.
+Refill timing, general DMA-to-CPU transitions, unused/write-only I/O, and disabled RAM remain incomplete.
 Original regressions validate the documented formulas. No physical-hardware or independent public Thumb open-bus pass is claimed.
 
 ### Sequential IWRAM history
 
-For consecutive Thumb instructions in IWRAM, the emulator retains a separate lane value and known-bit mask.
-The PC+4 halfword fetch updates its addressed halfword before execution.
-IWRAM data reads and writes then update only their addressed byte, halfword, or word lanes.
+The emulator retains a separate IWRAM lane value and known-bit mask, independent of CPU state or executing region.
+Every successful ARM IWRAM fetch drives a word; every Thumb IWRAM fetch drives its addressed halfword.
+IWRAM data reads and writes update their addressed byte, halfword, or word lanes, including accesses from non-IWRAM code.
 The recorded value is raw aligned bus data, before CPU rotation or sign extension.
-Accesses to other regions do not replace the IWRAM latch.
+Accesses to other regions, state changes, and exception entry do not erase this local latch.
 See [the evidence and implementation scope](../research/iwram-bus-history.md).
 
 History starts unknown. An unused-memory load requires all word lanes to be known, including for byte/halfword loads.
-Ordinary instructions and mapped loads still execute with incomplete history.
-Consecutive fetches can establish both halves. An IWRAM word read or write establishes the entire word.
+Cold pipeline filling samples the current instruction, next instruction, and lookahead in order.
+A mapped Thumb IWRAM fill therefore establishes both halves before the first data read.
+A retained pipeline advances only its new lookahead; old instruction slots do not drive the bus again.
+Debugger invalidation does not erase the latch, but the following cold fill updates it from current mapped bytes.
 Host inspection and setup writes do not seed or change this emulated history.
 
-Each instruction stages its fetch and data-access changes.
-Success commits history only for the next sequential Thumb IWRAM PC. Failure preserves the previous committed history.
+Each instruction stages all new fetches and data-access changes.
+Success commits history regardless of the resulting PC, instruction state, or region. Failure preserves the previous committed history.
 Block-transfer data accesses stage updates in order; unused-memory reads still use one entry snapshot per instruction.
 This preserves the existing atomic diagnostic policy without adding bus or device cycles.
-
-Taken branches and PC-writing refills end the old continuation history, even when their target is the fallthrough address.
-A successful refill into Thumb IWRAM establishes new history from its target pair, as described below.
-Untaken conditional branches keep sequential history.
-Other execution states/regions and accepted machine IRQs invalidate continuation history.
-Successful DMA units update existing continuation lanes as described below.
-A later exception return into Thumb IWRAM can establish new history through its refill.
-Failed DMA units leave history unchanged. Discontinuous entry without an executed refill starts unknown.
+Missing or region-crossing Thumb lookahead still leaves that instruction's unused-memory snapshot unsupported.
+It does not erase independently known IWRAM lanes.
 
 ### Thumb IWRAM refill history
 
 After a successful refill instruction, the emulator uses the resulting PC and instruction state.
-If the destination is Thumb IWRAM, it samples two halfwords in order: target T, then T+2.
-Both accesses must remain in IWRAM. Normal physical RAM mirrors apply.
-These samples establish both word lanes for execution at T. The first instruction then samples T+4 as usual.
+Thumb target fetches occur at T and T+2; ARM target fetches occur at T and T+4.
+Each successful IWRAM fetch drives its own lanes, in order. Other-region or unavailable fetches do not erase local history.
+Normal physical RAM mirrors apply.
+A complete Thumb IWRAM target pair establishes both word lanes; the first target instruction then samples T+4.
+An ARM IWRAM target pair leaves the second fetched word in the latch.
 
-This applies to ARM/Thumb BX, taken Thumb branches, BL suffixes, Thumb PC writes, and ARM status-restoring returns.
-Saved Thumb state, not the target's low bit alone, controls exception-return sampling.
+This applies to BX, taken branches, BL suffixes, PC writes, PC loads, and status-restoring returns.
+Saved instruction state, not the target's low bit alone, controls exception-return sampling.
 Stack and block-load returns finish their data accesses before the target samples.
 Failed instructions do not sample a target or replace committed history.
 
 Target samples use strict mapped reads and add no nominal data or device cycles.
-The same captured target pair fills the CPU buffer and updates supported IWRAM history; no second target read occurs.
-Host inspection does not change captured lanes. A failed target fetch remains a later instruction diagnostic.
-Cold direct startup, unsupported target states/regions, and region-crossing lookahead still have no inferred refill history.
-DMA between refill and arrival updates this continuation's actual IWRAM access lanes before the target+4 sample.
+The same captured target pair fills the CPU buffer and updates IWRAM history; no second target read occurs.
+A failed target fetch remains a later instruction diagnostic.
+IRQ entry samples its ARM BIOS vector pair without erasing IWRAM lanes.
+A BIOS handler can still change those lanes through actual IWRAM data accesses.
 
-The [refill evidence and scope](../research/iwram-bus-history.md#thumb-iwram-refill-extension) distinguish these samples from a full pipeline.
-ARM-target refill history, sub-instruction DMA ordering, and exact refill timing remain incomplete.
+The [refill evidence and scope](../research/iwram-bus-history.md#thumb-iwram-refill-extension) distinguish these samples from a fully timed pipeline.
+Sub-instruction DMA ordering and exact refill timing remain incomplete.
 
 ### DMA effects on Thumb IWRAM continuations
 
-Within the instruction-boundary scheduler, DMA finishes before the next CPU PC+4 sample.
-For an existing sequential or refill continuation, each successful DMA unit updates IWRAM source lanes, then IWRAM destination lanes.
+Within the instruction-boundary scheduler, DMA finishes before the next CPU fetch.
+Each successful DMA unit updates IWRAM source lanes, then IWRAM destination lanes, even before the first CPU instruction.
 Word accesses replace all lanes. Halfword accesses replace only the addressed halfword.
 Other memory regions do not replace the local IWRAM value, even when DMA's channel data changes.
-The resumed PC+4 fetch then replaces one halfword before the instruction's unused-memory snapshot is taken.
+A resumed Thumb PC+4 fetch then replaces one halfword before the instruction's unused-memory snapshot is taken.
+A cold fill instead drives all its newly fetched instructions.
 
 Channel halfword duplication is not a full-word IWRAM access.
-A blocked source below work RAM does not drive IWRAM; an IWRAM destination still drives the halfword or word actually written.
+A blocked source below work RAM does not drive IWRAM; an IWRAM destination drives the actual halfword or word written.
 Multiple units and channel preemption update lanes in access order, not channel-number order.
 Host inspection/setup cannot change them.
 
 History changes commit only after a unit succeeds. A failed unit retains the previous successful unit's history.
 A failed resumed instruction discards its staged changes, not the completed DMA history.
-DMA does not establish an expected PC at cold direct entry. Existing partially known continuations can gain known lanes.
-PC discontinuities, unsupported state changes, IRQ entry, and region-crossing lookahead keep their existing conservative rules.
+No expected PC or Thumb continuation is needed to record DMA activity.
 
-This implements local lane effects, not a general last-DMA-value override or a persistent pipeline.
-Sub-instruction arbitration, DMA during CPU internal cycles, cold/cross-state IWRAM history, and exact resume timing remain incomplete.
+This implements local lane effects, not a general last-DMA-value override.
+Sub-instruction arbitration, DMA during CPU internal cycles, and exact resume timing remain incomplete.
 See [the source evidence and limits](../research/iwram-bus-history.md#dma-continuation-extension).
 
 ## Processor status and exceptions
@@ -354,7 +352,7 @@ Important timing limits:
 - Code S/N counts follow instruction summaries, not a simulated fetch pipeline.
 - Ordinary code costs use the current instruction address. The ARM open-bus PC+8 snapshot has no fetch timing or startup pipeline fill.
 - PC writes use destination-region costs and the restored instruction width for nominal refill accesses.
-- Refill cost calculation does not read target bytes. ARM instruction-buffer and Thumb IWRAM bus-history samples add no extra cycles.
+- Refill cost calculation does not read target bytes. ARM/Thumb instruction-buffer and local IWRAM bus-history samples add no extra cycles.
 - Target-pair sampling cannot fail the branch early. An invalid branch target still fails on the following instruction fetch.
 - Game Pak prefetch is not implemented. WAITCNT bit 14 is stored but does not accelerate execution.
 - PHI and SRAM wait fields are stored; PHI output and SRAM mapping are not implemented.

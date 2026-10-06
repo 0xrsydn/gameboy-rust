@@ -91,7 +91,7 @@ fn refill_history_consumes_captured_target_halfwords_without_rereading_memory() 
         memory.write16(target + 2, 0xffff).unwrap();
         memory.refill_cpu_bus_history(&fetches);
         let lookahead = memory.fetch_instruction(target + 4, InstructionSet::Thumb);
-        memory.begin_cpu_access(target, InstructionSet::Thumb, &lookahead);
+        memory.begin_cpu_access(target, InstructionSet::Thumb, None, &lookahead);
         assert_eq!(
             memory.read32(UNUSED).unwrap(),
             if target & 2 == 0 {
@@ -100,7 +100,7 @@ fn refill_history_consumes_captured_target_halfwords_without_rereading_memory() 
                 0x5678_9abc
             }
         );
-        memory.end_cpu_access(true, true);
+        memory.end_cpu_access(true);
     }
 }
 
@@ -119,11 +119,11 @@ fn bios_history_commits_the_captured_bus_word_not_later_image_bytes() {
         // Test-only image mutation: BIOS remains read-only through normal APIs.
         memory.bios.as_mut().unwrap()[word_address..word_address + 4]
             .copy_from_slice(&CHANGED.to_le_bytes());
-        memory.begin_cpu_access(pc, state, &fetch);
-        memory.end_cpu_access(true, false);
+        memory.begin_cpu_access(pc, state, None, &fetch);
+        memory.end_cpu_access(true);
         assert_eq!(memory.bios_prefetch, Some(WORD));
         let outside = memory.fetch_instruction(0x0200_0008, InstructionSet::Arm);
-        memory.begin_cpu_access(0x0200_0000, InstructionSet::Arm, &outside);
+        memory.begin_cpu_access(0x0200_0000, InstructionSet::Arm, None, &outside);
         assert_eq!(memory.read32(word_address as u32).unwrap(), WORD);
         // Instruction reads still bypass the protected data value.
         assert_eq!(
@@ -132,7 +132,7 @@ fn bios_history_commits_the_captured_bus_word_not_later_image_bytes() {
                 .instruction,
             Ok(CHANGED)
         );
-        memory.end_cpu_access(true, false);
+        memory.end_cpu_access(true);
     }
 }
 
@@ -149,12 +149,12 @@ fn sampling_has_no_timing_or_history_side_effects_and_never_uses_data_fallback()
     assert_eq!(memory.bios_prefetch, None);
     assert!(memory.cpu_resume_nonsequential);
     assert_eq!(memory.cycles(), 0);
-    memory.begin_cpu_access(0, InstructionSet::Arm, &fetch);
+    memory.begin_cpu_access(0, InstructionSet::Arm, None, &fetch);
     assert_eq!(memory.read32(UNUSED).unwrap(), WORD);
     let missing = memory.fetch_instruction(UNUSED, InstructionSet::Arm);
     assert_eq!(missing.instruction, Err(MemoryError::Unmapped(UNUSED)));
     assert_eq!(missing.bus_word, None);
-    memory.end_cpu_access(false, false);
+    memory.end_cpu_access(false);
     assert_eq!(memory.bios_prefetch, None);
     assert!(memory.cpu_resume_nonsequential);
 }
@@ -167,12 +167,12 @@ fn missing_fetch_observation_invalidates_bios_history_only_on_success() {
         let pc = BIOS_SIZE as u32 - state.width();
         let fetch = memory.fetch_instruction(pc + 2 * state.width(), state);
         assert!(fetch.instruction.is_err());
-        memory.begin_cpu_access(pc, state, &fetch);
-        memory.end_cpu_access(false, false);
+        memory.begin_cpu_access(pc, state, None, &fetch);
+        memory.end_cpu_access(false);
         assert_eq!(memory.bios_prefetch, Some(WORD));
     }
     let fetch = memory.fetch_instruction(BIOS_SIZE as u32, InstructionSet::Thumb);
-    memory.begin_cpu_access(BIOS_SIZE as u32 - 4, InstructionSet::Thumb, &fetch);
-    memory.end_cpu_access(true, false);
+    memory.begin_cpu_access(BIOS_SIZE as u32 - 4, InstructionSet::Thumb, None, &fetch);
+    memory.end_cpu_access(true);
     assert_eq!(memory.bios_prefetch, None);
 }

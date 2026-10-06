@@ -319,16 +319,14 @@ fn failed_refill_instructions_preserve_cpu_and_preexisting_history() {
 }
 
 #[test]
-fn cold_entry_region_crossings_and_unmapped_targets_do_not_invent_refill_history() {
+fn cold_fill_establishes_lanes_but_region_crossings_and_unmapped_targets_stay_diagnostic() {
     let mut bus = Memory::new(vec![]).unwrap();
     target(&mut bus, TARGET, PROBE);
     let mut cpu = Cpu::new(TARGET);
     cpu.instruction_set = InstructionSet::Thumb;
     cpu.registers[0] = UNUSED;
-    assert_eq!(
-        cpu.step(&mut bus),
-        Err(CpuError::Memory(MemoryError::Unmapped(UNUSED)))
-    );
+    cpu.step(&mut bus).unwrap();
+    assert_eq!(cpu.registers[6], expected(TARGET));
 
     for destination in [0x03ff_fffc, 0x03ff_fffe, 0x0e00_0000] {
         let mut bus = Memory::new(0xe12f_ff14_u32.to_le_bytes().to_vec()).unwrap();

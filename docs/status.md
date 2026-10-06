@@ -28,7 +28,7 @@ Update this file when a feature lands or a limit is removed.
 - Original ARM graphics demo that uses DMA, BIOS VBlank waiting, and a ROM-side IRQ callback.
 - Sixteen active 32-bit CPU registers, with ARM7 mode-specific register banks.
 - Persistent ARM/Thumb instruction buffering, sequential fetch retention, branch/vector target pairs, and deferred fetch diagnostics.
-- Shared mapped fetch samples for instruction retention, supported open-bus values, BIOS snapshots, and Thumb IWRAM refill history.
+- Shared mapped fetch samples for instruction retention, supported open-bus values, BIOS snapshots, and IWRAM refill history.
 - User, System, Supervisor, IRQ, FIQ, Abort, and Undefined modes.
 - Current and saved program status registers (`CPSR`/`SPSR`), with `MRS`/`MSR` transfers.
 - ARM/Thumb software interrupts (`SWI`), exception vectors, and status-restoring returns.
@@ -77,8 +77,8 @@ Update this file when a feature lands or a limit is removed.
 - ARM test/compare Rd=15 status restoration, without a PC result write or nominal refill.
 - ARM unused-memory data reads return a PC+8 word snapshot, with normal byte lanes and load rotation.
 - Thumb unused-memory reads use repeated PC+4 halfwords in 16-bit code regions and aligned PC+4 words in BIOS/OAM.
-- Sequential Thumb IWRAM history retains fetched and data-access lanes, with known-bit tracking and diagnostic rollback.
-- Successful refills into Thumb IWRAM establish bus history from the target and target+2 halfwords, including exception returns.
+- Persistent IWRAM lanes track ARM/Thumb fetches, CPU data accesses, and successful DMA, with known-bit tracking and diagnostic rollback.
+- Cold fills and ARM/Thumb target pairs update local history; state changes and BIOS IRQ entry do not erase it.
 - Little-endian byte, halfword, and word reads/writes.
 - ARM7TDMI word-load rotation, aligned stores, and odd-address halfword-load behavior.
 - Explicit errors for unsupported instructions when their condition passes, and for unsupported memory accesses.
@@ -137,11 +137,11 @@ Other public suites remain unverified. These results do not establish full CPU o
 The runner requires known completion addresses and has no debug-port protocol, scripted input, or rendered-image assertions.
 
 ARM data reads from unused address ranges use a bounded [PC+8 open-bus snapshot](hardware/cpu.md#arm-unused-memory-data-reads).
-Thumb reads use [region-dependent snapshots](hardware/cpu.md#thumb-unused-memory-data-reads) and bounded sequential IWRAM lane history.
-Cold or invalidated IWRAM history remains diagnostic until all lanes are known.
-Refills into Thumb IWRAM establish new target-pair history after the instruction succeeds.
-Accepted machine IRQs, unsupported refills, and other execution states/regions invalidate continuation history.
-Successful DMA updates existing Thumb IWRAM continuation lanes for actual IWRAM accesses, before the resumed PC+4 sample.
+Thumb reads use [region-dependent snapshots](hardware/cpu.md#thumb-unused-memory-data-reads) and persistent local IWRAM lanes.
+Only actual IWRAM fetches and data accesses drive those lanes, independently of CPU state and executing region.
+Cold fills and target pairs establish both lanes when all required samples are mapped.
+State changes, other-region execution, and BIOS IRQ entry preserve local history; failed instructions discard staged updates.
+Successful DMA can establish lanes before CPU startup. Resumed fetches then update their addressed lanes.
 ARM/Thumb instruction buffering retains sequential instructions and refill target pairs.
 Instruction buffering and supported bus history now consume the same mapped fetch samples, without sharing retained storage.
 Complete ARM bus history, exact region-crossing bus behavior, general DMA handoff, and unused/write-only I/O open bus remain incomplete.
@@ -155,7 +155,7 @@ Writes to cartridge addresses return errors instead of modeling cartridge hardwa
 
 ## Next steps
 
-1. Extend the shared fetch-sample model to verified cross-state bus history and region crossings.
+1. Extend shared fetch samples to verified general-bus history and region-crossing snapshots.
    General DMA open-bus reads and sub-instruction arbitration remain separate from retained channel data and local IWRAM lanes.
    Keep unknown history diagnostic until fetch ordering and latch ownership have independent coverage.
    Validate BIOS snapshots with independent hardware tests before claiming exact refill or data-access history.

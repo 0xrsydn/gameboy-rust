@@ -247,12 +247,8 @@ fn cold_iwram_thumb_reads_and_unused_fetches_do_not_reuse_arm_context() {
     bus.write16(0x0300_0100, 0x6801).unwrap(); // IWRAM Thumb LDR r1,[r0]
     cpu.registers[15] = 0x0300_0100;
     cpu.instruction_set = InstructionSet::Thumb;
-    let before = cpu.clone();
-    assert_eq!(
-        cpu.step(&mut bus),
-        Err(CpuError::Memory(MemoryError::Unmapped(UNUSED)))
-    );
-    assert_eq!(cpu, before);
+    cpu.step(&mut bus).unwrap();
+    assert_eq!(cpu.registers[1], 0); // Actual cold-fill lanes, not the prior ARM snapshot.
 }
 
 #[test]

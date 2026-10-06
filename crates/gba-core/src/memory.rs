@@ -4,6 +4,8 @@ mod fetch;
 #[cfg(test)]
 mod fetch_tests;
 mod iwram_bus;
+#[cfg(test)]
+mod iwram_history_tests;
 pub(crate) use fetch::InstructionFetch;
 use iwram_bus::IwramBus;
 
@@ -69,9 +71,9 @@ struct CpuAccess {
 /// Work/video/palette RAM, OAM, cartridge ROM, optional BIOS, and supported I/O.
 /// Unused-memory reads use ARM PC+8 or supported region-dependent Thumb snapshots.
 /// Protected BIOS reads separately retain the snapshot from BIOS execution.
-/// Sequential Thumb IWRAM accesses retain addressed bus lanes transactionally.
-/// Successful refills into Thumb IWRAM sample the target pair to establish history.
-/// DMA accesses drive existing Thumb IWRAM continuation lanes before the next fetch.
+/// ARM/Thumb IWRAM fetches and data accesses retain local bus lanes transactionally.
+/// Cold fills and target pairs drive the same latch, independently of executing region.
+/// Successful DMA accesses drive local lanes even before the first CPU instruction.
 /// Channel data remains separate; general and sub-instruction CPU bus handoff is unmodeled.
 /// Instruction buffering and supported bus history consume shared fetch samples.
 /// Complete bus ownership and per-access timing remain unmodeled.
@@ -374,19 +376,27 @@ impl Memory {
         &mut self,
         pc: u32,
         instruction_set: InstructionSet,
+        fill: Option<&[InstructionFetch; 2]>,
         fetch: &InstructionFetch,
     ) {
         debug_assert!(self.cpu_access.is_none());
         debug_assert_eq!(fetch.state, instruction_set);
         debug_assert_eq!(fetch.address, pc.wrapping_add(2 * instruction_set.width()));
-        // Consume the pipeline's new fetch, never a retained opcode or a second read.
-        // Missing lookahead must not fail an instruction that never uses it.
+        // Cold fills drive current/decode fetches; retained instructions never replay them.
+        // Stage the new lookahead last, before data accesses and the entry snapshot.
+        self.iwram_bus.begin();
+        if let Some(fill) = fill {
+            for (index, sample) in fill.iter().enumerate() {
+                debug_assert_eq!(sample.state, instruction_set);
+                debug_assert_eq!(
+                    sample.address,
+                    pc.wrapping_add(index as u32 * instruction_set.width())
+                );
+                self.drive_iwram_fetch(sample);
+            }
+        }
+        self.drive_iwram_fetch(fetch);
         let same_region = fetch.address >> 24 == pc >> 24;
-        let iwram_pc = (instruction_set == InstructionSet::Thumb && pc >> 24 == 3).then_some(pc);
-        let fetched = same_region
-            .then(|| fetch.instruction.as_ref().ok().map(|value| *value as u16))
-            .flatten();
-        self.iwram_bus.begin(iwram_pc, fetched);
         let prefetch = match instruction_set {
             InstructionSet::Arm => fetch.bus_word,
             InstructionSet::Thumb if !same_region => None,
@@ -396,12 +406,12 @@ impl Memory {
         self.cpu_access = Some(CpuAccess { pc, prefetch });
     }
 
-    pub(crate) fn end_cpu_access(&mut self, succeeded: bool, sequential: bool) {
+    pub(crate) fn end_cpu_access(&mut self, succeeded: bool) {
         if succeeded {
             // Timed and untimed CPU execution both consume a resume. Errors do not.
             self.cpu_resume_nonsequential = false;
         }
-        self.iwram_bus.finish(succeeded, sequential);
+        self.iwram_bus.finish(succeeded);
         if let Some(access) = self.cpu_access.take() {
             if succeeded && access.pc < BIOS_SIZE as u32 {
                 // Commit only successful instruction snapshots under our diagnostic policy.
@@ -411,25 +421,30 @@ impl Memory {
         }
     }
 
-    /// Consume the same target samples that fill the CPU's instruction buffer.
-    /// Incomplete or unsupported refills stay unknown without failing the branch early.
+    fn drive_iwram_fetch(&self, fetch: &InstructionFetch) {
+        if let Ok(value) = fetch.instruction {
+            let width = match fetch.state {
+                InstructionSet::Arm => AccessWidth::Word,
+                InstructionSet::Thumb => AccessWidth::Halfword,
+            };
+            self.iwram_bus.access(fetch.address, width, value);
+        }
+    }
+
+    /// Successful IWRAM target fetches drive their lanes in order, in either CPU state.
+    /// Other-region and unavailable target fetches leave the local latch unchanged.
     pub(crate) fn refill_cpu_bus_history(&mut self, fetches: &[InstructionFetch; 2]) {
-        self.iwram_bus.invalidate();
+        self.iwram_bus.begin();
         let [first, second] = fetches;
         debug_assert_eq!(first.state, second.state);
         debug_assert_eq!(
             second.address,
             first.address.wrapping_add(first.state.width())
         );
-        if first.state == InstructionSet::Thumb
-            && first.address >> 24 == 3
-            && second.address >> 24 == 3
-        {
-            if let (Ok(first_value), Ok(second_value)) = (&first.instruction, &second.instruction) {
-                self.iwram_bus
-                    .refill(first.address, [*first_value as u16, *second_value as u16]);
-            }
+        for fetch in fetches {
+            self.drive_iwram_fetch(fetch);
         }
+        self.iwram_bus.finish(true);
     }
 
     fn can_write_power_control(&self) -> bool {

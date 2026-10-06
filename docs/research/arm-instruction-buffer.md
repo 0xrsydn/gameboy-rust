@@ -75,7 +75,8 @@ The current instruction address still selects nominal code cost rather than a se
 ARM PC+8 open bus and protected BIOS readback remain separate snapshots.
 The [shared fetch sample](shared-fetch-samples.md) supplies the instruction-buffer entry and supported bus snapshots without duplicate reads.
 No unified per-access bus model exists yet.
-The target samples do not establish complete ARM IWRAM or BIOS bus history.
+ARM IWRAM target samples now drive the [persistent local latch](iwram-bus-history.md).
+Complete BIOS and general-bus history remain unimplemented.
 Instruction-state-changing compare quirks, Game Pak prefetch, and DMA arbitration remain incomplete.
 DMA still runs between whole instructions, not during their data accesses or internal cycles.
 

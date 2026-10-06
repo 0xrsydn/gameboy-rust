@@ -30,10 +30,11 @@ The repository is a Cargo workspace with three crates:
 | `crates/gba-core/src/cpu/bios_access_tests.rs` | Original CPU BIOS protection regressions for retained history, modes, widths, exception returns, and diagnostics |
 | `crates/gba-core/src/cpu/thumb_bios_access_tests.rs` | Thumb BIOS aligned-word snapshots, transitions, load lanes, boundaries, diagnostics, and nominal timing |
 | `crates/gba-core/src/cpu/thumb_open_bus_tests.rs` | Region-dependent Thumb open bus, mirrors, widths, transfers, source boundaries, isolation, and nominal timing |
-| `crates/gba-core/src/cpu/iwram_open_bus_tests.rs` | Sequential IWRAM lane history, access widths, isolation, errors, refills, IRQ invalidation, and nominal timing |
-| `crates/gba-core/src/cpu/iwram_dma_tests.rs` | Bounded DMA continuation lanes, access ordering, channel isolation, diagnostics, and resume snapshots |
+| `crates/gba-core/src/cpu/iwram_open_bus_tests.rs` | Persistent IWRAM lanes, cold fills, access widths, isolation, errors, refills, IRQ preservation, and nominal timing |
+| `crates/gba-core/src/cpu/iwram_dma_tests.rs` | DMA lane updates, cold/resumed fetch ordering, channel isolation, diagnostics, and IRQ preservation |
 | `crates/gba-core/src/cpu/iwram_refill_tests.rs` | Thumb IWRAM target-pair refills, state changes, exception returns, boundaries, isolation, and nominal costs |
-| `crates/gba-core/src/memory/iwram_bus.rs` | Transactional known-lane history for Thumb IWRAM execution and target-pair refills |
+| `crates/gba-core/src/memory/iwram_bus.rs` | Transactional persistent IWRAM lanes for ARM/Thumb fetches, CPU data accesses, and DMA |
+| `crates/gba-core/src/memory/iwram_history_tests.rs` | Cross-state latch ownership, ARM accesses/refills, nonlocal code, pre-start DMA, IRQ preservation, and rollback |
 | `crates/gba-core/src/cpu/compare_psr_tests.rs` | Original Rd=15 test/compare status restoration, flags, bank, and timing regressions |
 | `crates/gba-core/src/cpu/status_tests.rs`, `crates/gba-core/src/cpu/exception_tests.rs` | Status, banking, exception, and return tests |
 | `crates/gba-core/src/cpu/thumb_tests.rs` | Thumb instructions, state switching, and decoder checks |

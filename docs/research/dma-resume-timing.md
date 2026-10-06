@@ -56,7 +56,7 @@ Stores and 128 KiB ROM boundaries already use N and receive no duplicate cost.
 Game Pak prefetch remains unimplemented; WAITCNT bit 14 does not alter this nominal timing path.
 
 This change does not select a DMA value for CPU open-bus reads.
-DMA channel data, bounded IWRAM lane history, and protected BIOS history remain separate.
+DMA channel data, persistent local IWRAM lanes, and protected BIOS history remain separate.
 General bus-data ownership and exact resume timing still need independent per-access validation.
 
 ## Original regression coverage

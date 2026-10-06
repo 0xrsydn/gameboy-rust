@@ -50,7 +50,7 @@ Hardware references used for the core:
 - [NanoBoyAdvance keypad implementation](https://github.com/nba-emu/NanoBoyAdvance/blob/master/src/nba/src/hw/keypad/keypad.cc), compared for control access widths; its AND/retrigger behavior differs from the chosen polling model.
 - [mGBA keypad timing issue](https://github.com/mgba-emu/mgba/issues/2490), for frontend frame-based input timing limits.
 - [Tonc hardware interrupts](https://gbadev.net/tonc/interrupts.html), for keypad source enable and IF/IE bit 12.
-- [GBATEK memory mirrors, video byte writes, and unused-memory reads](https://problemkaputt.de/gbatek-gba-unpredictable-things.htm), for unused address ranges, ARM PC+8 open bus, byte lanes, the distinct Thumb region/history rules, and PC-dependent BIOS read protection. The Thumb implementation follows its 16-bit-region and BIOS/OAM formulas. IWRAM has bounded sequential lane history and Thumb target-pair refill samples; region transitions remain unsupported.
+- [GBATEK memory mirrors, video byte writes, and unused-memory reads](https://problemkaputt.de/gbatek-gba-unpredictable-things.htm), for unused address ranges, ARM PC+8 open bus, byte lanes, the distinct Thumb region/history rules, and PC-dependent BIOS read protection. The Thumb implementation follows its 16-bit-region and BIOS/OAM formulas. IWRAM has persistent local lanes across ARM/Thumb fetches, data accesses, and DMA; region-crossing snapshots remain unsupported.
 - [nocash GBA open-bus discussion](https://www.ngemu.com/threads/gba-open-bus.170809/), for ARM prefetch, repeated Thumb halfwords in 16-bit regions, aligned BIOS/OAM words, and history-dependent IWRAM lanes. Its data-load overwrite note prevents treating P+2 as a universal IWRAM rule.
 - [mGBA memory implementation](https://github.com/mgba-emu/mgba/blob/master/src/gba/memory.c), reviewed for `GBALoadBad`, ARM prefetch sourcing, byte/halfword lane selection, and separate DMA/history behavior. Also reviewed its BIOS region-exit prefetch retention and protected-load lane selection.
 - [GBATEK GBA memory map and bus widths](https://problemkaputt.de/gbatek-gba-memory-map.htm).
@@ -110,7 +110,10 @@ IWRAM lane-history research:
 - [ares IWRAM accesses](https://github.com/ares-emulator/ares/blob/6f6786e04f0822a3475463df284f313ab8518d51/ares/gba/cpu/memory.cpp) and [bus dispatch](https://github.com/ares-emulator/ares/blob/6f6786e04f0822a3475463df284f313ab8518d51/ares/gba/cpu/bus.cpp), for separate byte-lane retention and debugger isolation.
 - [jgenesis issue 676](https://github.com/jsgroth/jgenesis/issues/676) and [its correction](https://github.com/jsgroth/jgenesis/commit/fab6e2ccc60e492dd68b7f1e927b0829a6d80195), for distinguishing the IWRAM latch from reads to other regions.
 
-See [IWRAM Thumb bus history](research/iwram-bus-history.md). These were source reviews, not local hardware or external-emulator test runs.
+See [persistent IWRAM bus history](research/iwram-bus-history.md).
+The pinned ares helpers also support state-independent local ownership: they do not gate updates on the executing PC or CPU state.
+The pinned NanoBoyAdvance loop/refill helpers below support driving actual new samples, without replaying retained instruction slots.
+These were source reviews, not local hardware or external-emulator test runs.
 
 IWRAM refill research:
 
@@ -136,7 +139,7 @@ DMA IWRAM continuation research:
   Its [DMA controller](https://github.com/jsgroth/jgenesis/blob/fab6e2ccc60e492dd68b7f1e927b0829a6d80195/backend/gba-core/src/dma.rs) and [memory storage](https://github.com/jsgroth/jgenesis/blob/fab6e2ccc60e492dd68b7f1e927b0829a6d80195/backend/gba-core/src/memory.rs) distinguish channel data from local bus lanes.
 - The pinned ares DMA, bus dispatch, and IWRAM helpers above independently use the same local lane ownership.
 
-See [the bounded DMA continuation extension](research/iwram-bus-history.md#dma-continuation-extension).
+See [the DMA local-lane extension](research/iwram-bus-history.md#dma-continuation-extension).
 These source reviews do not establish sub-instruction arbitration, exact CPU resume timing, or hardware conformance.
 
 DMA resume-timing research:

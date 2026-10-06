@@ -33,11 +33,12 @@ Supported 16-bit regions duplicate that halfword for bus observation.
 BIOS/OAM samples read the adjacent halfword too, without rereading the instruction bytes.
 Thumb IWRAM supplies the fetched halfword to the existing lane-retaining transaction instead of creating a full bus word.
 
-The CPU passes only its newly sampled P+8 or P+4 observation to `begin_cpu_access`.
+For retained pipelines, the CPU passes only its new P+8 or P+4 sample to `begin_cpu_access`.
+The later persistent IWRAM extension also passes newly sampled current/decode entries for cold fills.
 It does not replay the bus observations of retained current/decode instructions.
 The consumer performs no mapped memory read.
-After successful control flow, the same target samples fill the instruction buffer and supported Thumb IWRAM refill history.
-Machine IRQ entry uses this refill path; the ARM target still invalidates Thumb IWRAM continuation history.
+After successful control flow, the same target samples fill the instruction buffer and update local IWRAM history in either state.
+Machine IRQ entry uses this refill path; BIOS vector fetches leave IWRAM lanes unchanged.
 
 Instruction buffers and BIOS/IWRAM latches remain separate retained state.
 Sampling alone changes no CPU access context, latch, device clock, DMA resume marker, or data-timing trace.
@@ -46,11 +47,10 @@ A retry takes a new lookahead sample while retaining the previously committed in
 Unavailable lookahead remains diagnostic only when consumed by an instruction or a data read that needs it.
 Strict instruction reads never use protected BIOS or unused-memory data fallback.
 
-## Deliberately unchanged limits
+## Current scope and limits
 
-- Cold pipeline filling does not establish previously unknown IWRAM history.
+- Cold fills and cross-state local IWRAM history are now implemented in the [persistent-latch extension](iwram-bus-history.md).
 - Thumb 16 MiB region crossings remain unsupported for bus snapshots.
-- ARM-wide local IWRAM history and cross-state latch ownership remain incomplete.
 - BIOS history commits after successful BIOS instruction execution; target refills do not establish additional BIOS history.
 - All unused-memory data reads within an instruction still use its entry snapshot.
 - DMA remains scheduled between whole instructions. Sampling does not add an interleaving point.

@@ -50,8 +50,8 @@ CPU clones own independent buffers; full CPU equality includes them.
 ## Separation from bus history and timing
 
 Instruction retention and data-bus snapshots remain separate models.
-Cold instruction-buffer filling does not make unknown IWRAM bus lanes known.
-Successful DMA can update existing IWRAM bus lanes without changing retained CPU instructions.
+Cold instruction-buffer filling now drives its actual IWRAM samples under the [persistent-latch model](iwram-bus-history.md).
+Successful DMA can establish or update IWRAM bus lanes without changing retained CPU instructions.
 Refill bus history and instruction buffering now consume the same captured target pair without a second mapped read.
 
 Buffer samples add no nominal cycles or data accesses.

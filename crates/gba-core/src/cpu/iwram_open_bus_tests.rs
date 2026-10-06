@@ -249,17 +249,18 @@ fn block_transfers_leave_the_last_iwram_word_and_keep_writeback() {
 }
 
 #[test]
-fn cold_history_is_unknown_but_successful_fetches_or_word_accesses_can_establish_it() {
+fn cold_pipeline_fills_establish_history_before_the_first_thumb_data_read() {
     for pc in [CODE, CODE + 2] {
         let (mut cpu, mut bus) = program(pc, &[PROBE, PROBE, 0x1111, 0x2222]);
-        let before = cpu.clone();
-        assert_eq!(
-            cpu.step(&mut bus),
-            Err(CpuError::Memory(MemoryError::Unmapped(UNUSED)))
-        );
-        assert_eq!(cpu, before);
-        bus.write16(pc, NOP).unwrap();
         cpu.step(&mut bus).unwrap();
+        assert_eq!(
+            cpu.registers[6],
+            if pc & 2 == 0 {
+                0x6806_1111
+            } else {
+                0x1111_6806
+            }
+        );
         cpu.step(&mut bus).unwrap();
         assert_eq!(
             cpu.registers[6],
@@ -288,7 +289,12 @@ fn failed_steps_discard_prefetch_history_before_retry() {
             cpu.step(&mut bus).unwrap();
             assert_eq!(
                 cpu.registers[6],
-                drive(DATA, pc + 6, &0x9bcd_u16.to_le_bytes())
+                // Debugger invalidation starts a fresh fill: PC+2 is now also fetched.
+                if pc & 2 == 0 {
+                    0x9bcd_1111
+                } else {
+                    0x1111_9bcd
+                }
             );
             assert_eq!(bus.cycles(), 0);
         }
@@ -319,23 +325,19 @@ fn taken_control_flow_refills_history_even_when_target_is_fallthrough() {
 }
 
 #[test]
-fn pc_discontinuities_and_non_iwram_execution_do_not_reuse_old_history() {
+fn pc_discontinuities_fill_from_actual_target_bytes_not_stale_instruction_slots() {
     let (mut cpu, mut bus) = program(CODE, &[SEED, PROBE, 0x1111, 0x2222]);
     cpu.step(&mut bus).unwrap();
     bus.write16(CODE + 0x100, PROBE).unwrap();
     cpu.registers[15] = CODE + 0x100;
-    assert_eq!(
-        cpu.step(&mut bus),
-        Err(CpuError::Memory(MemoryError::Unmapped(UNUSED)))
-    );
+    cpu.step(&mut bus).unwrap();
+    assert_eq!(cpu.registers[6], 0); // New target's next two halfwords are zero.
     bus.write16(0x0200_0000, NOP).unwrap();
     cpu.registers[15] = 0x0200_0000;
     cpu.step(&mut bus).unwrap();
     cpu.registers[15] = CODE + 2;
-    assert_eq!(
-        cpu.step(&mut bus),
-        Err(CpuError::Memory(MemoryError::Unmapped(UNUSED)))
-    );
+    cpu.step(&mut bus).unwrap();
+    assert_eq!(cpu.registers[6], 0x2222_1111);
 }
 
 #[test]
@@ -399,7 +401,7 @@ fn history_updates_add_no_data_accesses_or_device_cycles() {
 }
 
 #[test]
-fn accepted_irq_invalidates_history_before_any_handler_instruction() {
+fn accepted_irq_preserves_local_history_before_any_handler_iwram_access() {
     let (cpu, bus) = program(CODE, &[SEED, PROBE, 0x1111, 0x9bcd]);
     let mut machine = Machine::new(cpu, bus);
     machine.step().unwrap();
@@ -413,8 +415,6 @@ fn accepted_irq_invalidates_history_before_any_handler_instruction() {
     machine.memory_mut().advance_cycles(1);
     assert_eq!(machine.step().unwrap(), StepKind::IrqEntry);
     // Probe the paused instruction with a separate CPU, without executing BIOS.
-    assert_eq!(
-        interrupted.step(machine.memory_mut()),
-        Err(CpuError::Memory(MemoryError::Unmapped(UNUSED)))
-    );
+    interrupted.step(machine.memory_mut()).unwrap();
+    assert_eq!(interrupted.registers[6], 0x9bcd_80a5);
 }

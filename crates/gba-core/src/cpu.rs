@@ -238,19 +238,16 @@ impl Cpu {
             instruction,
             continuation,
             lookahead,
+            fill,
         } = fetched;
         // Record the executing instruction, not an operand's pipelined PC value.
         // Always clear the access context, including on diagnostic errors.
         let pc = self.pc();
         let instruction_set = self.instruction_set;
         let refill = self.instruction_refills(instruction);
-        let sequential_thumb = self.instruction_set == InstructionSet::Thumb && !refill;
-        memory.begin_cpu_access(pc, self.instruction_set, &lookahead);
+        memory.begin_cpu_access(pc, self.instruction_set, fill.as_ref(), &lookahead);
         let result = self.execute_instruction(instruction, memory);
-        let sequential = sequential_thumb
-            && self.instruction_set == InstructionSet::Thumb
-            && self.pc() == pc.wrapping_add(2);
-        memory.end_cpu_access(result.is_ok(), sequential);
+        memory.end_cpu_access(result.is_ok());
         if result.is_ok() {
             if refill {
                 self.refill_pipeline(memory);

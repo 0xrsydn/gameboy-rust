@@ -205,8 +205,8 @@ fn failed_dma_and_failed_resumed_instruction_preserve_last_completed_dma_history
 }
 
 #[test]
-fn partial_continuation_can_gain_known_lanes_but_cold_direct_entry_stays_unknown() {
-    let (mut cpu, mut bus) = program(CODE, 0x46c0); // NOP fills only the low lane.
+fn dma_updates_retained_lanes_but_a_cold_pipeline_fill_drives_them_again() {
+    let (mut cpu, mut bus) = program(CODE, 0x46c0); // Cold NOP fills both lanes.
     cpu.step(&mut bus).unwrap();
     bus.write32(EWRAM, DATA).unwrap();
     configure(&mut bus, 3, EWRAM, IWRAM, 1, true);
@@ -214,19 +214,17 @@ fn partial_continuation_can_gain_known_lanes_but_cold_direct_entry_stays_unknown
     cpu.step(&mut bus).unwrap();
     assert_eq!(cpu.registers[6], resumed(DATA.to_le_bytes(), CODE));
 
-    // No executed instruction or refill established an expected continuation PC.
+    // DMA establishes the latch, but the later cold fill drives both instruction lanes.
     let (mut cpu, mut bus) = program(CODE, PROBE);
     bus.write32(EWRAM, DATA).unwrap();
     configure(&mut bus, 3, EWRAM, IWRAM, 1, true);
     bus.step_dma().unwrap().unwrap();
-    assert_eq!(
-        cpu.step(&mut bus),
-        Err(CpuError::Memory(MemoryError::Unmapped(UNUSED)))
-    );
+    cpu.step(&mut bus).unwrap();
+    assert_eq!(cpu.registers[6], 0x6806_4321);
 }
 
 #[test]
-fn irq_and_pc_discontinuity_do_not_reuse_dma_updated_continuations() {
+fn irq_preserves_dma_history_while_pc_discontinuity_performs_a_new_fill() {
     for irq in [false, true] {
         let mut machine = ready(CODE);
         machine.memory_mut().write32(EWRAM, DATA).unwrap();
@@ -245,9 +243,14 @@ fn irq_and_pc_discontinuity_do_not_reuse_dma_updated_continuations() {
             cpu.registers[15] = CODE + 0x100;
             machine.memory_mut().write16(cpu.pc(), PROBE).unwrap();
         }
+        cpu.step(machine.memory_mut()).unwrap();
         assert_eq!(
-            cpu.step(machine.memory_mut()),
-            Err(CpuError::Memory(MemoryError::Unmapped(UNUSED)))
+            cpu.registers[6],
+            if irq {
+                resumed(DATA.to_le_bytes(), CODE)
+            } else {
+                0
+            }
         );
     }
 }
@@ -257,7 +260,7 @@ fn arm_and_other_thumb_regions_keep_their_fetch_snapshot_not_dma_data() {
     for thumb in [false, true] {
         for pc in [0x0200_0100, 0x0300_0100, 0x0700_0100] {
             if thumb && pc >> 24 == 3 {
-                continue; // The bounded IWRAM continuation is tested separately.
+                continue; // Persistent IWRAM lanes are tested separately.
             }
             let mut bus = Memory::new(vec![]).unwrap();
             let mut cpu = Cpu::new(pc);

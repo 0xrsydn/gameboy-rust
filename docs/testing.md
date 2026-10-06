@@ -65,10 +65,11 @@ Compare/status CPU regressions verify saved flags/masks, bank switching, sequent
 Load-alias regressions cover widths, signed/unaligned values, immediate/register offsets, pre/post-indexing, every non-PC register bank, and address wrapping.
 They verify loaded-value precedence, preserved flags, unchanged stores, nominal timing, I/O reads before device progress, deferred IRQ delivery, and atomic errors.
 ARM open-bus regressions cover unused-range boundaries, PC+8 source regions, byte lanes, signed/unaligned loads, writeback, and block loads.
-They check branch-target resampling, missing lookahead, skipped conditions, nominal timing, device progress, and retained host/fetch/cold-IWRAM/DMA diagnostics.
+They check branch-target resampling, missing lookahead, skipped conditions, nominal timing, device progress, and retained host/fetch/DMA diagnostics.
 Thumb open-bus tests cover supported code regions, both instruction alignments, ROM windows, mirrors, and physical memory wrap.
 They check widths, sign extension, rotation, block/stack/PC loads, aliases, modes, state preservation, and sequential/branch resampling.
-Short-ROM tests require only the fetched halfword in 16-bit regions. Cold IWRAM and region-crossing tests retain explicit diagnostics.
+Short-ROM tests require only the fetched halfword in 16-bit regions. Region-crossing tests retain explicit diagnostics.
+Cold IWRAM tests now assert actual current/decode/lookahead lane updates before the first data read.
 Sequential IWRAM regressions check retained lanes across fetches, reads, writes, mirrors, and physical RAM wrap.
 They cover raw bus values before load rotation/sign extension, all modes, block transfers, and isolation from other memory regions.
 Known-bit tests reject incomplete words. Transaction tests verify discarded partial updates and preserved history after errors.
@@ -77,8 +78,9 @@ Refill tests cover ARM/Thumb BX, Thumb branches and BL, high-register PC writes,
 They check both target alignments, mirrors/wrap, captured target+2 versus later target+4, widths, sign extension, and rotation.
 Original SWI/IRQ handlers verify return-time history. Failed returns, cold entry, region boundaries, DMA lane effects, and BIOS isolation retain checks.
 DMA tests compare source/destination lane updates against a byte-array reference, then apply the resumed PC+4 fetch.
-They cover channel preemption, blocked sources, failures, mirrors, partial/cold continuations, and other-region snapshot isolation.
-IRQ and PC-discontinuity tests retain conservative invalidation; timed/untimed tests verify CPU results and nominal clock costs.
+They cover channel preemption, blocked sources, failures, mirrors, pre-start lane establishment, cold fills, and other-region snapshot isolation.
+IRQ tests verify local-latch preservation; PC discontinuities verify new pipeline-fill samples.
+Timed/untimed tests verify CPU results and nominal clock costs.
 Host/fetch isolation, separate BIOS history, unsupported stores/data regions, nominal device progression, and DMA diagnostics also have checks.
 ARM instruction-buffer tests verify retained P+4/P+8 words across CPU stores, DMA transfers, and host writes.
 They cover refill target pairs, PC writes to fallthrough, conditional branches, ARM/Thumb transitions, exception entry/return, and deferred fetch errors.
@@ -88,6 +90,9 @@ The display-runner error test allows an already buffered branch to complete befo
 Thumb instruction-buffer tests verify retained P+2/P+4 halfwords, BL prefix/suffix behavior, and state-tagged target pairs.
 They also cover stores, host/DMA writes, saved-state returns, deferred errors, mirrors, debugger repair, and nominal timing.
 Bus-history repair tests explicitly invalidate buffered code or repair a data address; failure checks retain full CPU equality.
+Debugger invalidation itself preserves local lanes, but the next cold fill drives current mapped instruction bytes.
+Persistent-latch tests cover ARM data accesses, ARM/Thumb target pairs, non-IWRAM code, IRQ handlers, and pre-start DMA.
+They also verify partial lanes and rollback of both cold-fill and resumed-instruction samples.
 Shared fetch-sample tests mutate memory between internal sampling and consumption to reject duplicate reads.
 They cover ARM words, Thumb narrow/wide buses, IWRAM lanes, target pairs, BIOS retention, and retry after failure.
 This test-only split is not a DMA scheduling feature. Separate tests verify strict fetch errors and no timing/history side effects.
@@ -257,7 +262,8 @@ They cover all processor modes, load widths, lanes, rotation, both Thumb code al
 They verify direct reads while executing inside BIOS, re-entry, SWI/IRQ returns, host-inspection isolation, and original-boot provenance.
 Thumb tests cover sequential snapshots, instruction-state transitions, SWI entry, and RAM-backed POP exits.
 Unknown history, last valid fetch words, missing lookahead, and diagnostic-step retention have explicit checks.
-Unknown Thumb IWRAM history remains diagnostic. Separate tests cover sequential/refill history, general Thumb snapshots, and retained BIOS history.
+Unknown IWRAM lanes remain diagnostic until observed accesses establish them; mapped cold pipeline fills now establish both halves.
+Separate tests cover sequential/refill history, general Thumb snapshots, and retained BIOS history.
 Protected loads keep normal nominal costs and advance devices only through machine stepping.
 Firmware readback regressions separately verify documented boot, SoftReset, returning SWI, IRQ callback, and IRQ return words.
 They execute ARM/Thumb loads across widths and lanes, check caller state, and trace actual exits to their image data.

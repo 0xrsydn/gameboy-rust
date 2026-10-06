@@ -242,20 +242,18 @@ fn failed_thumb_steps_keep_previous_history_and_clear_access_context() {
 }
 
 #[test]
-fn outside_thumb_execution_keeps_bios_history_without_seeding_iwram_history() {
+fn outside_thumb_execution_keeps_bios_history_separate_from_cold_iwram_fills() {
     let mut memory = bus(0x6801, thumb_image(THUMB_ENTRY, BX_R5));
     let mut cpu = enter_thumb(&mut memory, THUMB_ENTRY, true);
     cpu.step(&mut memory).unwrap();
     assert_eq!(protected_word(&mut memory), OTHER);
-    memory.write16(0x0300_0100, 0x6801).unwrap(); // No preceding sequential IWRAM history.
+    memory.write16(0x0300_0100, 0x6801).unwrap(); // Cold IWRAM entry.
+    memory.write16(0x0300_0102, 0x6801).unwrap(); // Next protected BIOS read.
+    memory.write16(0x0300_0104, 0x1357).unwrap();
     cpu.registers[15] = 0x0300_0100;
     cpu.registers[0] = 0x4000;
-    let before = cpu.clone();
-    assert_eq!(
-        cpu.step(&mut memory),
-        Err(CpuError::Memory(MemoryError::Unmapped(0x4000)))
-    );
-    assert_eq!(cpu, before);
+    cpu.step(&mut memory).unwrap();
+    assert_eq!(cpu.registers[1], 0x6801_1357);
     assert_eq!(memory.read32(0x4000), Err(MemoryError::Unmapped(0x4000)));
     assert_eq!(protected_word(&mut memory), OTHER);
     cpu.registers[0] = 0;
