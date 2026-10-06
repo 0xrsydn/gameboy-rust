@@ -1,5 +1,6 @@
 //! Nominal Direct Sound and PSG pulse channels 1–2. No host audio output.
 
+mod modulation;
 mod pulse;
 use pulse::Pulse;
 
@@ -144,8 +145,8 @@ impl Audio {
             SOUNDCNT_H => self.control,
             SOUNDCNT_X => {
                 (u16::from(self.enabled) << 7)
-                    | u16::from(self.pulses[0].active)
-                    | (u16::from(self.pulses[1].active) << 1)
+                    | u16::from(self.pulses[0].modulation.active)
+                    | (u16::from(self.pulses[1].modulation.active) << 1)
             }
             SOUNDBIAS => self.bias,
             0x0400_0086 | 0x0400_008a => 0,

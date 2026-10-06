@@ -59,23 +59,23 @@ fn length_load_enable_extra_clock_expiry_and_zero_reload() {
     let mut pulse = start(1000, 2, 0xf0, 0);
     pulse.write(2, 63, 0); // One remaining length tick.
     pulse.clock(0); // Disabled length does not expire.
-    assert!(pulse.active);
+    assert!(pulse.modulation.active);
     pulse.write(5, 0x43, 1); // Enable before a step that does not clock length.
-    assert_eq!(pulse.length, 0);
-    assert!(!pulse.active);
+    assert_eq!(pulse.modulation.length, 0);
+    assert!(!pulse.modulation.active);
     pulse.write(5, 0xc3, 1); // Trigger with empty length reloads 63 in this phase.
-    assert_eq!(pulse.length, 63);
-    assert!(pulse.active);
+    assert_eq!(pulse.modulation.length, 63);
+    assert!(pulse.modulation.active);
     for _ in 0..62 {
         pulse.clock(0);
     }
-    assert!(pulse.active);
+    assert!(pulse.modulation.active);
     pulse.clock(0);
-    assert!(!pulse.active);
+    assert!(!pulse.modulation.active);
     pulse.clock(0);
-    assert_eq!(pulse.length, 0);
+    assert_eq!(pulse.modulation.length, 0);
     pulse.write(5, 0xc3, 0);
-    assert_eq!(pulse.length, 64);
+    assert_eq!(pulse.modulation.length, 64);
 }
 
 #[test]
@@ -83,11 +83,11 @@ fn simultaneous_length_enable_and_trigger_reload_after_extra_expiry() {
     let mut pulse = start(1000, 0, 0xf0, 0);
     pulse.write(2, 63, 0);
     pulse.write(5, 0xc3, 1);
-    assert_eq!(pulse.length, 63);
-    assert!(pulse.active);
+    assert_eq!(pulse.modulation.length, 63);
+    assert!(pulse.modulation.active);
     pulse.write(2, 62, 0);
     pulse.write(5, 0xc3, 1); // Already enabled: do not add another extra decrement.
-    assert_eq!(pulse.length, 2);
+    assert_eq!(pulse.modulation.length, 2);
 }
 
 #[test]
@@ -101,23 +101,23 @@ fn envelopes_step_at_selected_period_saturate_and_do_not_clear_status() {
             } else {
                 12u8.saturating_sub(tick)
             };
-            assert_eq!(pulse.volume, expected);
-            assert!(pulse.active);
+            assert_eq!(pulse.modulation.volume, expected);
+            assert!(pulse.modulation.active);
         }
     }
     let mut pulse = start(0, 1, 0x53, 0);
     pulse.clock(7);
     pulse.clock(7);
-    assert_eq!(pulse.volume, 5);
+    assert_eq!(pulse.modulation.volume, 5);
     pulse.clock(7);
-    assert_eq!(pulse.volume, 4);
+    assert_eq!(pulse.modulation.volume, 4);
     pulse.write(3, 0xa0, 0); // Period zero holds current volume until retrigger.
     for _ in 0..16 {
         pulse.clock(7);
     }
-    assert_eq!(pulse.volume, 4);
+    assert_eq!(pulse.modulation.volume, 4);
     pulse.write(5, 0x80, 0);
-    assert_eq!(pulse.volume, 10);
+    assert_eq!(pulse.modulation.volume, 10);
 }
 
 #[test]
@@ -125,31 +125,31 @@ fn live_envelope_configuration_retains_volume_and_dac_off_requires_retrigger() {
     let mut pulse = start(0, 1, 0x52, 0);
     pulse.clock(7);
     pulse.write(3, 0xa9, 0); // Change direction/period, not current volume or remaining tick.
-    assert_eq!(pulse.volume, 5);
+    assert_eq!(pulse.modulation.volume, 5);
     pulse.clock(7);
-    assert_eq!(pulse.volume, 6);
+    assert_eq!(pulse.modulation.volume, 6);
     pulse.write(3, 0, 0);
-    assert!(!pulse.active);
+    assert!(!pulse.modulation.active);
     assert_eq!(pulse.sample(), 0);
     pulse.write(3, 0x08, 0); // Rising envelope with initial zero has DAC enabled.
-    assert!(!pulse.active);
+    assert!(!pulse.modulation.active);
     pulse.write(5, 0x80, 0);
-    assert!(pulse.active);
-    assert_eq!(pulse.volume, 0);
+    assert!(pulse.modulation.active);
+    assert_eq!(pulse.modulation.volume, 0);
     pulse.write(3, 7, 0); // Period alone cannot enable DAC.
     pulse.write(5, 0x80, 0);
-    assert!(!pulse.active);
+    assert!(!pulse.modulation.active);
 }
 
 #[test]
 fn sweep_checks_trigger_overflow_and_second_calculation_after_update() {
-    assert!(!start(1500, 1, 0xf0, 0x11).active);
-    assert!(!start(1500, 1, 0xf0, 1).active); // Time zero still checks at trigger.
+    assert!(!start(1500, 1, 0xf0, 0x11).modulation.active);
+    assert!(!start(1500, 1, 0xf0, 1).modulation.active); // Time zero still checks at trigger.
     let mut pulse = start(1000, 1, 0xf0, 0x11);
-    assert!(pulse.active);
+    assert!(pulse.modulation.active);
     pulse.clock(2);
     assert_eq!(pulse.frequency, 1500);
-    assert!(!pulse.active); // Next calculated 2250 disables before another sweep tick.
+    assert!(!pulse.modulation.active); // Next calculated 2250 disables before another sweep tick.
 }
 
 #[test]
@@ -173,17 +173,17 @@ fn sweep_zero_period_shift_zero_and_subtraction_direction_rules() {
     }
     assert_eq!(pulse.frequency, 500); // Time zero suppresses periodic changes.
     let mut pulse = start(1200, 1, 0xf0, 0x10);
-    assert!(pulse.active); // Shift zero skips trigger-time overflow check.
+    assert!(pulse.modulation.active); // Shift zero skips trigger-time overflow check.
     pulse.clock(2);
-    assert!(!pulse.active); // Timed overflow check still applies.
+    assert!(!pulse.modulation.active); // Timed overflow check still applies.
     let mut pulse = start(1000, 1, 0xf0, 0x19);
     pulse.clock(2);
     assert_eq!(pulse.frequency, 500);
     pulse.write(0, 0x11, 0);
-    assert!(!pulse.active); // Clearing negate after subtraction disables the channel.
+    assert!(!pulse.modulation.active); // Clearing negate after subtraction disables the channel.
     let mut pulse = start(1000, 1, 0xf0, 0x18);
     pulse.write(0, 0x10, 0); // No subtraction calculation has happened.
-    assert!(pulse.active);
+    assert!(pulse.modulation.active);
 }
 
 #[test]
