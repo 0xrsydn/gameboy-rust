@@ -73,7 +73,8 @@ The existing destination-based refill summaries and one-shot DMA resume timing r
 The current instruction address still selects nominal code cost rather than a separately scheduled fetch address.
 
 ARM PC+8 open bus and protected BIOS readback remain separate snapshots.
-The instruction-buffer sample and those snapshots see mapped memory before instruction effects, but no unified per-access bus model exists yet.
+The [shared fetch sample](shared-fetch-samples.md) supplies the instruction-buffer entry and supported bus snapshots without duplicate reads.
+No unified per-access bus model exists yet.
 The target samples do not establish complete ARM IWRAM or BIOS bus history.
 Instruction-state-changing compare quirks, Game Pak prefetch, and DMA arbitration remain incomplete.
 DMA still runs between whole instructions, not during their data accesses or internal cycles.

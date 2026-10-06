@@ -1,6 +1,10 @@
 use std::{cell::Cell, error::Error, fmt};
 
+mod fetch;
+#[cfg(test)]
+mod fetch_tests;
 mod iwram_bus;
+pub(crate) use fetch::InstructionFetch;
 use iwram_bus::IwramBus;
 
 use crate::{
@@ -69,7 +73,8 @@ struct CpuAccess {
 /// Successful refills into Thumb IWRAM sample the target pair to establish history.
 /// DMA accesses drive existing Thumb IWRAM continuation lanes before the next fetch.
 /// Channel data remains separate; general and sub-instruction CPU bus handoff is unmodeled.
-/// CPU-owned ARM/Thumb instruction buffering does not yet drive complete bus history or timing.
+/// Instruction buffering and supported bus history consume shared fetch samples.
+/// Complete bus ownership and per-access timing remain unmodeled.
 pub struct Memory {
     external_ram: Vec<u8>,
     internal_ram: Vec<u8>,
@@ -365,78 +370,30 @@ impl Memory {
         self.io.next_event_cycles()
     }
 
-    pub(crate) fn begin_cpu_access(&mut self, pc: u32, instruction_set: InstructionSet) {
+    pub(crate) fn begin_cpu_access(
+        &mut self,
+        pc: u32,
+        instruction_set: InstructionSet,
+        fetch: &InstructionFetch,
+    ) {
         debug_assert!(self.cpu_access.is_none());
-        // Sample before execution, without data timing or open-bus recursion.
-        // Missing lookahead bytes must not fail an instruction that never uses them.
+        debug_assert_eq!(fetch.state, instruction_set);
+        debug_assert_eq!(fetch.address, pc.wrapping_add(2 * instruction_set.width()));
+        // Consume the pipeline's new fetch, never a retained opcode or a second read.
+        // Missing lookahead must not fail an instruction that never uses it.
+        let same_region = fetch.address >> 24 == pc >> 24;
         let iwram_pc = (instruction_set == InstructionSet::Thumb && pc >> 24 == 3).then_some(pc);
-        let fetched = iwram_pc
-            .filter(|pc| pc.wrapping_add(4) >> 24 == 3)
-            .and_then(|pc| self.snapshot_mapped_halfword(pc + 4));
+        let fetched = same_region
+            .then(|| fetch.instruction.as_ref().ok().map(|value| *value as u16))
+            .flatten();
         self.iwram_bus.begin(iwram_pc, fetched);
         let prefetch = match instruction_set {
-            InstructionSet::Arm => self.snapshot_mapped_word(pc.wrapping_add(8)),
-            InstructionSet::Thumb => self.snapshot_thumb_prefetch(pc),
+            InstructionSet::Arm => fetch.bus_word,
+            InstructionSet::Thumb if !same_region => None,
+            InstructionSet::Thumb if pc >> 24 == 3 => self.iwram_bus.snapshot(),
+            InstructionSet::Thumb => fetch.bus_word,
         };
         self.cpu_access = Some(CpuAccess { pc, prefetch });
-    }
-
-    fn snapshot_thumb_prefetch(&self, pc: u32) -> Option<u32> {
-        let address = pc.wrapping_add(4);
-        // Region-crossing fetches need pipeline history, not a rule chosen from the old PC.
-        if address >> 24 != pc >> 24 {
-            return None;
-        }
-        match pc >> 24 {
-            // BIOS and OAM drive a full word even for a halfword instruction fetch.
-            0x00 | 0x07 => self.snapshot_mapped_word(address & !3),
-            // The IWRAM halfword fetch replaces one lane of its retained bus word.
-            0x03 => self.iwram_bus.snapshot(),
-            // These 16-bit regions repeat the fetched halfword in both word lanes.
-            0x02 | 0x05 | 0x06 | 0x08..=0x0d => {
-                Some(u32::from(self.snapshot_mapped_halfword(address)?) * 0x0001_0001)
-            }
-            // Unsupported code regions must not manufacture an open-bus snapshot.
-            _ => None,
-        }
-    }
-
-    fn snapshot_mapped_halfword(&self, address: u32) -> Option<u16> {
-        Some(u16::from_le_bytes([
-            self.read_mapped_byte(address).ok()?,
-            self.read_mapped_byte(address + 1).ok()?,
-        ]))
-    }
-
-    /// Strict instruction fetch without data context, timing, or bus-history changes.
-    /// Thumb reads exactly two bytes, even on a region with a wider data-bus latch.
-    pub(crate) fn fetch_instruction(
-        &self,
-        address: u32,
-        state: InstructionSet,
-    ) -> Result<u32, MemoryError> {
-        let width = match state {
-            InstructionSet::Arm => 4,
-            InstructionSet::Thumb => 2,
-        };
-        if address & (width as u32 - 1) != 0 {
-            return Err(MemoryError::Unaligned(address));
-        }
-        let mut bytes = [0; 4];
-        for (offset, byte) in bytes[..width].iter_mut().enumerate() {
-            *byte = self.read_mapped_byte(address.wrapping_add(offset as u32))?;
-        }
-        Ok(u32::from_le_bytes(bytes))
-    }
-
-    fn snapshot_mapped_word(&self, address: u32) -> Option<u32> {
-        let mut bytes = [0; 4];
-        for (offset, byte) in bytes.iter_mut().enumerate() {
-            *byte = self
-                .read_mapped_byte(address.wrapping_add(offset as u32))
-                .ok()?;
-        }
-        Some(u32::from_le_bytes(bytes))
     }
 
     pub(crate) fn end_cpu_access(&mut self, succeeded: bool, sequential: bool) {
@@ -454,26 +411,25 @@ impl Memory {
         }
     }
 
-    /// Sample only the two target fetches of a completed refill into Thumb IWRAM.
-    /// This updates bus history, not the CPU's instruction buffer or nominal costs.
+    /// Consume the same target samples that fill the CPU's instruction buffer.
     /// Incomplete or unsupported refills stay unknown without failing the branch early.
-    pub(crate) fn refill_cpu_bus_history(&mut self, pc: u32, instruction_set: InstructionSet) {
+    pub(crate) fn refill_cpu_bus_history(&mut self, fetches: &[InstructionFetch; 2]) {
         self.iwram_bus.invalidate();
-        if instruction_set == InstructionSet::Thumb
-            && pc >> 24 == 3
-            && pc.wrapping_add(2) >> 24 == 3
+        let [first, second] = fetches;
+        debug_assert_eq!(first.state, second.state);
+        debug_assert_eq!(
+            second.address,
+            first.address.wrapping_add(first.state.width())
+        );
+        if first.state == InstructionSet::Thumb
+            && first.address >> 24 == 3
+            && second.address >> 24 == 3
         {
-            if let (Some(first), Some(second)) = (
-                self.snapshot_mapped_halfword(pc),
-                self.snapshot_mapped_halfword(pc + 2),
-            ) {
-                self.iwram_bus.refill(pc, [first, second]);
+            if let (Ok(first_value), Ok(second_value)) = (&first.instruction, &second.instruction) {
+                self.iwram_bus
+                    .refill(first.address, [*first_value as u16, *second_value as u16]);
             }
         }
-    }
-
-    pub(crate) fn invalidate_cpu_bus_history(&mut self) {
-        self.iwram_bus.invalidate();
     }
 
     fn can_write_power_control(&self) -> bool {

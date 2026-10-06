@@ -38,6 +38,8 @@ mod dma_resume_tests;
 #[cfg(test)]
 mod exception_tests;
 #[cfg(test)]
+mod fetch_history_tests;
+#[cfg(test)]
 mod instruction_tests;
 #[cfg(test)]
 mod iwram_dma_tests;
@@ -155,7 +157,7 @@ pub enum InstructionSet {
 }
 
 impl InstructionSet {
-    fn width(self) -> u32 {
+    pub(crate) fn width(self) -> u32 {
         match self {
             Self::Arm => 4,
             Self::Thumb => 2,
@@ -235,6 +237,7 @@ impl Cpu {
         let pipeline::Fetched {
             instruction,
             continuation,
+            lookahead,
         } = fetched;
         // Record the executing instruction, not an operand's pipelined PC value.
         // Always clear the access context, including on diagnostic errors.
@@ -242,7 +245,7 @@ impl Cpu {
         let instruction_set = self.instruction_set;
         let refill = self.instruction_refills(instruction);
         let sequential_thumb = self.instruction_set == InstructionSet::Thumb && !refill;
-        memory.begin_cpu_access(pc, self.instruction_set);
+        memory.begin_cpu_access(pc, self.instruction_set, &lookahead);
         let result = self.execute_instruction(instruction, memory);
         let sequential = sequential_thumb
             && self.instruction_set == InstructionSet::Thumb
@@ -250,7 +253,6 @@ impl Cpu {
         memory.end_cpu_access(result.is_ok(), sequential);
         if result.is_ok() {
             if refill {
-                memory.refill_cpu_bus_history(self.pc(), self.instruction_set);
                 self.refill_pipeline(memory);
             } else {
                 // A state change without an ordinary refill starts a cold sequence.

@@ -99,7 +99,7 @@ Normal word rotation, odd-halfword behavior, sign extension, and load timing sti
 
 The current interpreter implements bounded ARM and Thumb BIOS prefetch snapshots:
 
-- Before an ARM BIOS instruction executes, sample its mapped PC+8 word without charging another data access.
+- Before an ARM BIOS instruction executes, use its pipeline's new mapped PC+8 fetch without charging another data access.
 - Before a Thumb BIOS instruction executes, sample the full mapped word at `(PC+4) & ~3`.
   BIOS drives a 32-bit word even for a halfword fetch; both distinct lanes are retained.
 - After successful execution, retain that snapshot for later protected reads. Skipped conditional instructions count as successful execution.
@@ -134,7 +134,8 @@ Missing BIOS images remain unmapped. The unused-memory ARM open-bus snapshot is 
 
 The Thumb rule follows documented BIOS bus lanes and a source comparison with NanoBoyAdvance.
 See [Thumb BIOS prefetch research](../research/thumb-bios-prefetch.md) for evidence, emulator differences, and test scope.
-This BIOS readback model remains separate from the CPU's ARM/Thumb instruction buffer.
+The BIOS latch remains separate from the CPU's ARM/Thumb instruction buffer.
+Both now consume a shared fetch sample; BIOS history no longer rereads lookahead memory at execution entry.
 It does not model exact refill, BIOS data-access, or DMA bus history.
 The boundary diagnostic policy and precise bus timing remain hardware-unverified.
 Original regressions cover synthetic images, boot, exception returns, access widths, alignment, modes, and diagnostics.

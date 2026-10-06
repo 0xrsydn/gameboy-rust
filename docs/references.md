@@ -152,11 +152,12 @@ ARM/Thumb instruction-buffer research:
 - [ARM7TDMI instruction pipeline](https://developer.arm.com/documentation/dvi0027/b/arm7tdmi/instruction-pipeline) and [technical reference manual](https://documentation-service.arm.com/static/5e8e1323fd977155116a3129), for fetch/decode/execute stages and the visible ARM/Thumb PC offsets.
 - The pinned NanoBoyAdvance ARM7TDMI `Run`, `ReloadPipeline32`, and `ReloadPipeline16` helpers above, for retained instructions, pre-execution fetching, and target-pair refill order.
 - The ARM branch cycle sequence above, for target and target+instruction-width fetches.
-
 - [ARM Thumb branch-with-link timing](https://support.arm.com/documentation/ddi0210/c/Instruction-Cycle-Timings/Thumb-branch-with-link), for sequential prefix execution and suffix target refill.
 
 See [persistent ARM instruction buffering](research/arm-instruction-buffer.md) and its [Thumb extension](research/thumb-instruction-buffer.md).
-Instruction retention is implemented; unified fetch-driven bus history and per-access timing remain incomplete.
+Instruction retention and supported bus snapshots now use [shared fetch samples](research/shared-fetch-samples.md).
+That refactor reuses the pinned NanoBoyAdvance loop/refill and ares local-lane evidence above.
+Complete bus history and per-access timing remain incomplete; no new hardware conformance result is claimed.
 
 Use [GBATEK](https://problemkaputt.de/gbatek.htm) and ARM7TDMI documentation for further hardware work.
 Only use game ROMs that you may lawfully use. Do not commit game ROMs, BIOS files, or game assets.

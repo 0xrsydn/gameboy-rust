@@ -88,6 +88,10 @@ The display-runner error test allows an already buffered branch to complete befo
 Thumb instruction-buffer tests verify retained P+2/P+4 halfwords, BL prefix/suffix behavior, and state-tagged target pairs.
 They also cover stores, host/DMA writes, saved-state returns, deferred errors, mirrors, debugger repair, and nominal timing.
 Bus-history repair tests explicitly invalidate buffered code or repair a data address; failure checks retain full CPU equality.
+Shared fetch-sample tests mutate memory between internal sampling and consumption to reject duplicate reads.
+They cover ARM words, Thumb narrow/wide buses, IWRAM lanes, target pairs, BIOS retention, and retry after failure.
+This test-only split is not a DMA scheduling feature. Separate tests verify strict fetch errors and no timing/history side effects.
+See [shared fetch samples](research/shared-fetch-samples.md) for the unchanged hardware limits.
 See [ARM instruction buffering](research/arm-instruction-buffer.md) and its [Thumb extension](research/thumb-instruction-buffer.md) for remaining limits.
 The pinned public ARM ROM now reaches its completion checkpoint with r12 = 0 in debug and release builds.
 The pinned public Thumb ROM also reaches its ARM-state checkpoint with r7 = 0 in both builds.

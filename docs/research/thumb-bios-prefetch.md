@@ -40,7 +40,8 @@ Do not treat agreement between all emulators, or exact hardware conformance, as 
 
 ## Implementation scope
 
-`Memory::begin_cpu_access` samples before execution, using the incoming instruction state and strict mapped bytes.
+`Memory::begin_cpu_access` now consumes the pipeline's new fetch sample, using the incoming instruction state.
+The [shared sampler](shared-fetch-samples.md) captures strict mapped bytes before execution.
 `end_cpu_access` commits BIOS history only after success. Failed instructions preserve previous history.
 Thumb execution outside BIOS neither initializes nor replaces BIOS history.
 Host reads remain raw inspection. CPU data loads outside BIOS select lanes from retained history as before.

@@ -33,7 +33,8 @@ No physical-hardware measurement or external emulator differential run was perfo
 ## Bounded implementation
 
 `memory/iwram_bus.rs` records lane values and a known-bit mask during consecutive Thumb instructions in IWRAM.
-Before execution, the mapped PC+4 halfword updates its addressed lanes.
+Before execution, the pipeline's new mapped PC+4 fetch updates its addressed lanes.
+The bus-history consumer does not reread memory or reuse the current/decode instruction.
 During execution, successful IWRAM bus reads and writes update the staged lanes at their actual aligned addresses and widths.
 The latch sees raw bus data before CPU load rotation and sign extension.
 Other-region accesses and host inspection do not change it.
@@ -65,7 +66,8 @@ For Thumb destinations, those addresses are T and T+2.
 [NanoBoyAdvance's refill helpers](https://github.com/nba-emu/NanoBoyAdvance/blob/55b5cf0ae3d929582ac5bfd486558173502b8354/src/nba/src/arm/arm7tdmi.hh) use that order.
 Its execution loop then fetches T+4 before executing the first Thumb instruction.
 
-After a successful refill instruction, we sample the two mapped destination halfwords if both remain in Thumb IWRAM.
+After a successful refill instruction, the pipeline samples the two mapped destination instructions.
+The same captured halfwords update bus history if both remain in Thumb IWRAM.
 The samples replace the old lane history and establish the next expected PC as T.
 The next instruction's normal PC+4 sample updates one lane while the other retains the captured T+2 halfword.
 The samples occur after data accesses and status restoration, so loaded PC values and saved Thumb state select the destination.
@@ -76,7 +78,7 @@ Failed instructions retain the previous committed history. An unsupported or inc
 Unmapped instruction targets still fail on the following fetch.
 Cold direct startup and arbitrary PC changes do not manufacture a refill.
 
-These are bus-history samples, not instruction-buffer contents or extra emulated cycles.
+These captured values now supply both bus history and instruction-buffer entries, without extra emulated cycles.
 ARM and Thumb execution now use a separate instruction buffer. Cold buffer filling does not seed this bus history.
 Changing T+2 after the branch does not replace its captured bus value; changing T+4 before arrival affects the later sample.
 Those original tests verify sample ordering, not hardware-accurate self-modifying instruction execution.

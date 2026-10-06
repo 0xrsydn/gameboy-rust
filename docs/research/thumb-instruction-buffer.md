@@ -36,7 +36,8 @@ ARM-to-Thumb BX and saved-state exception returns therefore capture T and T+2, n
 Thumb-to-ARM transitions and SWI/IRQ vectors capture ARM pairs.
 
 `Memory::fetch_instruction` uses strict mapped reads with the selected instruction width.
-A Thumb fetch reads exactly two bytes, even in a region whose separate bus snapshot uses a full word.
+Its instruction result needs only two bytes in Thumb state.
+The later [shared fetch sampler](shared-fetch-samples.md) also captures the adjacent halfword for BIOS/OAM bus observations.
 Memory mirrors apply. Unmapped and misaligned instruction reads retain diagnostics rather than using data open bus.
 Lookahead errors remain deferred until their slot executes; a branch can discard them.
 
@@ -51,12 +52,12 @@ CPU clones own independent buffers; full CPU equality includes them.
 Instruction retention and data-bus snapshots remain separate models.
 Cold instruction-buffer filling does not make unknown IWRAM bus lanes known.
 Successful DMA can update existing IWRAM bus lanes without changing retained CPU instructions.
-Refill bus-history sampling and instruction sampling currently perform separate strict mapped reads.
+Refill bus history and instruction buffering now consume the same captured target pair without a second mapped read.
 
 Buffer samples add no nominal cycles or data accesses.
 Timed and untimed execution use the same buffer logic.
 Destination-based refill summaries and one-shot non-sequential CPU resume costs remain unchanged.
-Unified fetch-driven bus history, exact region crossings, per-access timing, Game Pak prefetch, and sub-instruction DMA arbitration remain incomplete.
+Complete fetch-driven bus history, exact region crossings, per-access timing, Game Pak prefetch, and sub-instruction DMA arbitration remain incomplete.
 Instruction-state-changing compare quirks also remain hardware-unverified.
 
 ## Original regression coverage

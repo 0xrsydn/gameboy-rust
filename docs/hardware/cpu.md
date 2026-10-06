@@ -109,8 +109,10 @@ Do not call it for ordinary CPU/DMA stores: that would hide self-modifying-code 
 
 This is instruction buffering, not a complete timed fetch pipeline.
 Samples add no nominal data accesses or device cycles. Existing refill costs and one-shot DMA resume costs remain unchanged.
-Fetch-driven bus history, exact refill costs, per-access device updates, and DMA arbitration remain incomplete.
-See the [ARM evidence and diagnostic policy](../research/arm-instruction-buffer.md) and [Thumb extension](../research/thumb-instruction-buffer.md).
+Instruction buffering and supported bus history now consume the same mapped fetch samples.
+Complete fetch-driven bus history, exact refill costs, per-access device updates, and DMA arbitration remain incomplete.
+See the [ARM evidence and diagnostic policy](../research/arm-instruction-buffer.md), [Thumb extension](../research/thumb-instruction-buffer.md),
+and [shared fetch samples](../research/shared-fetch-samples.md).
 
 ## ARM unused-memory data reads
 
@@ -118,7 +120,8 @@ During ARM execution, data reads from `0x00004000..0x01ffffff` and `0x10000000..
 Open bus means the bus retains previously driven data. GBATEK identifies this ARM value as the instruction word at PC+8.
 These high addresses do not mirror BIOS, RAM, or cartridge addresses.
 
-The interpreter snapshots mapped bytes at PC+8 before executing each ARM instruction.
+The interpreter samples mapped bytes at PC+8 before executing each ARM instruction.
+That one fetch supplies both the new instruction-buffer entry and the unused-memory snapshot.
 All unused-memory reads within that instruction use the same snapshot.
 Byte and halfword reads select their addressed lanes; the CPU applies normal rotation and sign extension.
 Base writeback, register aliases, block loads, PC loads, and flags retain their existing instruction semantics.
@@ -162,6 +165,8 @@ For BIOS/OAM, aligned instructions expose halfwords at P+4 and P+6.
 Instructions at two-byte-only alignment expose halfwords at P+2 and P+4.
 The two lanes can differ. A universal repeated-halfword rule would be incorrect.
 
+The pipeline's new fetch supplies the bus snapshot without rereading its instruction bytes.
+BIOS/OAM samples include the other halfword of the aligned bus word, but retain only the selected halfword as an instruction.
 Only the required mapped bytes are sampled. A 16-bit region needs two lookahead bytes, not four.
 Normal memory mirrors apply to these bytes, including physical RAM/video-memory wrap within a mapped region.
 If P+4 crosses a 16 MiB address-region boundary, the snapshot remains unknown.
@@ -178,8 +183,8 @@ IWRAM needs prior bus lanes, including IWRAM data-read/write changes and possibl
 Do not substitute P+2 for that history: it is only the usual case, not a general rule.
 The original Nintendo DS also differs from GBA-family IWRAM behavior; this core targets GBA.
 
-This remains a bounded snapshot implementation, not a pipeline or a complete bus-history model.
-Refill timing, self-modifying code, DMA-to-CPU transitions, cross-state IWRAM history, unused/write-only I/O, and disabled RAM remain incomplete.
+Bus history remains bounded despite sharing samples with the persistent instruction buffer.
+Refill timing, general DMA-to-CPU transitions, cross-state IWRAM history, unused/write-only I/O, and disabled RAM remain incomplete.
 Original regressions validate the documented formulas. No physical-hardware or independent public Thumb open-bus pass is claimed.
 
 ### Sequential IWRAM history
@@ -221,8 +226,8 @@ Saved Thumb state, not the target's low bit alone, controls exception-return sam
 Stack and block-load returns finish their data accesses before the target samples.
 Failed instructions do not sample a target or replace committed history.
 
-Snapshots use strict mapped reads and add no nominal data or device cycles.
-They update bus history only; a separate CPU buffer retains the target instructions for execution.
+Target samples use strict mapped reads and add no nominal data or device cycles.
+The same captured target pair fills the CPU buffer and updates supported IWRAM history; no second target read occurs.
 Host inspection does not change captured lanes. A failed target fetch remains a later instruction diagnostic.
 Cold direct startup, unsupported target states/regions, and region-crossing lookahead still have no inferred refill history.
 DMA between refill and arrival updates this continuation's actual IWRAM access lanes before the target+4 sample.
