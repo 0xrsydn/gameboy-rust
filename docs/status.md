@@ -149,7 +149,8 @@ The [pinned public memory ROM](public-memory-tests.md) passes without a core cha
 The [pinned BIOS read-protection ROM](public-bios-tests.md) passes after correcting the replacement firmware's exit layout.
 The bus still derives retained words from the actual image; no test-specific override or ROM patch is used.
 Other public suites remain unverified. These results do not establish full CPU or memory compatibility.
-The runner requires known completion addresses and has no debug-port protocol, scripted input, or rendered-image assertions.
+The runner supports PC checkpoints or bounded VBlank completion, scripted button snapshots, and captured-pixel assertions.
+Debug-port logging, audio assertions, and whole-image comparisons remain unsupported.
 
 ARM data reads from unused address ranges use a bounded [PC+8 open-bus snapshot](hardware/cpu.md#arm-unused-memory-data-reads).
 Thumb reads use [region-dependent snapshots](hardware/cpu.md#thumb-unused-memory-data-reads) and persistent local IWRAM lanes.
