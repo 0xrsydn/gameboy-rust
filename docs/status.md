@@ -78,7 +78,7 @@ Update this file when a feature lands or a limit is removed.
 - Raw ROM-file loading with original BIOS boot, terminal diagnostics, and final CPU/step reports.
 - ROM windows with scanline capture, keyboard input, focus-loss release, bounded execution slices, and interactive keypad wake from STOP.
 - Optional ROM-window frame limits and an original input-test ROM generator.
-- Headless JSON ROM suites with per-case checkpoints, register/CPSR/memory assertions, bounded budgets, and structured failure reports.
+- Headless JSON ROM suites with PC or VBlank completion, register/CPSR/memory/pixel assertions, scheduled buttons, bounded budgets, and structured failure reports.
 - Hash-pinned preparation of public `jsmolka/gba-tests` ARM, Thumb, memory, and BIOS ROMs, with verified result-register checkpoints.
 - These pinned ROMs pass their checkpoints on Darwin arm64 in debug and release builds; coverage limits remain documented.
 - The original BIOS exposes documented boot, SoftReset, SWI, and IRQ protected-read words through its actual exit layout.

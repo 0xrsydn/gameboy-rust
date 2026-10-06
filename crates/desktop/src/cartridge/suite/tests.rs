@@ -13,12 +13,12 @@ fn case_value() -> Value {
 fn case() -> Case {
     serde_json::from_value(case_value()).unwrap()
 }
-fn suite(value: Value) -> Result<Suite, Box<dyn Error>> {
+pub(super) fn suite(value: Value) -> Result<Suite, Box<dyn Error>> {
     let suite: Suite = serde_json::from_value(value)?;
     suite.validate()?;
     Ok(suite)
 }
-fn boot(words: &[u32]) -> Machine {
+pub(super) fn boot(words: &[u32]) -> Machine {
     bios::boot(words.iter().flat_map(|word| word.to_le_bytes()).collect()).unwrap()
 }
 
@@ -90,7 +90,7 @@ fn unknown_fields_and_unknown_check_kinds_are_rejected() {
 
 #[test]
 fn manifest_rejects_empty_duplicate_excessive_or_invalid_cases() {
-    assert!(suite(json!({"version": 2, "cases": [case_value()]})).is_err());
+    assert!(suite(json!({"version": 3, "cases": [case_value()]})).is_err());
     assert!(suite(json!({"version": 1, "cases": []})).is_err());
     assert!(suite(json!({"version": 1, "cases": [case_value(), case_value()]})).is_err());
     for (field, invalid) in [
@@ -184,7 +184,10 @@ fn json_report_propagates_write_and_flush_failures() {
 #[test]
 fn reset_pc_is_not_an_immediate_pass_without_execution() {
     let mut config = case();
-    config.completion.pc = 0;
+    config.completion = Completion::Pc {
+        pc: 0,
+        instruction_set: State::Arm,
+    };
     config.step_limit = 1;
     let (stats, outcome) = run_to_checkpoint(&mut boot(&[0xeaff_fffe]), &config);
     assert_eq!(stats.steps, 1);
@@ -215,14 +218,19 @@ fn checkpoint_is_checked_before_execution_and_on_the_last_budgeted_step() {
 #[test]
 fn matching_assertions_do_not_pass_without_the_checkpoint() {
     let mut config = case();
-    config.completion.pc = ROM_START + 8;
+    config.completion = Completion::Pc {
+        pc: ROM_START + 8,
+        instruction_set: State::Arm,
+    };
     let mut machine = boot(&[0xe3a0_002a, 0xeaff_fffe]);
     let (stats, outcome) = run_to_checkpoint(&mut machine, &config);
     assert_eq!(outcome, Outcome::StepLimit);
     assert_eq!(stats.steps, config.step_limit);
     assert_eq!(check(&machine, &config.checks[0])["passed"], true);
-    config.completion.pc = ROM_START + 4;
-    config.completion.instruction_set = State::Thumb;
+    config.completion = Completion::Pc {
+        pc: ROM_START + 4,
+        instruction_set: State::Thumb,
+    };
     assert_eq!(
         run_to_checkpoint(&mut boot(&[0xe3a0_002a, 0xeaff_fffe]), &config).1,
         Outcome::StepLimit
@@ -238,8 +246,10 @@ fn thumb_checkpoint_uses_aligned_architectural_pc() {
     bytes.extend([0x2a, 0x20, 0xfe, 0xe7]);
     let mut machine = bios::boot(bytes).unwrap();
     let mut config = case();
-    config.completion.pc = ROM_START + 14;
-    config.completion.instruction_set = State::Thumb;
+    config.completion = Completion::Pc {
+        pc: ROM_START + 14,
+        instruction_set: State::Thumb,
+    };
     assert_eq!(
         run_to_checkpoint(&mut machine, &config).1,
         Outcome::Checkpoint
@@ -250,7 +260,10 @@ fn thumb_checkpoint_uses_aligned_architectural_pc() {
 #[test]
 fn memory_and_cpsr_checks_report_actual_values_and_read_errors() {
     let mut config = case();
-    config.completion.pc = ROM_START + 12;
+    config.completion = Completion::Pc {
+        pc: ROM_START + 12,
+        instruction_set: State::Arm,
+    };
     let mut machine = boot(&[0xe3a0_002a, 0xe3a0_1402, 0xe581_0000, 0xeaff_fffe]);
     assert_eq!(
         run_to_checkpoint(&mut machine, &config).1,
@@ -291,7 +304,10 @@ fn memory_and_cpsr_checks_report_actual_values_and_read_errors() {
 #[test]
 fn stop_is_failure_while_halt_consumes_a_bounded_budget() {
     let mut config = case();
-    config.completion.pc = ROM_START + 8;
+    config.completion = Completion::Pc {
+        pc: ROM_START + 8,
+        instruction_set: State::Arm,
+    };
     let (stats, outcome) = run_to_checkpoint(&mut boot(&[0xef03_0000, 0xeaff_fffe]), &config);
     assert_eq!(outcome, Outcome::Stopped);
     assert!(stats.steps < config.step_limit);
@@ -322,7 +338,10 @@ fn dma_and_irq_each_consume_a_budget_step_and_dma_errors_fail() {
     let mut machine = boot(&[0xe3a0_002a, 0xeaff_fffe]);
     run_to_checkpoint(&mut machine, &case());
     let mut config = case();
-    config.completion.pc = ROM_START + 8;
+    config.completion = Completion::Pc {
+        pc: ROM_START + 8,
+        instruction_set: State::Arm,
+    };
     config.step_limit = 3;
     let bus = machine.memory_mut();
     bus.write32(DMA_BASE, 0x0200_0000).unwrap();

@@ -48,6 +48,8 @@ Do not set a Linux cross-compilation target for this validation.
 
 The [headless ROM suite runner](rom-tests.md) provides explicit checkpoint and assertion results through `--test-suite PATH.json`.
 Its tests verify manifest limits, whole-suite validation, exact step boundaries, ARM/Thumb checkpoints, and register/CPSR/memory checks.
+Version 2 tests cover VBlank targets, initial/held/released input, captured RGB888 pixels, and render diagnostics.
+The original input ROM verifies CPU-observed button snapshots and every captured pixel without external game assets.
 Additional tests cover DMA/IRQ accounting, HALT/STOP, diagnostic state, case isolation, repeatable JSON output, and failure exit status.
 These original tests validate the runner. The [public ARM adapter](public-arm-tests.md) provides a separate passing checkpoint result for its pinned ROM.
 The [public Thumb adapter](public-thumb-tests.md) uses a separate lock and r7 assertion after its return to ARM state.

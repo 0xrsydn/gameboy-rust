@@ -205,6 +205,49 @@ fn malformed_or_oversized_suites_fail_before_any_case_execution() {
 }
 
 #[test]
+fn gameplay_reports_inputs_captured_pixels_and_failures_repeatably() {
+    let fixture = Fixture::new();
+    fs::write(fixture.0.join("input.gba"), gba_demos::input_rom()).unwrap();
+    fixture.rom(
+        "bad-video.gba",
+        &[0xe3a0_1301, 0xe3a0_0007, 0xe1c1_00b0, 0xeaff_fffe],
+    );
+    let good = json!({"name":"gameplay", "rom":"input.gba", "step_limit":1000000,
+        "completion":{"vblanks":3},
+        "inputs":[{"vblank":0,"buttons":1},{"vblank":1,"buttons":17},{"vblank":2,"buttons":0}],
+        "checks":[{"kind":"pixel","x":239,"y":159,"equals":255}]});
+    let mut mismatch = good.clone();
+    mismatch["name"] = json!("mismatch");
+    mismatch["checks"][0]["equals"] = json!(0);
+    let mut render_error = good.clone();
+    render_error["name"] = json!("bad-video");
+    render_error["rom"] = json!("bad-video.gba");
+    let path = fixture.0.join("gameplay.json");
+    fs::write(
+        &path,
+        serde_json::to_vec(&json!({"version":2,"cases":[good,mismatch,render_error]})).unwrap(),
+    )
+    .unwrap();
+    let first = run(&path);
+    assert_eq!(first.status.code(), Some(1));
+    assert_eq!(first.stdout, run(&path).stdout);
+    let report = report(&first);
+    assert_eq!(report["format_version"], 2);
+    assert_eq!(report["failed_count"], 2);
+    let good = &report["cases"][0];
+    assert_eq!(good["passed"], true);
+    assert_eq!(good["state"]["vblanks"], 3);
+    assert_eq!(good["state"]["captured_vblank"], 3);
+    assert_eq!(good["inputs"][1]["buttons"], 17);
+    assert_eq!(good["checks"][0]["actual"], 255);
+    assert_eq!(report["cases"][1]["reason"], "assertion_failed");
+    assert_eq!(report["cases"][2]["reason"], "render_error");
+    assert_eq!(report["cases"][2]["state"]["vblanks"], 1);
+    assert_eq!(report["cases"][2]["checks"], json!([]));
+    assert!(report["cases"][2]["error"].is_string());
+}
+
+#[test]
 fn suite_mode_rejects_other_modes_and_help_advertises_it() {
     for args in [
         vec!["--test-suite"],

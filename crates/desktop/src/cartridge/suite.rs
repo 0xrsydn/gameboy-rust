@@ -13,12 +13,14 @@ use std::{
 use gba_core::{
     bios,
     cpu::InstructionSet,
+    input::Buttons,
     machine::{Machine, StepKind},
+    video::{Framebuffer, HEIGHT, WIDTH},
 };
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::{json, Value};
 
-use super::{load, Stats, MAX_STEPS};
+use super::{load, Stats, MAX_FRAMES, MAX_STEPS};
 
 const MAX_MANIFEST_BYTES: u64 = 1024 * 1024;
 const MAX_CASES: usize = 256;
@@ -76,15 +78,30 @@ struct Case {
     rom: PathBuf,
     step_limit: u64,
     completion: Completion,
+    #[serde(default)]
+    inputs: Option<Vec<Input>>,
     checks: Vec<Check>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
+#[serde(untagged, deny_unknown_fields)]
+enum Completion {
+    Pc {
+        #[serde(deserialize_with = "word")]
+        pc: u32,
+        instruction_set: State,
+    },
+    VBlanks {
+        vblanks: u64,
+    },
+}
+
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-struct Completion {
+struct Input {
+    vblank: u64,
     #[serde(deserialize_with = "word")]
-    pc: u32,
-    instruction_set: State,
+    buttons: u32,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize)]
@@ -106,6 +123,12 @@ impl State {
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 enum Check {
+    Pixel {
+        x: usize,
+        y: usize,
+        #[serde(deserialize_with = "word")]
+        equals: u32,
+    },
     Register {
         index: usize,
         #[serde(deserialize_with = "word")]
@@ -126,8 +149,8 @@ enum Check {
 impl Suite {
     fn validate(&self) -> io::Result<()> {
         let invalid = |message: &str| io::Error::new(io::ErrorKind::InvalidInput, message);
-        if self.version != 1 {
-            return Err(invalid("suite version must be 1"));
+        if !matches!(self.version, 1 | 2) {
+            return Err(invalid("suite version must be 1 or 2"));
         }
         if self.cases.is_empty() || self.cases.len() > MAX_CASES {
             return Err(invalid("suite must contain 1..=256 cases"));
@@ -150,18 +173,62 @@ impl Suite {
             if total > MAX_STEPS {
                 return Err(invalid("sum of case step limits must not exceed 100000000"));
             }
-            let alignment = match case.completion.instruction_set {
-                State::Arm => 4,
-                State::Thumb => 2,
-            };
-            if case.completion.pc % alignment != 0 {
-                return Err(invalid("completion PC must be aligned for its instruction set; do not set the Thumb address bit"));
+            match case.completion {
+                Completion::Pc {
+                    pc,
+                    instruction_set,
+                } => {
+                    let alignment = match instruction_set {
+                        State::Arm => 4,
+                        State::Thumb => 2,
+                    };
+                    if pc % alignment != 0 {
+                        return Err(invalid("completion PC must be aligned for its instruction set; do not set the Thumb address bit"));
+                    }
+                    if case.inputs.is_some() {
+                        return Err(invalid("input schedules require VBlank completion"));
+                    }
+                }
+                Completion::VBlanks { vblanks } => {
+                    if self.version != 2 || !(1..=MAX_FRAMES).contains(&vblanks) {
+                        return Err(invalid(
+                            "VBlank completion requires version 2 and 1..=100000 vblanks",
+                        ));
+                    }
+                    if let Some(inputs) = &case.inputs {
+                        if inputs.len() > 256 {
+                            return Err(invalid(
+                                "input schedule must contain at most 256 snapshots",
+                            ));
+                        }
+                        let mut previous = None;
+                        for input in inputs {
+                            if input.buttons > 0x3ff
+                                || input.vblank >= vblanks
+                                || previous.is_some_and(|frame| input.vblank <= frame)
+                            {
+                                return Err(invalid("inputs need 10-bit button masks and strictly increasing VBlanks before completion"));
+                            }
+                            previous = Some(input.vblank);
+                        }
+                    }
+                }
             }
             if case.checks.is_empty() || case.checks.len() > MAX_CHECKS {
                 return Err(invalid("each case must contain 1..=256 checks"));
             }
             for check in &case.checks {
                 match check {
+                    Check::Pixel { x, y, equals } => {
+                        if self.version != 2
+                            || !matches!(case.completion, Completion::VBlanks { .. })
+                            || *x >= WIDTH
+                            || *y >= HEIGHT
+                            || *equals > 0xff_ffff
+                        {
+                            return Err(invalid("pixel checks require version 2, VBlank completion, x < 240, y < 160, and RGB888 values"));
+                        }
+                    }
                     Check::Register { index, .. } if *index > 15 => {
                         return Err(invalid("register index must be 0..=15"))
                     }
@@ -205,20 +272,53 @@ enum Outcome {
     StepLimit,
     Stopped,
     EmulationError(String),
+    RenderError(String),
 }
 
 fn run_to_checkpoint(machine: &mut Machine, case: &Case) -> (Stats, Outcome) {
     let mut stats = Stats::default();
+    let capture = matches!(case.completion, Completion::VBlanks { .. });
+    machine.memory_mut().set_scanline_rendering(capture);
+    let mut frame = Framebuffer::default();
+    let mut last_vblank = 0;
+    let mut inputs = case.inputs.iter().flatten().peekable();
     loop {
         if machine.stopped() {
             return (stats, Outcome::Stopped);
         }
-        // Check after successful progress, before trying to execute the checkpoint.
-        // The final budgeted step can reach it. No initial/reset-state pass is allowed.
-        if stats.steps != 0
-            && machine.cpu().pc() == case.completion.pc
-            && machine.cpu().instruction_set() == case.completion.instruction_set.instruction_set()
-        {
+        let vblanks = machine.memory().display_position().vblanks;
+        if capture && vblanks != last_vblank {
+            match machine.memory().present_frame(&mut frame) {
+                Ok(true) => {}
+                Ok(false) => {
+                    return (
+                        stats,
+                        Outcome::RenderError("no complete captured frame at VBlank".into()),
+                    )
+                }
+                Err(error) => return (stats, Outcome::RenderError(error.to_string())),
+            }
+            last_vblank = vblanks;
+        }
+        // Snapshots apply after this VBlank's capture, before the next machine step.
+        while inputs.peek().is_some_and(|input| input.vblank <= vblanks) {
+            let input = inputs.next().unwrap();
+            machine
+                .memory_mut()
+                .set_buttons(Buttons::from_bits(input.buttons as u16));
+        }
+        // The final budgeted step can complete a case; reset alone cannot.
+        let complete = match case.completion {
+            Completion::Pc {
+                pc,
+                instruction_set,
+            } => {
+                machine.cpu().pc() == pc
+                    && machine.cpu().instruction_set() == instruction_set.instruction_set()
+            }
+            Completion::VBlanks { vblanks: target } => vblanks >= target,
+        };
+        if stats.steps != 0 && complete {
             return (stats, Outcome::Checkpoint);
         }
         if stats.steps == case.step_limit {
@@ -234,8 +334,23 @@ fn run_to_checkpoint(machine: &mut Machine, case: &Case) -> (Stats, Outcome) {
 
 fn check(machine: &Machine, check: &Check) -> Value {
     let (expected, actual) = match check {
+        Check::Pixel { x, y, equals } => {
+            let mut frame = Framebuffer::default();
+            let actual = match machine.memory().present_frame(&mut frame) {
+                Ok(true) => Ok(frame.pixels()[y * WIDTH + x]),
+                Ok(false) => Err("no complete captured frame".to_owned()),
+                Err(error) => Err(error.to_string()),
+            };
+            (*equals, actual)
+        }
         Check::Register { index, equals } => (*equals, Ok(machine.cpu().registers()[*index])),
-        Check::Memory32 { address, equals } => (*equals, machine.memory().read32(*address)),
+        Check::Memory32 { address, equals } => (
+            *equals,
+            machine
+                .memory()
+                .read32(*address)
+                .map_err(|error| error.to_string()),
+        ),
         Check::Cpsr { equals } => (*equals, Ok(machine.cpu().cpsr())),
     };
     match actual {
@@ -285,6 +400,11 @@ fn run_case(case: &Case, base: &Path) -> Value {
     };
     let (stats, outcome) = run_to_checkpoint(&mut machine, case);
     report["state"] = state(&machine, &stats);
+    if matches!(case.completion, Completion::VBlanks { .. }) {
+        report["inputs"] = json!(case.inputs.as_deref().unwrap_or_default());
+        report["state"]["vblanks"] = json!(machine.memory().display_position().vblanks);
+        report["state"]["captured_vblank"] = json!(machine.memory().captured_vblank());
+    }
     let reason = match outcome {
         Outcome::Checkpoint => {
             let checks: Vec<_> = case
@@ -303,6 +423,10 @@ fn run_case(case: &Case, base: &Path) -> Value {
         }
         Outcome::StepLimit => "step_limit",
         Outcome::Stopped => "stopped",
+        Outcome::RenderError(error) => {
+            report["error"] = json!(error);
+            "render_error"
+        }
         Outcome::EmulationError(error) => {
             report["error"] = json!(error);
             "emulation_error"
@@ -330,7 +454,7 @@ pub fn execute(path: &Path, writer: &mut impl Write) -> Result<(), Box<dyn Error
         .collect();
     let failed = cases.iter().filter(|case| case["passed"] != true).count();
     let report = json!({
-        "format_version": 1, "bios": "original", "passed": failed == 0,
+        "format_version": suite.version, "bios": "original", "passed": failed == 0,
         "case_count": cases.len(), "failed_count": failed, "cases": cases,
     });
     write_json_report(writer, &report)?;
@@ -340,5 +464,7 @@ pub fn execute(path: &Path, writer: &mut impl Write) -> Result<(), Box<dyn Error
     Ok(())
 }
 
+#[cfg(test)]
+mod gameplay_tests;
 #[cfg(test)]
 mod tests;

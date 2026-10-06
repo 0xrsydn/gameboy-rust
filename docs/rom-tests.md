@@ -1,7 +1,7 @@
 # Headless ROM test suites
 
 Use `--test-suite PATH.json` to run repeatable ROM checks without opening a window.
-Each case has a machine-step budget, a completion address, and explicit assertions.
+Each case has a machine-step budget, a completion condition, and explicit assertions.
 A timeout never counts as a pass. Existing `--rom ... --steps ...` remains a diagnostic mode, not a test verdict.
 
 Original programs cover the runner itself. Pinned public [ARM](public-arm-tests.md), [Thumb](public-thumb-tests.md), [memory](public-memory-tests.md), and [BIOS](public-bios-tests.md) ROMs provide independent compatibility results.
@@ -71,12 +71,55 @@ The runner validates the whole manifest before opening or executing any ROM.
 It uses the same read-only [ROM loader](hardware/cartridge.md#loading-and-boot), with its 4-byte minimum and 32 MiB maximum.
 The CLI accepts no other options with `--test-suite`.
 
+## Manifest version 2: gameplay checks
+
+Version 2 accepts version 1 PC checkpoints and adds VBlank completion, button snapshots, and captured-pixel checks.
+Version 1 behavior and report fields remain unchanged.
+
+```json
+{
+  "version": 2,
+  "cases": [{
+    "name": "original-input-release",
+    "rom": "input.gba",
+    "step_limit": 1000000,
+    "completion": {"vblanks": 3},
+    "inputs": [
+      {"vblank": 0, "buttons": "0x001"},
+      {"vblank": 1, "buttons": "0x011"},
+      {"vblank": 2, "buttons": 0}
+    ],
+    "checks": [{"kind": "pixel", "x": 239, "y": 159, "equals": "0x0000ff"}]
+  }]
+}
+```
+
+This example uses the original input ROM from `cargo run --example write_rom_demo -- /tmp/input.gba`.
+Place the manifest alongside that ROM. The CPU writes red for A, green for Right, and blue after release.
+
+- Use exactly one completion form: PC/state or `vblanks`. Mixed forms are invalid.
+- VBlank completion requires an integer count from 1 through 100,000, measured from machine reset.
+- The existing step budget still applies. A VBlank target does not permit unbounded execution.
+- `inputs` is optional and only valid with VBlank completion. Supply at most 256 snapshots.
+- Snapshot VBlank numbers must increase strictly and remain below the completion count. Zero applies before the first step.
+- Each snapshot replaces all held buttons. Its state remains active until the next snapshot.
+- Button masks use bits 0–9: A, B, Select, Start, Right, Left, Up, Down, R, L. One means pressed.
+- Snapshots apply at the first machine-step boundary at or after their VBlank, after capture and before the next step.
+- Pixel checks require VBlank completion, `x` from 0–239, `y` from 0–159, and packed `0xRRGGBB` expected values.
+- Pixel checks read the latest completed scanline capture, not a snapshot of current video RAM.
+- All VBlank cases enable capture. The first published render diagnostic fails the case, even before its target.
+- A missing captured frame is an error, never an implicit black image.
+
+Input timing is deterministic but not sub-instruction accurate. A snapshot cannot affect the frame already captured at that VBlank.
+STOP still fails: emulated VBlanks cannot advance to a future scheduled wake-up event.
+This is a regression runner, not a replacement for manual gameplay and host-keyboard checks.
+
 ## Completion and failure semantics
 
 Each case starts with fresh RAM, devices, CPU state, and the original BIOS replacement.
 The budget includes BIOS boot, instructions, DMA units, IRQ entries, and HALT idle batches.
 A failed CPU or DMA step does not consume a successful step or advance the reported state.
-The runner supplies no input and does not enable frame capture. Device clocks still advance through normal machine stepping.
+PC-checkpoint cases supply no input and do not enable frame capture. Device clocks still advance through normal machine stepping.
 
 After successful progress, the runner checks PC and instruction set at machine-step boundaries.
 It stops before executing the instruction at the completion address.
@@ -96,13 +139,13 @@ A failure does not skip later cases. No machine state passes from one case to an
 The budget bounds machine steps, not elapsed host time. Use an external process timeout in continuous integration if needed.
 This is not a filesystem security sandbox. Run trusted suite configurations and use files you may lawfully use.
 
-## Report version 1 and exit status
+## Reports and exit status
 
 Top-level fields:
 
 | Field | Meaning |
 | --- | --- |
-| `format_version` | Report schema version, currently 1 |
+| `format_version` | Manifest version: 1 or 2 |
 | `bios` | `original`; no external BIOS option |
 | `passed` | True only when every case passed |
 | `case_count`, `failed_count` | Number of executed cases and failures |
@@ -115,6 +158,9 @@ A load failure has null `state` and `rom_bytes`.
 `checks` contains the configured check, actual value, pass flag, and optional read error when the checkpoint was reached.
 Otherwise `checks` is empty. A failed read has a null actual value.
 
+Version 2 VBlank cases also report their normalized `inputs` and state counters `vblanks` and `captured_vblank`.
+These state fields are absent when loading fails. A PC case retains the version 1 case layout.
+
 Case reasons are:
 
 - `checkpoint`: completion reached and all assertions passed.
@@ -123,6 +169,7 @@ Case reasons are:
 - `stopped`: STOP prevented further execution.
 - `emulation_error`: an instruction or DMA diagnostic stopped execution; `error` contains its message.
 - `load_error`: loading or machine creation failed; `error` contains its message.
+- `render_error`: frame capture failed or no complete frame was available at VBlank; `error` contains its message.
 
 Exit status 0 means all cases passed and the report was written successfully.
 Any failed case, invalid configuration, or output failure returns a nonzero status.
@@ -143,5 +190,6 @@ The ROM, assertions, checkpoint, and budget remain unchanged. This is not a comp
 For further public ARM7TDMI/GBA tests, inspect their source, license, entry assumptions, and result protocol.
 Pin source revisions and build instructions before comparing emulator changes.
 Adapt suites to verified completion addresses and result locations; do not guess them or treat timeouts as passes.
-Some tests need debug-port logging, input, different firmware behavior, or rendered-image checks that this runner does not support yet.
+Version 2 supports scheduled input and exact captured-pixel checks.
+Debug-port logging, external firmware selection, audio assertions, and whole-image comparisons remain unsupported.
 Keep external binaries local. Record consulted sources in [references.md](references.md).

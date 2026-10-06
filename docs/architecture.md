@@ -117,6 +117,7 @@ The repository is a Cargo workspace with three crates:
 | `crates/desktop/src/cartridge.rs` | Read-only ROM files, mode/limit checks, bounded terminal execution, and shared state reports |
 | `crates/desktop/src/cartridge/suite.rs` | Strict JSON manifests, bounded checkpoint execution, assertions, and structured reports |
 | `crates/desktop/src/cartridge/suite/tests.rs` | Manifest limits, checkpoint boundaries, memory/register checks, and diagnostic accounting |
+| `crates/desktop/src/cartridge/suite/gameplay_tests.rs` | VBlank completion, input snapshots, captured pixels, and rendering failures |
 | `crates/desktop/tests/rom_suite_cli.rs` | File-backed suite execution, case isolation, output schema, determinism, and exit status |
 | `crates/desktop/examples/write_test_suite.rs` | Original ARM/Thumb/BIOS fixture generator with a local JSON suite |
 | `crates/desktop/src/cartridge/window.rs` | ROM-window session, bounded slices, capture, STOP/input handling, and progress limits |
