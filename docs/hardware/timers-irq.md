@@ -27,6 +27,10 @@ Device clocks update in batches after instructions, exception entries, DMA units
 Reads observe register state before that batch.
 Writes, including timer start/stop and IF acknowledgement, take effect before the entire batch.
 This does not reproduce bus-access timing within an instruction or IRQ synchronization delays.
+The [prefetch cancellation probe](../research/prefetch-cancellation.md) makes this limitation measurable.
+Its timer load omits its own source-fetch time, which differs between the read and control runs.
+Nominal instruction-boundary totals match published observations; the actual timer samples do not.
+The diagnostic reports both values and returns failure rather than correcting the timer sample.
 
 `Cpu::step` remains a CPU-only API. It does not honor HALT/STOP, execute DMA, advance device clocks, or sample device IRQs.
 `Cpu::step_timed` executes the same operation and returns `StepTiming`, without advancing devices.

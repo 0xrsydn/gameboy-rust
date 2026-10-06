@@ -275,6 +275,10 @@ They also check page/window boundaries, configuration changes, and batched-versu
 Integration tests check RAM/internal progress, ROM data stalls, branch and IRQ fetches, CPU-only equivalence, and debugger invalidation.
 WAITCNT CPU/host/DMA writes, RAM/cart DMA, HALT/STOP, failed steps, and missing ROM bytes have separate checks.
 See [prefetch evidence and limits](research/gamepak-prefetch.md). These tests validate the nominal model, not physical-hardware accuracy.
+An [original cancellation probe](research/prefetch-cancellation.md) compares read/control intervals with pinned, published hardware observations.
+Its instruction-boundary totals match; its actual timer samples fail. The example returns nonzero for those failures.
+Regressions identify the missing source-fetch interval without applying a correction to the timer values.
+Disabled-prefetch controls, delay bounds, completion PCs, and fresh-run determinism have separate checks.
 Instruction timing tests cover arithmetic, shifts, branches, transfers, block operations, multiply, and exception returns.
 Timed and untimed execution are compared across all 65,536 Thumb encodings with fixed initial registers.
 Timer/IRQ tests verify that changing WAITCNT changes when an interrupt is sampled.

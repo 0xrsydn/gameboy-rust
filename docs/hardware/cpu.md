@@ -386,6 +386,8 @@ Host reads and `Memory::advance_cycles` do not advance the queue; machine steps 
 
 These are source-backed nominal rules, not a hardware conformance claim.
 See [queue evidence, regression coverage, and limits](../research/gamepak-prefetch.md).
+The [original cancellation probe](../research/prefetch-cancellation.md) matches published read interval totals at instruction boundaries.
+Its unadjusted timer samples still fail because timer reads precede the instruction's device-clock update.
 
 ### Nominal CPU resume after DMA
 

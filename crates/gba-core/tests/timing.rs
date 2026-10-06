@@ -113,7 +113,7 @@ fn internal_regions_and_ewram_use_fixed_width_specific_costs() {
 
 #[test]
 fn stored_prefetch_phi_and_sram_settings_do_not_change_supported_bus_costs() {
-    // Explicit limitation: no prefetch queue, PHI output, or SRAM mapping yet.
+    // This stateless helper excludes opcode prefetch. PHI output and SRAM remain unmapped.
     for width in [AccessWidth::Halfword, AccessWidth::Word] {
         for address in [ROM_START, ROM_START + 4, 0x0a00_0004, 0x0c00_0004] {
             for kind in [AccessKind::NonSequential, AccessKind::Sequential] {

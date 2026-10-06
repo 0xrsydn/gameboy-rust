@@ -67,6 +67,9 @@ The repository is a Cargo workspace with three crates:
 | `crates/gba-core/src/cpu/dma_resume_tests.rs` | One-shot non-sequential DMA resume costs, wait settings, failures, idle, IRQs, and API isolation |
 | `crates/gba-core/src/cpu/timing_tests.rs` | Instruction timing and semantic-equivalence checks |
 | `crates/gba-demos/src/timer_demo.rs` | Original timer-configuration program and IRQ handler |
+| `crates/gba-demos/src/prefetch_probe.rs` | Original bounded ARM read/control probes and pinned published cancellation observations |
+| `crates/gba-demos/examples/prefetch_cancellation.rs` | CSV comparison of published, instruction-boundary, and unadjusted timer intervals; fails on mismatches |
+| `crates/gba-core/tests/prefetch_cancellation.rs` | Published read comparisons, cancellation phase, disabled-prefetch controls, and the known timer sampling gap |
 | `Cargo.toml` | Workspace members and shared package settings |
 | `crates/gba-core/src/lib.rs` | Core modules |
 | `crates/gba-demos/src/lib.rs` | Demo modules, original instruction/exception bytes, and raw input-test ROM |

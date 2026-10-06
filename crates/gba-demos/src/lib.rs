@@ -6,6 +6,7 @@ pub mod bitmap_demo;
 pub mod effects_demo;
 pub mod graphics_demo;
 pub mod mosaic_demo;
+pub mod prefetch_probe;
 pub mod raster_demo;
 pub mod tile_demo;
 pub mod timer_demo;

@@ -3,6 +3,18 @@
 Every demo runs original test content through the `gameboy-rust` desktop executable. None of them load games.
 Keyboard mapping to GBA buttons lives in `crates/desktop/src/desktop.rs`.
 
+## Diagnose prefetch cancellation timing
+
+```sh
+direnv exec . cargo run --locked -p gba-demos --example prefetch_cancellation > /tmp/prefetch-cancellation.csv
+```
+
+This headless original ARM probe compares published read-cancellation observations with two separate emulator measurements.
+Instruction-boundary totals match, but actual timer samples currently fail. The example therefore exits with status 1.
+Do not treat the matching totals as a hardware-timing pass.
+See [the protocol, source hashes, and timer sampling gap](research/prefetch-cancellation.md).
+The probe needs no downloaded ROM, assets, window, or external assembler.
+
 ## Open the affine raster demo
 
 From a logged-in macOS desktop session:

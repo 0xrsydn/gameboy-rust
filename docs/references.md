@@ -208,7 +208,8 @@ Game Pak prefetch research:
 
 - [Jgenesis prefetch at fab6e2cc](https://github.com/jsgroth/jgenesis/blob/fab6e2ccc60e492dd68b7f1e927b0829a6d80195/backend/gba-core/src/prefetch.rs) and its [bus integration](https://github.com/jsgroth/jgenesis/blob/fab6e2ccc60e492dd68b7f1e927b0829a6d80195/backend/gba-core/src/bus.rs), for independent halfword capacity, full-buffer pause/restart, CPU delivery, and cancellation rules.
 - [NanoBoyAdvance boundary test at cc3f4a28](https://codeberg.org/nba-emu/hw-test/src/commit/cc3f4a286cdef823980d9b353bd70befc9927d28/bus/128kb-boundary/source/main.c), reviewed for data LDM/DMA boundaries, not active opcode-queue conformance.
-- [PrefetchAbuse](https://github.com/zaydlang/PrefetchAbuse), a search-excerpt-only cancellation-test lead. Its source and ROM were not used.
+- [PrefetchAbuse source at 9ca57c13](https://github.com/zaydlang/PrefetchAbuse/blob/9ca57c13da7e3c569937f99a42e7c1caca029a2d/src/main.c), its [README](https://github.com/zaydlang/PrefetchAbuse/blob/9ca57c13da7e3c569937f99a42e7c1caca029a2d/README.md), and [Makefile](https://github.com/zaydlang/PrefetchAbuse/blob/9ca57c13da7e3c569937f99a42e7c1caca029a2d/Makefile), for published read observations, actual multiply delays, and build assumptions. No upstream program or ROM was imported.
+  See [the original cancellation comparison](research/prefetch-cancellation.md) for hashes, correspondence limits, matching nominal intervals, and failing timer samples.
 
 See [prefetch behavior and evidence](research/gamepak-prefetch.md).
 The nominal queue is implemented. Source differences and live WAITCNT transitions remain validation questions.
