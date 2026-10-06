@@ -1,6 +1,6 @@
 # Disconnected serial subset
 
-The core supports disconnected normal-mode transfers, external-clock waiting, idle multiplayer configuration, and general-purpose pins.
+The core supports disconnected normal-mode transfers, external-clock waiting, idle multiplayer, local Joybus registers, and general-purpose pins.
 Internal clocks shift pulled-high input at nominal GBA rates. No link partner is emulated.
 External clock edges, connected multiplayer transfers, UART, Joybus communication, and GPIO interrupts remain unsupported.
 Unsupported activity remains diagnostic rather than reporting a fabricated completion.
@@ -16,13 +16,12 @@ Unsupported activity remains diagnostic rather than reporting a fabricated compl
   Completion or software cancellation clears start. Multiplayer uses the separate format described below; UART remains diagnostic.
 - `RCNT` at `0x04000134` retains mode bits, interrupt configuration, output latches, and pin directions with mask `0xc1ff`.
   With bit 15 clear, bits 8 and 14 are writable latches without GPIO interrupt or Joybus effects.
-  With bit 15 set, bit 14 selects Joybus; otherwise bit 8 enables GPIO interrupts. Both active configurations remain diagnostic.
+  With bit 15 set, bit 14 selects Joybus; bit 8 is unused in that mode.
+  With bit 15 set and bit 14 clear, bit 8 enables GPIO interrupts, which remain diagnostic.
   In general-purpose mode, each input reads high through its pull-up. Each output reads its output latch.
   `RCNT=0x8000` therefore reads back as `0x800f`, not `0x8000`.
-  Normal and multiplayer low-byte pin readback remains unmapped rather than guessed.
-- `JOYCNT` permits clearing already-empty status flags. Joybus interrupt enable is unsupported.
-- `JOY_RECV` and `JOY_TRANS` permit only zero writes and zero readback for reset initialization.
-  Nonzero writes return an explicit error. Joybus status and data-transfer side effects are not implemented.
+  Normal, multiplayer, and Joybus low-byte pin readback remains unmapped rather than guessed.
+- `JOYCNT`, `JOY_RECV`, `JOY_TRANS`, and `JOYSTAT` support the disconnected configuration described below.
 
 GPIO means general-purpose input/output. UART means universal asynchronous receiver/transmitter.
 No external serial device is connected. Only an enabled internal serial clock can shift data or generate a completion IRQ.
@@ -86,7 +85,7 @@ The actual transfers then execute once from the original state. Other IF sources
 ### Bounded behavior
 
 After any bit has shifted, changes to width, clock selection/rate, or the selected data register remain diagnostic while start stays set.
-Selecting GPIO during an internally clocked request also remains diagnostic. Clear start before these operations.
+Selecting GPIO or Joybus during an internally clocked request also remains diagnostic. Clear start before these operations.
 IRQ-enable and idle SO configuration writes remain supported without restarting progress.
 These limits also apply to BIOS services that write serial registers; cancel active transfers before requesting serial reset.
 Unverified live reconfiguration is not silently approximated.
@@ -141,11 +140,52 @@ Original tests cover control masks, all baud selections, register lanes, aliases
 Bus-phase tests cover normal completion, retryable diagnostics, block loads/stores, and mode-dependent staged reads.
 There is no parent, cable topology, external clock input, multiplayer timeout, or linked-game compatibility claim.
 
+## Disconnected Joybus configuration
+
+RCNT bits 14–15 both set select Joybus. The GBA is a slave; an external master must initiate communication.
+This subset has no master, cable, commands, or external clock input. Selecting the mode does not start communication.
+RCNT bit 8 remains a writable inactive latch, not a GPIO interrupt enable.
+RCNT low-byte pin samples remain unmapped: GPIO output latches must not substitute for unverified Joybus pin levels.
+SIOCNT is unused in Joybus. Its existing format latches remain readable without synthetic SI/SD status or internal shifting.
+UART-format writes still return the existing diagnostic, including while Joybus is selected.
+
+- `JOYCNT` at `0x04000140` retains interrupt enable in bit 6. Unused bits read zero.
+  Reset, receive-complete, and send-complete flags in bits 0–2 are write-one-to-clear.
+  They remain zero because no master can produce those events. Enabling interrupts cannot itself request IF bit 7.
+- `JOY_RECV` at `0x04000150` and `JOY_TRANS` at `0x04000154` retain independent 32-bit data latches.
+  Byte, halfword, and word accesses preserve other lanes. Synthetic initial data is zero, not received peer data.
+  Local receive writes do not set receive status or a completion flag.
+- `JOYSTAT` at `0x04000158` retains software flags in bits 4–5.
+  Every local transmit-data write sets bit 1, including a zero write or a write to an upper lane.
+  This means a reply is available for a master; it does not mean transmission completed.
+  Software cannot directly set or clear hardware status bits 1/3 by writing JOYSTAT.
+  Receive-pending bit 3 remains zero. Receive reads therefore have no observable read-clear effect in this disconnected subset.
+
+Transmit pending survives elapsed time, mode changes, status writes, and empty-event acknowledgements.
+No Joybus event wakes HALT or STOP. Joybus selection disables the normal serial clock even if SIOCNT retains start.
+The existing live normal-transfer limits still apply when entering Joybus. Clear start or wait for normal completion first.
+A normal completion at the write's bus phase remains pending in IF after the mode change.
+Registers participate in serial transactions, including failed CPU/DMA access rollback and block-store preflight.
+Word accesses to JOYCNT and JOYSTAT reject unmapped upper padding without partial writes.
+
+Local Joybus registers remain accessible in other modes under this bounded latch model.
+Receive writes follow GBATEK's R/W description; the pinned mGBA implementation leaves them unhandled rather than storing them.
+mGBA corroborates JOYCNT/JOYSTAT masks in Joybus and sets transmit pending from either halfword outside mode dispatch.
+Cross-mode masks, CPU receive writes, synthetic reset values, and byte-lane behavior lack physical-hardware validation.
+These choices do not establish GameCube communication, hardware reset accuracy, or linked-game compatibility.
+
+Original tests cover masks, lanes, pending status, mode gating, inactive IRQ bits, HALT/STOP, and ARM/Thumb/DMA accesses.
+Staged tests cover completion boundaries, local readback, rollback, and later block-store failures.
+Original desktop programs also check status/data through terminal and native-window execution.
+
 ## BIOS reset
 
 RegisterRamReset always clears the low halfword of SIODATA32, even without bit 5.
 The upper halfword remains unchanged in this functional subset.
-With bit 5 selected, the firmware clears SIOCNT and SIODATA8, selects general-purpose inputs, and clears the supported Joybus reset registers.
+With bit 5 selected, the firmware clears SIOCNT and SIODATA8 and selects general-purpose inputs.
+It clears JOYCNT interrupt enable and both Joybus data latches.
+Its zero write to JOY_TRANS sets transmit pending. It does not write JOYSTAT; software flags remain unchanged.
+This is the replacement's functional sequence, not a claim about complete hardware BIOS reset side effects.
 It uses ordinary ARM bus stores, not a host-side reset bypass.
 Clearing SIOCNT cancels a pending external-clock request. Unselected serial reset leaves that request pending.
 The firmware writes SIODATA8 after selecting normal format. This does not clear the retained upper multiplayer SEND byte.
@@ -163,6 +203,8 @@ Inactive configuration bits do not wake HALT. RCNT word accesses still reject th
 - [GBATEK normal serial mode](https://problemkaputt.de/gbatek-sio-normal-mode.htm): data widths, MSB-first shifting, rates, pulled-high SI, start/completion, IRQ selection, and external-clock waiting.
 - [GBATEK multiplayer mode](https://problemkaputt.de/gbatek-sio-multi-player-mode.htm): child start restrictions, SI/SD status, undefined pre-transfer ID, register widths, and R/W receive registers.
 - [LinkRawCable at c61bf351](https://github.com/afska/gba-link-connection/blob/c61bf351f68ad2d6e1c9d72d70e21bec19adfc0b/lib/LinkRawCable.hpp): public API usage for mode selection, SEND, receive words, and separate role/readiness/ID checks. Its disconnected-cable warning is not a pin-level measurement.
+- [GBATEK Joybus mode](https://problemkaputt.de/gbatek-sio-joy-bus-mode.htm): slave-only communication, RCNT/SIOCNT roles, local register masks, R/W data, and status side effects.
+- [mGBA I/O implementation at 3a5e34be](https://github.com/mgba-emu/mgba/blob/3a5e34be33dc7f8f707e5bc9db69e8a430046f21/src/gba/io.c): transmit-pending writes and receive-status read clearing; compare with masks and unhandled receive writes in its serial implementation below.
 - [GBATEK mode summary](https://problemkaputt.de/gbatek-sio-control-registers-summary.htm): RCNT/SIOCNT mode selection.
 - [mGBA serial implementation at 3a5e34be](https://github.com/mgba-emu/mgba/blob/3a5e34be33dc7f8f707e5bc9db69e8a430046f21/src/gba/sio.c): cross-checked normal transfer-duration arithmetic and completion IRQ handling. Its no-driver scheduled completion and zero receive data are not copied; they do not establish disconnected hardware behavior. Multiplayer comparison covers SI/SD defaults, receive-write disagreement, and uncertain floating SC timing.
 - [GBATEK](https://mgba-emu.github.io/gbatek/): GBA general-purpose pin directions, internal pull-ups, SI falling-edge interrupts, and the SIO mode-selection table.

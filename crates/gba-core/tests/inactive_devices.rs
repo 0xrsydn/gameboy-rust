@@ -2,10 +2,7 @@
 use gba_core::{
     cpu::Cpu,
     dma::DMA_BASE,
-    io::{
-        JOYCNT, JOY_RECV, RCNT, SIOCNT, SIODATA32, SIODATA8, SOUNDBIAS, SOUNDCNT_H, SOUNDCNT_X,
-        WAVE_RAM,
-    },
+    io::{JOYCNT, RCNT, SIOCNT, SIODATA32, SIODATA8, SOUNDBIAS, SOUNDCNT_H, SOUNDCNT_X, WAVE_RAM},
     machine::Machine,
     memory::{Memory, MemoryError, ROM_START},
 };
@@ -81,10 +78,7 @@ fn unsupported_operations_have_specific_retryable_diagnostics() {
     let mut bus = memory();
     for (address, value, description) in [
         (SIOCNT + 1, 0x30, "UART serial mode"),
-        (RCNT + 1, 0xc0, "Joybus serial mode"),
         (RCNT + 1, 0x81, "GPIO serial interrupt"),
-        (JOYCNT, 0x40, "Joybus interrupt"),
-        (JOY_RECV, 1, "Joybus data access"),
     ] {
         let error = bus.write8(address, value).unwrap_err();
         assert!(matches!(error, MemoryError::UnsupportedIo { .. }));
@@ -92,7 +86,7 @@ fn unsupported_operations_have_specific_retryable_diagnostics() {
         assert_eq!(bus.write8(address, value), Err(error));
     }
     bus.write16(RCNT, 0x8055).unwrap();
-    assert!(bus.write16(RCNT, 0xc0aa).is_err());
+    assert!(bus.write16(RCNT, 0x81aa).is_err());
     assert_eq!(bus.read16(RCNT).unwrap(), 0x805f); // Low byte was not committed.
     bus.write16(SIOCNT, 0x4008).unwrap();
     assert!(bus.write32(SIOCNT, 0xaabb3080).is_err());

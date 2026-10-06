@@ -26,7 +26,7 @@ Use a local ROM that you may lawfully use:
 
 ```sh
 direnv exec . cargo run --locked --release -- --rom roms/pokemon-emerald.gba --rtc --save-type flash128 --steps 3000000
-direnv exec . cargo run --locked --release -- --rom roms/pokemon-emerald.gba --rtc --save-type flash128 --window --frames 60
+direnv exec . cargo run --locked --release -- --rom roms/pokemon-emerald.gba --rtc --save-type flash128 --window --frames 600
 ```
 
 The earlier reset-only implementation stopped at master sound enable (`0x04000084`, PC `0x082e0518`).
@@ -36,7 +36,8 @@ Both pulse channels then reached the noise trigger (`0x0400007d`, PC `0x082e03c4
 Noise channel 4 support then reached an incorrectly rejected RCNT write: `0x0100` at `0x04000134`, PC `0x082e2aac`.
 RCNT bit 15 was clear, so bit 8 did not enable general-purpose input/output (GPIO) interrupts.
 GBATEK documents bits 8 and 14 as writable but unused in normal mode.
-The serial model now retains these inactive bits. Effective GPIO interrupt enable and Joybus selection still return explicit errors.
+The serial model now retains these inactive bits. Effective GPIO interrupt enable still returns an explicit error.
+Joybus configuration was added later, as described below.
 
 That correction reached `read-only memory at 0x00000000` inside the original BIOS replacement, PC `0x00000378`.
 A bounded local trace found a Thumb `CpuSet` call with source `0x02022a74`, destination zero, and count `0x1c` halfwords.
@@ -77,19 +78,34 @@ Select `--save-type flash128` for this bounded run; the device begins erased and
 A later redundant `0xf0` write occurred after returning to idle array mode.
 The subset accepts that no-op without claiming direct Flash128 ID exit or busy-command cancellation.
 
-Both terminal and native runs with these options now reach Joybus mode selection:
+Flash identification then reached Joybus selection (`RCNT=0xc000`, PC `0x082deeca`) after sixteen captured frames.
+The [disconnected Joybus subset](../hardware/serial.md#disconnected-joybus-configuration) now accepts local configuration and status/data accesses.
+No master, command, remote receive word, or completion IRQ is fabricated.
+
+The terminal run reaches its requested three-million-step limit with exit status zero:
 
 ```text
-Steps: 1389249; instructions: 1386088; IRQ entries: 89; DMA units: 3072; HALT idle: 0
-Nominal cycles: 4688039
-PC=0x082deeca
-unsupported Joybus serial mode: write 0xc0 at 0x04000135
+Result: step limit reached
+Steps: 3000000; instructions: 2985620; IRQ entries: 124; DMA units: 14256; HALT idle: 0
+Nominal cycles: 9626104
+PC=0x080008cc
 ```
 
-The native run captures sixteen startup frames. These do not establish a working title screen or gameplay.
+Both 60-frame and 600-frame native runs now reach their frame limits with exit status zero.
+The longer run reports:
+
+```text
+Result: window frame limit reached
+Captured ROM frames: 600
+Steps: 58456876; instructions: 58087737; IRQ entries: 1251; DMA units: 367888; HALT idle: 0
+Nominal cycles: 168453824
+PC=0x080008ca
+```
+
+These runs establish bounded execution without a diagnostic, not visible menu progress or gameplay.
+No scripted input or pixel assertions were used. Repeated frames can still come from a waiting loop.
 Audio-device behavior is validated by original tests, not by audible game output.
-The window run does not reach its requested frame limit and correctly exits with failure.
-Terminal execution is also diagnostic, not a compatibility pass.
+Host RTC values can change between runs; these totals are observations, not deterministic golden assertions.
 Results apply to this local file; no cartridge revision or checksum was inferred from its filename.
 
 ## Validation and next requirement
@@ -98,8 +114,9 @@ Workspace debug/release tests, strict Clippy, public ARM/Thumb/memory/BIOS check
 Native ROM-window tests and graphics smoke modes pass on Darwin arm64.
 The pinned Pong debug/release reports match.
 
-The next startup requirement is disconnected Joybus configuration, beginning with `RCNT=0xc000`.
-Research idle registers, absent-device status, and mode transitions before implementing them. Do not fabricate a connected peer.
+Next, inspect visible startup/menu progress and exercise button presses and releases in a bounded run.
+Identify any waiting loop or new diagnostic before selecting another compatibility correction.
+Do not treat frame-limit success as a title-screen or gameplay pass.
 Flash programming, erase, busy behavior, and safe persistence remain required before claiming save compatibility.
 RTC persistence and cartridge IRQ behavior remain separate missing features.
 Ordinary ROM writes remain read-only. Without `--rtc`, the earlier GPIO diagnostic is still expected.

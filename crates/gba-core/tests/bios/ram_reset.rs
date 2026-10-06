@@ -289,6 +289,37 @@ fn serial_sound_reset_flags_are_selective_and_all_devices_return() {
 }
 
 #[test]
+fn serial_reset_clears_joybus_data_and_irq_enable_without_fabricating_a_master() {
+    use gba_core::io::{JOYCNT, JOYSTAT, JOY_RECV, JOY_TRANS, RCNT};
+    for thumb in [false, true] {
+        for flags in [0, 0x20, 0xff] {
+            let (mut m, pc) = prepare(flags, thumb, 0x1f);
+            m.memory_mut().write16(RCNT, 0xc100).unwrap();
+            m.memory_mut().write16(JOYCNT, 0x40).unwrap();
+            m.memory_mut().write32(JOY_RECV, MARKER).unwrap();
+            m.memory_mut().write32(JOY_TRANS, MARKER).unwrap();
+            m.memory_mut().write16(JOYSTAT, 0x30).unwrap();
+            complete(&mut m, pc);
+            let selected = flags & 0x20 != 0;
+            for address in [JOY_RECV, JOY_TRANS] {
+                assert_eq!(
+                    m.memory().read32(address).unwrap(),
+                    if selected { 0 } else { MARKER }
+                );
+            }
+            assert_eq!(
+                m.memory().read16(JOYCNT).unwrap(),
+                if selected { 0 } else { 0x40 }
+            );
+            // The replacement writes zero to TRANS, but does not write JOYSTAT.
+            // Pending data is not a completed transfer and cannot request an IRQ.
+            assert_eq!(m.memory().read16(JOYSTAT).unwrap(), 0x32);
+            assert_eq!(m.memory().read16(IF).unwrap() & 0x80, 0);
+        }
+    }
+}
+
+#[test]
 fn serial_reset_cancels_an_external_clock_request_only_when_selected() {
     use gba_core::io::{RCNT, SIOCNT};
     for thumb in [false, true] {

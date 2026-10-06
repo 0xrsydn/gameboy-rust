@@ -42,10 +42,11 @@ Frame-based scenarios and the preparation adapter now make the result repeatable
 A local Emerald run now passes its initial all-device reset, master sound enable, and pulse/noise triggers.
 It also passes normal serial transfers and idle multiplayer configuration.
 With `--rtc --save-type flash128`, it passes Game Pak GPIO setup, RTC reads, and Flash identification.
-It next stops at Joybus serial-mode selection.
+It also passes disconnected Joybus configuration and completes a bounded 600-frame native run without a diagnostic error.
+That run does not verify screen contents, button responses, or gameplay.
 The core has tested Direct Sound, both pulse channels, and noise channel 4.
 Wave channel 3, a continuous sample stream, and desktop audio output remain missing.
-See [the runtime result](research/emerald-reset.md). Disconnected Joybus configuration is the next demonstrated startup requirement.
+See [the runtime result](research/emerald-reset.md). Next, verify visible menu progress and button responses rather than treating frame counts as playability.
 The separate save requirement includes Flash programming/erase and safe host persistence. Identification/read support is not successful saving.
 SRAM is byte-addressable battery-backed save memory. Flash and EEPROM remain separate protocols.
 
@@ -57,7 +58,8 @@ A reproducible source build or an accessible upstream ROM is needed before recor
 
 Next implementation steps:
 
-1. Research the demonstrated Joybus configuration failure without inventing a connected device.
+1. Inspect visible startup/menu progress and exercise input in the bounded local game run. Record the first demonstrated failure.
+   Use original regressions for any hardware correction; do not invent connected serial devices.
 2. Extend explicit Flash selection with verified programming, erase, and busy behavior. Keep absent devices and unsupported commands diagnostic.
    Add SRAM separately when the independent candidate requires it; verify its widths, mirroring, and wait behavior first.
 3. Add bounded save loading and safe persistence in the desktop crate. Do not put file operations in the core.

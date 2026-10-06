@@ -77,6 +77,41 @@ fn raw_original_program_runs_with_a_bounded_report_without_changing_the_file() {
     assert_eq!(fs::read(path).unwrap(), original);
 }
 
+fn joybus_setup() -> Vec<u32> {
+    // Original ARM: select Joybus, enable IRQ, supply a reply, inspect local status/data.
+    vec![
+        0xe59f1024, // LDR r1, RCNT
+        0xe3a00903, // MOV r0, #0xc000
+        0xe1c100b0, // STRH r0, [r1]
+        0xe3a00040, // MOV r0, #0x40
+        0xe1c100bc, // STRH r0, [r1, #12] (JOYCNT)
+        0xe3a000a5, // MOV r0, #0xa5
+        0xe5810020, // STR r0, [r1, #32] (JOY_TRANS)
+        0xe1d122b4, // LDRH r2, [r1, #36] (JOYSTAT)
+        0xe1d130bc, // LDRH r3, [r1, #12]
+        0xe5914020, // LDR r4, [r1, #32]
+        0xeafffffe, 0x04000134,
+    ]
+}
+
+#[test]
+fn original_joybus_program_reports_pending_data_without_a_remote_completion() {
+    let fixture = Fixture::new();
+    let path = fixture.rom(&joybus_setup());
+    let original = fs::read(&path).unwrap();
+    let output = run(&path, "1000");
+    assert!(output.status.success(), "{}", stderr(&output));
+    for expected in [
+        "r2=0x00000002",
+        "r3=0x00000040",
+        "r4=0x000000a5",
+        "IRQ entries: 0",
+    ] {
+        assert!(stdout(&output).contains(expected), "{}", stdout(&output));
+    }
+    assert_eq!(fs::read(path).unwrap(), original);
+}
+
 fn rtc_setup() -> Vec<u32> {
     // Original LDR/MOV/STRH/LDRH/loop: enable GPIO reads, then inspect control.
     vec![
@@ -423,6 +458,22 @@ fn native_rom_window_presents_file_bytes_and_reports_stop_cpu_and_video_errors()
     );
     assert!(stdout(&output).contains("Captured ROM frames: 3"));
     assert!(stdout(&output).contains("Result: window frame limit reached"));
+    let joybus_path = fixture.rom(&joybus_setup());
+    let joybus_output = window(&joybus_path, false, None);
+    assert!(joybus_output.status.success(), "{}", stderr(&joybus_output));
+    for expected in [
+        "Captured ROM frames: 3",
+        "r2=0x00000002",
+        "r3=0x00000040",
+        "r4=0x000000a5",
+        "IRQ entries: 0",
+    ] {
+        assert!(
+            stdout(&joybus_output).contains(expected),
+            "{}",
+            stdout(&joybus_output)
+        );
+    }
     let rtc_path = fixture.rom(&rtc_setup());
     let rtc_output = window(&rtc_path, true, None);
     assert!(rtc_output.status.success(), "{}", stderr(&rtc_output));

@@ -14,7 +14,7 @@ fn memory() -> Memory {
 #[test]
 fn rcnt_high_byte_selection_is_independent_of_previous_mode_and_low_byte() {
     let mut bus = memory();
-    for previous in [0x8000, 0x80f5, 0x0100, 0x4100] {
+    for previous in [0x8000, 0x80f5, 0x0100, 0x4100, 0xc155] {
         for low in [0, 0x55, 0xff] {
             for high in 0..=u8::MAX {
                 for halfword in [false, true] {
@@ -28,25 +28,21 @@ fn rcnt_high_byte_selection_is_independent_of_previous_mode_and_low_byte() {
                     // Decode individual mode bits, separately from the implementation masks.
                     let gpio_or_joybus = high & 0x80 != 0;
                     let joybus = gpio_or_joybus && high & 0x40 != 0;
-                    let gpio_irq = gpio_or_joybus && high & 1 != 0;
-                    if joybus || gpio_irq {
+                    let gpio_irq = gpio_or_joybus && !joybus && high & 1 != 0;
+                    if gpio_irq {
                         assert_eq!(
                             result,
                             Err(MemoryError::UnsupportedIo {
                                 address: RCNT + 1,
                                 value: high,
-                                operation: if joybus {
-                                    "Joybus serial mode"
-                                } else {
-                                    "GPIO serial interrupt enable"
-                                },
+                                operation: "GPIO serial interrupt enable",
                             })
                         );
                         assert_eq!((bus.read8(RCNT), bus.read8(RCNT + 1)), before);
                     } else {
                         result.unwrap();
                         assert_eq!(bus.read8(RCNT + 1).unwrap(), high & 0xc1);
-                        if gpio_or_joybus {
+                        if gpio_or_joybus && !joybus {
                             let latch = if halfword { low } else { previous as u8 };
                             let outputs = latch >> 4;
                             let pins = (latch & outputs | !outputs) & 15;
@@ -109,17 +105,13 @@ fn cpu_byte_and_halfword_writes_accept_inactive_bits_but_reject_active_modes_ato
         for high in [1, 0x41, 0x81, 0xc0, 0xc1] {
             let mut machine = prepared_store(instruction, address, high << shift);
             let cpu = machine.cpu().clone();
-            if high & 0x80 == 0 {
+            if high != 0x81 {
                 assert_eq!(machine.step().unwrap(), StepKind::Instruction);
                 assert_eq!(machine.memory().read8(RCNT + 1).unwrap(), high as u8);
                 assert!(machine.cycles() > 0);
             } else {
                 let error = machine.step().unwrap_err();
-                assert!(error.to_string().contains(if high & 0x40 != 0 {
-                    "Joybus serial mode"
-                } else {
-                    "GPIO serial interrupt enable"
-                }));
+                assert!(error.to_string().contains("GPIO serial interrupt enable"));
                 assert_eq!(machine.cpu(), &cpu);
                 assert_eq!(machine.cycles(), 0);
                 assert_eq!(machine.memory().read16(RCNT).unwrap(), 0x80f5);
@@ -132,7 +124,7 @@ fn cpu_byte_and_halfword_writes_accept_inactive_bits_but_reject_active_modes_ato
 
 #[test]
 fn dma_halfword_rejection_is_retryable_then_inactive_configuration_completes() {
-    for high in [0x81, 0xc0, 0xc1] {
+    for high in [0x81, 0x83, 0xbf] {
         let mut bus = memory();
         bus.write16(RCNT, 0x80f5).unwrap();
         bus.write16(0x02000000, high << 8).unwrap();

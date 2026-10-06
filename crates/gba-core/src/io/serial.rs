@@ -1,4 +1,4 @@
-//! Disconnected serial: normal shifting and idle multiplayer child configuration.
+//! Disconnected serial: normal shifting, idle multiplayer, and local Joybus registers.
 use super::replace_byte;
 
 pub const SIODATA32: u32 = 0x0400_0120;
@@ -13,6 +13,7 @@ pub const RCNT: u32 = 0x0400_0134;
 pub const JOYCNT: u32 = 0x0400_0140;
 pub const JOY_RECV: u32 = 0x0400_0150;
 pub const JOY_TRANS: u32 = 0x0400_0154;
+pub const JOYSTAT: u32 = 0x0400_0158;
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Serial {
@@ -21,6 +22,10 @@ pub(crate) struct Serial {
     send: u16,        // Shared low byte; high byte is accessible only in multiplayer format.
     control: u16,
     rcnt: u16,
+    joy_control: u8, // IRQ enable only; no external master can set event flags.
+    joy_receive: u32,
+    joy_transmit: u32,
+    joy_status: u8, // Software flags and transmit pending; no remote reception.
     bits_left: u8,
     until_bit: u32,
 }
@@ -30,28 +35,28 @@ impl Serial {
         matches!(address,
             SIODATA32..=0x0400_012b |
             RCNT..=0x0400_0135 | JOYCNT..=0x0400_0141 |
-            JOY_RECV..=0x0400_0157)
+            JOY_RECV..=0x0400_0159)
     }
 
     pub(crate) fn unsupported(address: u32, value: u8) -> Option<&'static str> {
         match address {
             0x0400_0129 if value & 0x30 == 0x30 => Some("UART serial mode"),
-            0x0400_0135 if value & 0xc0 == 0xc0 => Some("Joybus serial mode"),
-            0x0400_0135 if value & 0x81 == 0x81 => Some("GPIO serial interrupt enable"),
-            JOYCNT if value & 0x40 != 0 => Some("Joybus interrupt enable"),
-            JOY_RECV..=0x0400_0157 if value != 0 => Some("Joybus data access beyond reset"),
+            0x0400_0135 if value & 0xc1 == 0x81 => Some("GPIO serial interrupt enable"),
             _ => None,
         }
     }
 
     fn gpio(&self) -> bool {
-        self.rcnt & 0x8000 != 0
+        self.rcnt & 0xc000 == 0x8000
+    }
+    fn joybus(&self) -> bool {
+        self.rcnt & 0xc000 == 0xc000
     }
     fn multiplayer_format(&self) -> bool {
         self.control & 0x3000 == 0x2000
     }
     fn normal(&self) -> bool {
-        !self.gpio() && !self.multiplayer_format()
+        self.rcnt & 0x8000 == 0 && !self.multiplayer_format()
     }
     fn busy(&self) -> bool {
         self.control & 0x80 != 0
@@ -137,7 +142,14 @@ impl Serial {
                 .multiplayer_format()
                 .then(|| self.multi_extra.to_le_bytes()[(address - SIOMULTI2) as usize]);
         }
+        for (base, data) in [(JOY_RECV, self.joy_receive), (JOY_TRANS, self.joy_transmit)] {
+            if (base..base + 4).contains(&address) {
+                // No master can set receive status, so its read-clear bit is already zero.
+                return Some(data.to_le_bytes()[(address - base) as usize]);
+            }
+        }
         let value = match address & !1 {
+            SIOCNT if self.joybus() => self.control, // Unused; do not invent pin samples.
             SIOCNT => {
                 let pins = if self.gpio() { self.gpio_pins() } else { 15 };
                 // SI is pulled high without a cable. Multiplayer drives SD high while idle.
@@ -163,7 +175,8 @@ impl Serial {
                 }
                 (self.rcnt & !15) | self.gpio_pins()
             }
-            JOYCNT | JOY_RECV..=0x0400_0156 => 0,
+            JOYCNT => u16::from(self.joy_control),
+            JOYSTAT => u16::from(self.joy_status),
             _ => return None,
         };
         Some(value.to_le_bytes()[(address & 1) as usize])
@@ -198,8 +211,22 @@ impl Serial {
                 let shift = (at - SIOMULTI2) * 8;
                 self.multi_extra =
                     (self.multi_extra & !(255 << shift)) | (u32::from(value) << shift);
+            } else if (JOY_RECV..JOY_TRANS).contains(&at) {
+                // GBATEK describes R/W data latches. CPU writes are not remote events.
+                let shift = (at - JOY_RECV) * 8;
+                self.joy_receive =
+                    (self.joy_receive & !(255 << shift)) | (u32::from(value) << shift);
+            } else if (JOY_TRANS..JOYSTAT).contains(&at) {
+                let shift = (at - JOY_TRANS) * 8;
+                self.joy_transmit =
+                    (self.joy_transmit & !(255 << shift)) | (u32::from(value) << shift);
+                self.joy_status |= 2; // Data available, not transmission complete.
             } else {
                 match at & !1 {
+                    JOYCNT if at & 1 == 0 => self.joy_control = value & 0x40,
+                    JOYSTAT if at & 1 == 0 => {
+                        self.joy_status = (self.joy_status & 2) | (value & 0x30);
+                    }
                     SIODATA8 if self.multiplayer_format() || at & 1 == 0 => {
                         self.send = replace_byte(self.send, at, value);
                     }

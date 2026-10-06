@@ -15,6 +15,8 @@ mod iwram_bus;
 #[cfg(test)]
 mod iwram_history_tests;
 #[cfg(test)]
+mod joybus_step_tests;
+#[cfg(test)]
 mod multiplayer_step_tests;
 #[cfg(test)]
 mod prefetch_tests;

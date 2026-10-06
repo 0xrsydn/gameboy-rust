@@ -311,6 +311,9 @@ Bus-phase tests cover start/load timing, IF acknowledgement order, CPU/DMA rollb
 Disconnected multiplayer tests cover every control value in that format, all baud settings, send/receive lanes, and normal-mode aliases.
 They verify idle child status, ignored start, no completion IRQ or HALT wake, GPIO sampling, and ARM/Thumb/DMA stores.
 Staged tests check mode changes at normal completion, block loads/stores, rollback, and reads after leaving multiplayer format.
+Joybus tests cover mode selection, local control/data/status lanes, transmit pending, and absence of remote events or IRQs.
+They check HALT/STOP, BIOS reset stores, unmapped padding, ARM/Thumb/DMA accesses, staged reads, and failed block-store rollback.
+Original desktop programs check Joybus status and reply data in both terminal and native-window execution.
 These tests validate the documented bounded serial model, not physical pin timing, receive-write behavior, or linked-game compatibility.
 Timer/IRQ tests verify that changing WAITCNT changes when an interrupt is sampled.
 Timer tests cover all prescalers, reload changes, start/stop behavior, byte writes, large clock advances, and cascades.

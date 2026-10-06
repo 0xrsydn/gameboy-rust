@@ -85,6 +85,7 @@ Update this file when a feature lands or a limit is removed.
 - Raw ROM-file loading with original BIOS boot, terminal diagnostics, and final CPU/step reports.
 - Firmware boot initializes BG2/BG3 identity scales for bitmap and affine programs that do not program their own matrices.
 - RegisterRamReset supports disabled sound and disconnected serial initialization, including the common `r0=0xff` request.
+- Disconnected Joybus selection, local data/status registers, and transmit-pending state without invented remote events or IRQs.
 - Direct Sound A/B support timer-driven FIFO playback, stereo digital levels, and DMA1/A or DMA2/B refill blocks.
 - PSG pulse channels 1 and 2 support independent nominal frequency/duty playback, length, envelope, status, and stereo mixing. Channel 1 also supports sweep.
 - Noise channel 4 supports nominal 7/15-bit generation, divider clocks, shared length/envelope behavior, status, and stereo mixing.
@@ -157,8 +158,9 @@ The [serial subset](hardware/serial.md) supports disconnected normal 8/32-bit tr
 Internal clocks shift high input at nominal rates, clear busy, and request completion IRQs. External requests retain busy without clock edges.
 Disconnected multiplayer exposes child/ready status and 16-bit send/receive registers without inventing transfers or completion IRQs.
 Pre-transfer ID is a zero placeholder; receive-write behavior and reset/alias details lack physical-hardware validation.
-Connected links, multiplayer transfers, UART, Joybus, GPIO interrupts, and unverified mid-transfer reconfiguration remain unsupported.
-RCNT retains inactive bits 8/14 in normal mode. Effective GPIO interrupt enable and Joybus selection remain diagnostic.
+Joybus supports local configuration, data latches, and transmit-pending status, without an external master or completion IRQs.
+Connected links, multiplayer transfers, UART, Joybus commands, GPIO interrupts, and unverified mid-transfer reconfiguration remain unsupported.
+RCNT retains inactive bits 8/14 in normal mode and bit 8 in Joybus. Effective GPIO interrupt enable remains diagnostic.
 Mapped I/O covers DMA, timers, interrupts, WAITCNT, display control/status, background control/scroll/affine registers, window/effect registers, KEYINPUT/KEYCNT, POSTFLG, and HALTCNT.
 Keypad IRQs use a documented polling model; hardware retrigger edges and asynchronous input timing remain unverified.
 STOP implements keypad wake only. Serial/Game Pak wake sources, oscillator restart delays, and exact wake timing remain unimplemented or unverified.
@@ -174,7 +176,9 @@ It also accepts an external-clock serial request without inventing clock edges o
 It now also completes internally clocked normal transfers and selects idle multiplayer mode.
 With explicit `--rtc` selection, it also passes Game Pak GPIO configuration and RTC calendar reads.
 With `--save-type flash128`, it also passes Flash identification and reaches a later startup check.
-It next stops at Joybus mode selection (`0x04000135`, PC `0x082deeca`). Flash writing and persistence remain unimplemented.
+It now passes disconnected Joybus setup and completes a bounded 600-frame native run without a diagnostic error.
+This run uses no scripted input or pixel assertions; menu progress and gameplay remain unverified.
+Flash writing and persistence remain unimplemented.
 Without `--rtc`, cartridge GPIO writes still return read-only diagnostics.
 No title-screen, gameplay, or audible-game compatibility is established.
 See [the startup result](research/emerald-reset.md) for the bounded run and next investigation.
