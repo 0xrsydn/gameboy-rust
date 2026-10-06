@@ -1,6 +1,6 @@
 //! Nominal ARM7 instruction-cycle summaries, separate from instruction semantics.
-//! Non-refill code costs use the new fetch address; data costs use actual bus accesses.
-//! Access kinds and PC-write refill totals remain instruction-local nominal summaries.
+//! Code costs use source-fetch and target-pair addresses; data costs use actual bus accesses.
+//! Source access kinds remain instruction-local nominal summaries.
 
 use super::{Cpu, CpuError, InstructionSet};
 use crate::{
@@ -65,11 +65,10 @@ impl Cpu {
         let result = self.execute_fetched(fetched, memory);
         let data_cycles = memory.end_data_timing();
         result?;
-        let code_cycles = if summary.refill {
-            refill_cycles(waitcnt, self.pc(), self.instruction_set.access_width())
-        } else {
-            bus_cycles(waitcnt, fetch_address, width, code_kind)
-        };
+        let mut code_cycles = bus_cycles(waitcnt, fetch_address, width, code_kind);
+        if summary.refill {
+            code_cycles += refill_cycles(waitcnt, self.pc(), self.instruction_set.access_width());
+        }
         Ok(StepTiming {
             code_cycles,
             data_cycles,
@@ -78,16 +77,24 @@ impl Cpu {
         })
     }
 
-    /// Nominal refill cost after explicit exception entry. No vector bytes are read.
-    pub(crate) fn exception_timing(&self, memory: &Memory) -> StepTiming {
-        StepTiming {
-            code_cycles: refill_cycles(
-                memory.waitcnt(),
-                self.pc(),
-                self.instruction_set.access_width(),
-            ),
-            ..StepTiming::default()
+    /// Accept IRQ between instructions, discard the old-state fetch, then refill ARM.
+    /// A missing discarded fetch cannot prevent entry or become a current-slot error.
+    pub(crate) fn take_irq_timed(&mut self, memory: &mut Memory) -> Option<StepTiming> {
+        let state = self.instruction_set;
+        let address = self.pc().wrapping_add(2 * state.width());
+        if !self.take_interrupt(memory.irq_pending(), false) {
+            return None;
         }
+        let waitcnt = memory.waitcnt();
+        let kind = memory.cpu_code_kind(AccessKind::Sequential);
+        let fetch = memory.fetch_instruction(address, state);
+        memory.discarded_cpu_fetch(&fetch);
+        self.refill_pipeline(memory);
+        Some(StepTiming {
+            code_cycles: bus_cycles(waitcnt, fetch.address(), state.access_width(), kind)
+                + refill_cycles(waitcnt, self.pc(), self.instruction_set.access_width()),
+            ..StepTiming::default()
+        })
     }
 
     fn arm_summary(&self, instruction: u32) -> Summary {
@@ -198,7 +205,7 @@ impl Cpu {
                 Summary::branch()
             }
             0xdf00..=0xdfff | 0xe000..=0xe7ff | 0xf800..=0xffff => Summary::branch(),
-            // Thumb BL prefix is 1S in the old region; its suffix is 2S+1N at the target.
+            // Thumb BL prefix fetches once; its suffix adds the target N+S pair.
             _ => Summary::default(),
         }
     }

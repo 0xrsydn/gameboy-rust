@@ -235,7 +235,7 @@ fn ram_instruction_consumes_resume_instead_of_delaying_it_until_rom_execution() 
 fn branch_refill_and_irq_entry_consume_resume_without_an_extra_nominal_access() {
     let (mut cpu, mut bus) = program(false, PC, 0xea00_0000); // B PC+8.
     dma(&mut bus);
-    assert_eq!(cpu.step_timed(&mut bus).unwrap().code_cycles, 20); // Existing N+2S summary.
+    assert_eq!(cpu.step_timed(&mut bus).unwrap().code_cycles, 22); // Source N=8 + target N=8, S=6.
     assert_eq!(cpu.step_timed(&mut bus).unwrap().code_cycles, 6);
 
     let (cpu, _) = program(false, PC, 0xe1a0_0000);
@@ -249,14 +249,15 @@ fn branch_refill_and_irq_entry_consume_resume_without_an_extra_nominal_access() 
     let mut machine = Machine::new(cpu, bus);
     assert_eq!(machine.step().unwrap(), StepKind::Dma { channel: 3 });
     assert_eq!(machine.step().unwrap(), StepKind::IrqEntry);
-    assert_eq!(machine.last_timing().code_cycles, 3);
+    // Source N=8 + BIOS pair 2.
+    assert_eq!(machine.last_timing().code_cycles, 10);
     // Inspect the bus through a separate CPU after IRQ entry, before a handler runs.
     let mut probe = Cpu::new(PC);
     assert_eq!(
         probe.step_timed(machine.memory_mut()).unwrap().code_cycles,
         6
     );
-    assert_eq!(machine.memory().cycles(), 12);
+    assert_eq!(machine.memory().cycles(), 19); // DMA 9 + IRQ entry 10.
 }
 
 #[test]

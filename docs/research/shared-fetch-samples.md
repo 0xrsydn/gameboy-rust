@@ -39,6 +39,7 @@ It does not replay the bus observations of retained current/decode instructions.
 The consumer performs no mapped memory read.
 After successful control flow, the same target samples fill the instruction buffer and update local IWRAM history in either state.
 Machine IRQ entry uses this refill path; BIOS vector fetches leave IWRAM lanes unchanged.
+The later [refill timing extension](refill-fetch-timing.md) first samples the discarded source fetch, which can update IWRAM lanes.
 
 Instruction buffers and BIOS/IWRAM latches remain separate retained state.
 Sampling alone changes no CPU access context, latch, device clock, DMA resume marker, or data-timing trace.
@@ -56,7 +57,7 @@ Strict instruction reads never use protected BIOS or unused-memory data fallback
 - All unused-memory data reads within an instruction still use its entry snapshot.
 - DMA remains scheduled between whole instructions. Sampling does not add an interleaving point.
 - Non-refill timing now consumes the sample's address in the [fetch-address extension](fetch-address-timing.md).
-- Destination-based refill summaries and instruction-local access kinds remain nominal.
+- Refills now charge the source fetch and target pair; instruction-local source access kinds remain nominal.
 - Per-access device updates, Game Pak prefetch, and exact refill/arbitration timing remain incomplete.
 
 ## Original tests

@@ -390,7 +390,7 @@ fn successful_dma_between_refill_and_target_execution_updates_refill_history() {
 }
 
 #[test]
-fn refill_snapshots_keep_existing_nominal_costs_and_timed_untimed_results() {
+fn refill_snapshots_keep_timed_untimed_results_and_charge_source_plus_target_pair() {
     for thumb in [false, true] {
         for destination in [TARGET, TARGET + 2] {
             let (cpu, mut bus) = branch(ROM_START, thumb, destination);
@@ -403,13 +403,22 @@ fn refill_snapshots_keep_existing_nominal_costs_and_timed_untimed_results() {
                 assert_eq!(machine.cpu(), &untimed);
                 assert_eq!(
                     machine.last_timing().code_cycles,
-                    if index == 0 { 3 } else { 1 }
+                    if index == 0 {
+                        if thumb {
+                            5
+                        } else {
+                            8
+                        }
+                    } else {
+                        1
+                    }
                 );
                 assert_eq!(machine.last_timing().data_cycles, index);
                 assert_eq!(machine.last_timing().internal_cycles, index);
             }
-            assert_eq!(machine.cycles(), 6);
-            assert_eq!(machine.memory().read16(TIMER_BASE).unwrap(), 6);
+            let cycles = if thumb { 8 } else { 11 }; // Source fetch, target pair, then 1S+1N+1I load.
+            assert_eq!(machine.cycles(), cycles);
+            assert_eq!(machine.memory().read16(TIMER_BASE).unwrap(), cycles as u16);
             assert_eq!(bus.cycles(), 0);
         }
     }

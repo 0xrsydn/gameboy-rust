@@ -11,6 +11,9 @@ Each successful step advances display and timer clocks by its nominal cost.
 `Machine::last_timing()` reports separate code, data, internal, and idle cycle totals for the last successful step.
 `StepTiming::idle_cycles` counts device-clock cycles during HALT; it does not count CPU work.
 IRQ entry is a separate step; the vector instruction runs on the following step.
+Entry charges the discarded incoming-state PC+8/PC+4 fetch and the ARM vector pair at `0x18` and `0x1c`.
+DMA resume can make the discarded fetch non-sequential. Missing discarded bytes do not prevent IRQ entry.
+See [refill timing](../research/refill-fetch-timing.md) for history effects and remaining limits.
 A device event during a step can trigger IRQ entry once no DMA is ready and CPU masks allow delivery.
 Bus writes take effect before the step's device-clock update.
 `StepKind::Dma { channel }` identifies a DMA unit. `StepKind::HaltIdle` identifies one bounded HALT clock advance.

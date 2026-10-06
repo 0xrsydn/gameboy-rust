@@ -180,6 +180,15 @@ Fetch-address timing research:
 
 See [fetch-address timing](research/fetch-address-timing.md). This corrects non-refill address selection, not full bus sequencing or refill timing.
 
+Refill and IRQ fetch-timing research:
+
+- The ARM7TDMI branch sequence above, for the discarded source fetch before the destination pair.
+- [ARM7TDMI software-interrupt and exception entry](https://support.arm.com/documentation/ddi0029/g/instruction-cycle-timings/software-interrupt-and-exception-entry), for the incoming-state `pc+2L` access followed by the ARM vector pair.
+- The pinned NanoBoyAdvance `SignalIRQ`, `Run`, `ReloadPipeline16`, and `ReloadPipeline32` methods above, for discarded incoming-state fetches and N/S target pairs.
+
+See [source-fetch and target-pair timing](research/refill-fetch-timing.md) for the implementation and public-report audit.
+Source review and comparisons between our own core versions are not physical-hardware timing validation.
+
 Use [GBATEK](https://problemkaputt.de/gbatek.htm) and ARM7TDMI documentation for further hardware work.
 Only use game ROMs that you may lawfully use. Do not commit game ROMs, BIOS files, or game assets.
 The ignore file excludes `roms/`, common game ROM extensions, and save files.

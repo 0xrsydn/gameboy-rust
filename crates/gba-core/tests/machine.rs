@@ -65,7 +65,8 @@ fn timer_demo_configures_hardware_in_cpu_code_and_handles_exactly_one_irq() {
     assert_eq!(machine.cpu().registers()[10], 1);
     assert_eq!(machine.memory().read16(IF).unwrap(), 0);
     assert_eq!(machine.memory().read16(TIMER_BASE + 2).unwrap(), 0);
-    assert_eq!(machine.memory().read16(TIMER_BASE).unwrap(), 0xfff4);
+    // IRQ entry gains five cycles before the timer stops; return loses five afterward.
+    assert_eq!(machine.memory().read16(TIMER_BASE).unwrap(), 0xfff9);
     for _ in 0..100 {
         assert_eq!(machine.step().unwrap(), StepKind::Instruction);
     }
@@ -84,7 +85,7 @@ fn overflow_after_instruction_is_sampled_on_next_step() {
     assert_eq!(machine.step().unwrap(), StepKind::IrqEntry);
     assert_eq!(machine.cpu().registers()[0], 1); // Interrupted instruction did not execute
     assert_eq!(machine.cpu().registers()[14], ROM_START + 8);
-    assert_eq!(machine.cycles(), 9); // New ROM fetch at PC+8: 6; nominal BIOS IRQ refill: 3
+    assert_eq!(machine.cycles(), 14); // Instruction fetch 6; IRQ source fetch 6 + BIOS pair 2.
 }
 
 #[test]
@@ -92,7 +93,7 @@ fn missing_vector_errors_only_after_completed_irq_entry() {
     let mut bus = Memory::new(vec![]).unwrap();
     pending_timer(&mut bus);
     let mut machine = Machine::new(Cpu::new(ROM_START), bus);
-    assert_eq!(machine.step().unwrap(), StepKind::IrqEntry); // No ROM fetch required
+    assert_eq!(machine.step().unwrap(), StepKind::IrqEntry); // Missing discarded ROM fetch cannot prevent IRQ entry
     let before = machine.cpu().clone();
     let cycles = machine.cycles();
     assert_eq!(

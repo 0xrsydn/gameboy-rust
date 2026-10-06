@@ -51,7 +51,8 @@ Debugger invalidation clears only instruction retention, but the following cold 
 A successful instruction commits its staged lanes regardless of its resulting state, PC, or region.
 A failed instruction discards every staged change, including cold-fill samples.
 Successful PC-writing instructions then apply target fetches after their data accesses.
-Other-region execution, BIOS IRQ entry, and unavailable targets do not erase known local lanes.
+Other-region execution, BIOS vector fetches, and unavailable targets do not erase known local lanes.
+The later [IRQ fetch extension](refill-fetch-timing.md) updates addressed IWRAM lanes through its discarded old-state source fetch.
 Host inspection and setup never drive the latch.
 
 Initial lanes remain unknown until observed accesses establish them.

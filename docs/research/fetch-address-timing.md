@@ -63,18 +63,18 @@ Timer tests and the original timer demo now reflect this bounded rule.
 
 ## Deliberately retained limits
 
+The later [refill timing extension](refill-fetch-timing.md) also charges source fetches and target pairs for branches and IRQ entry.
+
 - Instruction-local S/N summaries remain in use, including the existing store rule.
   Neighboring instruction/data-access sequencing is not a complete chronological bus trace.
-- Branches, PC loads/writes, SWI, exception returns, and IRQ entry retain destination-based `1N+2S` summaries.
-  The old-PC fetch and target pair are not yet charged individually.
-- The new lookahead cost is not added to those refill summaries; doing so would count an extra access.
-- Thumb BL prefixes use their lookahead address; suffixes retain the nominal refill summary.
+- Refills now charge one source fetch plus the target N+S pair, not an additional fetch beside the old destination-only summary.
+- Thumb BL prefixes use their lookahead address; suffixes add the target pair.
 - Cold fills have no separate startup charge, even though their samples update supported bus history.
 - Devices advance once after the whole successful instruction. No per-access timer/IRQ update is introduced.
 - Game Pak prefetch, display contention, configurable EWRAM timing, and sub-instruction DMA arbitration remain unimplemented.
 
 This is a fetch-address correction within the existing timing model, not cycle-accurate emulation.
-The next timing step is verified source-fetch/target-pair accounting for refills and IRQ entry.
+The next timing step is verified access-kind sequencing between instructions and data accesses.
 
 ## Original regression coverage
 

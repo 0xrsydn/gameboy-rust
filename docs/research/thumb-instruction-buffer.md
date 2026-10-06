@@ -56,7 +56,7 @@ Refill bus history and instruction buffering now consume the same captured targe
 
 Buffer samples add no nominal cycles or data accesses.
 Timed and untimed execution use the same buffer logic.
-Destination-based refill summaries remain unchanged.
+The later [refill timing extension](refill-fetch-timing.md) charges the incoming-state source fetch and outgoing-state target pair.
 The later [fetch-address timing extension](fetch-address-timing.md) selects non-refill and DMA-resume code costs from the new fetch address.
 Mapped boundary snapshots now follow the [actual fetch region](fetch-region-boundaries.md).
 Complete bus history, exact boundary timing, Game Pak prefetch, and sub-instruction DMA arbitration remain incomplete.

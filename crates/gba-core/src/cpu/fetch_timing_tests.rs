@@ -1,4 +1,4 @@
-//! Original fetch-address timing tests. Access kinds/refills remain nominal summaries.
+//! Original fetch-address timing tests. Source access kinds remain nominal summaries.
 use super::*;
 use crate::{
     dma::{DMA_BASE, DMA_STRIDE},
@@ -189,7 +189,7 @@ fn unavailable_lookahead_keeps_nominal_address_cost_and_fails_only_when_executed
 }
 
 #[test]
-fn refill_summaries_do_not_add_the_new_lookahead_cost_a_second_time() {
+fn refills_charge_one_source_fetch_and_two_target_fetches() {
     for thumb in [false, true] {
         let width = if thumb { 2 } else { 4 };
         let (mut cpu, mut memory) = program(thumb, ROM_START - width, 32);
@@ -199,7 +199,10 @@ fn refill_summaries_do_not_add_the_new_lookahead_cost_a_second_time() {
             memory.write32(cpu.pc(), 0xe12f_ff11).unwrap();
         }
         cpu.registers[1] = DEST | u32::from(thumb);
-        assert_eq!(cpu.step_timed(&mut memory).unwrap().code_cycles, 3);
+        assert_eq!(
+            cpu.step_timed(&mut memory).unwrap().code_cycles,
+            if thumb { 3 + 2 } else { 6 + 2 }
+        );
     }
 }
 

@@ -56,6 +56,8 @@ mod load_alias_tests;
 #[cfg(test)]
 mod open_bus_tests;
 #[cfg(test)]
+mod refill_timing_tests;
+#[cfg(test)]
 mod status_tests;
 #[cfg(test)]
 mod tests;

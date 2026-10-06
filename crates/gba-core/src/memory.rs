@@ -3,6 +3,8 @@ use std::{cell::Cell, error::Error, fmt};
 mod fetch;
 #[cfg(test)]
 mod fetch_tests;
+#[cfg(test)]
+mod irq_fetch_tests;
 mod iwram_bus;
 #[cfg(test)]
 mod iwram_history_tests;
@@ -430,6 +432,14 @@ impl Memory {
             };
             self.iwram_bus.access(fetch.address, width, value);
         }
+    }
+
+    /// IRQ's discarded source fetch drives only its actual IWRAM lanes.
+    /// Do not invent cold fills or commit a BIOS instruction snapshot: none executed.
+    pub(crate) fn discarded_cpu_fetch(&mut self, fetch: &InstructionFetch) {
+        self.iwram_bus.begin();
+        self.drive_iwram_fetch(fetch);
+        self.iwram_bus.finish(true);
     }
 
     /// Successful IWRAM target fetches drive their lanes in order, in either CPU state.

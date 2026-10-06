@@ -177,9 +177,8 @@ impl Machine {
             self.last_timing = timing;
             return Ok(StepKind::HaltIdle);
         }
-        let (kind, timing) = if self.cpu.take_interrupt(self.memory.irq_pending(), false) {
-            self.cpu.refill_pipeline(&mut self.memory);
-            (StepKind::IrqEntry, self.cpu.exception_timing(&self.memory))
+        let (kind, timing) = if let Some(timing) = self.cpu.take_irq_timed(&mut self.memory) {
+            (StepKind::IrqEntry, timing)
         } else {
             (
                 StepKind::Instruction,

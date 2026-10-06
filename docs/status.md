@@ -45,7 +45,8 @@ Update this file when a feature lands or a limit is removed.
 - STOP freezes CPU/DMA/device clocks, retains device phases, and reports a stopped frame runner without spinning.
 - Machine execution to the next VBlank event, with a configurable step limit.
 - CPU/device stepping with nominal ARM7 instruction costs and memory wait states.
-- Non-refill code costs use actual ARM PC+8/Thumb PC+4 fetch addresses, including memory-region and ROM wait-window boundaries.
+- Code costs use actual ARM PC+8/Thumb PC+4 source fetches and branch/exception target pairs, including region and ROM boundaries.
+- IRQ entry samples its discarded incoming-state fetch before the ARM vector pair, with local IWRAM history updates.
 - Game Pak wait-state control (`WAITCNT`) for all three ROM windows.
 - Sequential/non-sequential data accesses, branch refill costs, and variable multiply timing.
 - Optional caller-supplied 16 KiB BIOS mapping, with CPU read protection based on retained ARM PC+8 or aligned Thumb PC+4 words.
@@ -79,7 +80,7 @@ Update this file when a feature lands or a limit is removed.
 - ARM unused-memory data reads return a PC+8 word snapshot, with normal byte lanes and load rotation.
 - Thumb unused-memory reads follow the actual PC+4 fetch region, including mapped boundaries, ROM windows, and IWRAM lane history.
 - Persistent IWRAM lanes track ARM/Thumb fetches, CPU data accesses, and successful DMA, with known-bit tracking and diagnostic rollback.
-- Cold fills and ARM/Thumb target pairs update local history; state changes and BIOS IRQ entry do not erase it.
+- Cold fills, ARM/Thumb target pairs, and discarded IRQ source fetches update addressed IWRAM lanes; state changes do not erase them.
 - Little-endian byte, halfword, and word reads/writes.
 - ARM7TDMI word-load rotation, aligned stores, and odd-address halfword-load behavior.
 - Explicit errors for unsupported instructions when their condition passes, and for unsupported memory accesses.
@@ -141,7 +142,8 @@ ARM data reads from unused address ranges use a bounded [PC+8 open-bus snapshot]
 Thumb reads use [region-dependent snapshots](hardware/cpu.md#thumb-unused-memory-data-reads) and persistent local IWRAM lanes.
 Only actual IWRAM fetches and data accesses drive those lanes, independently of CPU state and executing region.
 Cold fills and target pairs establish both lanes when all required samples are mapped.
-State changes, other-region execution, and BIOS IRQ entry preserve local history; failed instructions discard staged updates.
+State changes and other-region accesses preserve local history; an IRQ source fetch updates lanes when it addresses IWRAM.
+Failed instructions discard staged updates.
 Successful DMA can establish lanes before CPU startup. Resumed fetches then update their addressed lanes.
 ARM/Thumb instruction buffering retains sequential instructions and refill target pairs.
 Instruction buffering and supported bus history now consume the same mapped fetch samples, without sharing retained storage.
@@ -162,8 +164,8 @@ Writes to cartridge addresses return errors instead of modeling cartridge hardwa
    Keep unknown history diagnostic until fetch ordering and latch ownership have independent coverage.
    Validate BIOS snapshots with independent hardware tests before claiming exact refill or data-access history.
    The desktop runner still uses only the original BIOS. Keep protected reads image-derived for all supplied images.
-2. Replace destination-only refill summaries with verified source-fetch/target-pair timing, including IRQ entry.
-   Then extend access-kind sequencing, startup costs, Game Pak prefetch, per-access device updates, and timer/IRQ delays.
+2. Extend instruction-local source access kinds into verified neighboring instruction/data-access sequencing.
+   Add startup costs, Game Pak prefetch, per-access device updates, and timer/IRQ delays.
 3. Validate keypad retrigger behavior with hardware tests and add remaining device registers; extend BIOS reset coverage as sound/serial support becomes available.
    Validate STOP entry/wake edges and add external wake sources and remaining DMA device modes.
 4. Replace nominal sprite work limits with verified individual fetch timing; add background fetch timing and per-pixel composition.

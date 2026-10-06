@@ -27,7 +27,7 @@ A failed unit cannot create or consume it. A blocked-source unit that successful
 Register configuration, host reads/writes, and clock-only advancement do not consume it.
 
 Before instruction execution, `Cpu::step_timed` captures the pending state and WAITCNT.
-For a non-refill instruction, pending resume changes the nominal code-access kind to non-sequential.
+Pending resume changes the source code-access kind to non-sequential.
 The existing bus-cost function applies the code width and ROM-window wait settings.
 An ARM word still uses a non-sequential first halfword and a sequential second halfword.
 This is a change of access kind, not a fixed positive surcharge: some wait settings make N cheaper than S.
@@ -50,9 +50,9 @@ The [fetch-address timing extension](fetch-address-timing.md) now charges non-re
 A resumed access selects that fetch region's wait settings. It is still not a separately scheduled bus event.
 DMA still executes only between instructions, not between data accesses or during CPU internal cycles.
 
-Existing refill summaries remain destination-based `1N+2S` costs.
-A resumed branch or exception consumes pending state without adding another nominal access.
-This prevents double-counting the existing N component, but does not model the discarded old-PC fetch separately.
+The later [refill timing extension](refill-fetch-timing.md) replaces destination-only summaries with source-fetch and target-pair costs.
+Resume changes the source access to N; the first target access independently remains N.
+No extra access is appended. A resumed ROM branch can therefore cost more than its non-resumed refill.
 Stores and fetches at 128 KiB ROM boundaries already use N and receive no duplicate cost.
 Game Pak prefetch remains unimplemented; WAITCNT bit 14 does not alter this nominal timing path.
 

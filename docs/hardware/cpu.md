@@ -92,7 +92,9 @@ The first target instruction samples T+2W before execution. State transitions re
 Thumb BL's prefix advances sequentially; only its suffix refills. Ordinary Thumb PC writes preserve Thumb state.
 The buffer records both expected PC and instruction state. A state mismatch cannot reinterpret retained ARM words as Thumb halfwords.
 
-Machine IRQ entry captures the ARM vector pair before any handler instruction runs.
+Machine IRQ entry first samples and discards the old-state P+2W fetch, then captures the ARM vector pair.
+The discarded fetch drives actual IWRAM lanes but does not execute an instruction or commit a BIOS instruction snapshot.
+Missing source bytes cannot prevent IRQ entry. Missing vector bytes fail only when the handler instruction becomes current.
 `Cpu::enter_exception` and `Cpu::take_interrupt` have no memory parameter: they invalidate the buffer and leave vector sampling to the next step.
 An unexpected PC discontinuity starts from current mapped bytes rather than reusing a mismatched buffer.
 
@@ -108,9 +110,10 @@ Use it after debugger code repair or when attaching different memory to a retain
 Do not call it for ordinary CPU/DMA stores: that would hide self-modifying-code behavior.
 
 This is instruction buffering, not a complete timed fetch pipeline.
-Samples add no nominal data accesses or device cycles. Existing refill costs and one-shot DMA resume costs remain unchanged.
+Sampling adds no data accesses or independent device-clock updates.
+Code timing charges the source fetch and target pair once, with a DMA resume override on the source access.
 Instruction buffering and supported bus history now consume the same mapped fetch samples.
-Complete fetch-driven bus history, exact refill costs, per-access device updates, and DMA arbitration remain incomplete.
+Complete fetch-driven bus history, access-kind sequencing, per-access device updates, and DMA arbitration remain incomplete.
 See the [ARM evidence and diagnostic policy](../research/arm-instruction-buffer.md), [Thumb extension](../research/thumb-instruction-buffer.md),
 and [shared fetch samples](../research/shared-fetch-samples.md).
 
@@ -234,11 +237,12 @@ Failed instructions do not sample a target or replace committed history.
 Target samples use strict mapped reads and add no nominal data or device cycles.
 The same captured target pair fills the CPU buffer and updates IWRAM history; no second target read occurs.
 A failed target fetch remains a later instruction diagnostic.
-IRQ entry samples its ARM BIOS vector pair without erasing IWRAM lanes.
+IRQ entry updates IWRAM lanes if its discarded old-state fetch addresses IWRAM.
+Its subsequent ARM BIOS vector pair does not erase those lanes.
 A BIOS handler can still change those lanes through actual IWRAM data accesses.
 
 The [refill evidence and scope](../research/iwram-bus-history.md#thumb-iwram-refill-extension) distinguish these samples from a fully timed pipeline.
-Sub-instruction DMA ordering and exact refill timing remain incomplete.
+Sub-instruction DMA ordering and complete bus sequencing remain incomplete.
 
 ### DMA effects on Thumb IWRAM continuations
 
@@ -317,17 +321,19 @@ An ordinary arithmetic instruction costs 1S. A register-specified shift adds 1I,
 Loads cost a code S access, a data N access, and 1I. Stores use N for code and data.
 Block transfers charge N for the first data word and S for each following word.
 Loads add 1I. Loading PC also adds the branch refill cost.
-Branches, PC writes, software interrupts, and exception entry use a nominal 1N+2S code refill.
+Branches, PC writes, software interrupts, and IRQ entry charge one source fetch plus a target N+S pair.
+The source fetch uses the incoming state at P+2W. The target pair uses the resulting state at T and T+W.
+The first target instruction charges T+2W when it executes; the refill does not charge it early.
 A skipped conditional instruction only pays its code S access.
-Thumb `BL` charges 1S for its prefix and 1N+2S for its suffix.
+Thumb `BL` charges one source fetch for each half; only its suffix adds the target N+S pair.
 Multiply costs vary with the incoming multiplier's upper bytes; accumulate and long forms add internal cycles.
 ARM uses Rs for this calculation. Thumb multiply uses the incoming destination register.
 
-Non-refill code costs use the new instruction fetch address: P+8 for ARM and P+4 for Thumb.
+Source code costs use the new instruction fetch address: P+8 for ARM and P+4 for Thumb.
 The incoming instruction state selects the width. The sampled fetch address selects the memory region and ROM wait-state window.
 A 128 KiB ROM boundary therefore forces N timing when lookahead reaches it, not when execution reaches it later.
 This applies to cold and retained pipelines without adding separate startup-fill costs.
-See [fetch-address timing](../research/fetch-address-timing.md) for evidence, examples, and remaining limits.
+See [fetch-address timing](../research/fetch-address-timing.md) and [refill timing](../research/refill-fetch-timing.md) for evidence and limits.
 
 Data costs use the addresses and widths of actual CPU bus calls, after alignment handling.
 BIOS, internal work RAM, OAM, and supported I/O accesses cost one cycle.
@@ -346,7 +352,8 @@ The new settings apply to subsequent code accesses.
 
 A successful DMA unit marks the next CPU instruction's nominal code access non-sequential.
 This applies even when DMA only accesses RAM. Consecutive units retain one pending resume, not multiple penalties.
-A non-refill instruction uses its actual lookahead address, incoming width, and current WAITCNT with N instead of S.
+The source fetch uses its actual lookahead address, incoming width, and current WAITCNT with N instead of S.
+This includes branches and accepted IRQ entry; target pairs still use N then S.
 ARM word accesses retain an S cost for their second halfword.
 Stores and ROM boundaries that already use N do not receive an additional cost.
 
@@ -356,16 +363,15 @@ Host access, clock-only advancement, and HALT/STOP idle do not consume it.
 A failed DMA unit cannot create pending resume.
 DMA WAITCNT writes apply before resume; CPU WAITCNT writes still use the previous code-access settings.
 
-Branch and exception refill summaries retain their existing destination-based `1N+2S` costs, without an added resume access.
-The old-PC fetch is not modeled separately. This remains nominal timing, not a per-access pipeline.
+A resumed refill can have two N accesses: the old-PC source fetch and the first target fetch.
+The resume changes the source access kind; it does not append another access.
+This remains nominal timing, not a per-access pipeline.
 See [the evidence and limitations](../research/dma-resume-timing.md).
 
 Important timing limits:
 
-- Code S/N counts follow instruction summaries, not a simulated fetch pipeline.
-- Non-refill code costs follow actual lookahead addresses, but cold current/decode fills have no separate startup charge.
-- PC writes still use destination-region costs and the restored instruction width for nominal refill accesses.
-  Their old-PC fetch and target pair are not yet charged individually; IRQ entry has the same remaining limit.
+- Source S/N kinds follow instruction-local summaries, not complete neighboring instruction/data-access sequencing.
+- Code costs follow actual source and target-pair addresses, but cold current/decode fills have no separate startup charge.
 - Refill cost calculation does not read target bytes. ARM/Thumb instruction-buffer and local IWRAM bus-history samples add no extra cycles.
 - Target-pair sampling cannot fail the branch early. An invalid branch target still fails on the following instruction fetch.
 - Game Pak prefetch is not implemented. WAITCNT bit 14 is stored but does not accelerate execution.

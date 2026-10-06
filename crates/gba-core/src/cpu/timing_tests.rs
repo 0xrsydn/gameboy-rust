@@ -78,14 +78,14 @@ fn branch_and_pc_write_refill_even_when_target_equals_fallthrough() {
 }
 
 #[test]
-fn cross_region_bx_uses_destination_width_and_wait_states() {
+fn cross_region_bx_uses_source_and_destination_widths_and_wait_states() {
     let (mut cpu, mut memory) = arm(0xe12f_ff10);
-    cpu.registers[0] = 0x0a00_0101; // Thumb in WS1: 5N + 5S + 5S
-    assert_eq!(cpu.step_timed(&mut memory).unwrap(), expected(15, 0, 0));
+    cpu.registers[0] = 0x0a00_0101; // IWRAM source 1 + Thumb WS1 target pair 5N + 5S.
+    assert_eq!(cpu.step_timed(&mut memory).unwrap(), expected(11, 0, 0));
     assert_eq!(cpu.instruction_set(), InstructionSet::Thumb);
     let (mut cpu, mut memory) = thumb(0x4700);
-    cpu.registers[0] = ROM_START + 0x100; // ARM in WS0: 8N + 6S + 6S
-    assert_eq!(cpu.step_timed(&mut memory).unwrap(), expected(20, 0, 0));
+    cpu.registers[0] = ROM_START + 0x100; // IWRAM source 1 + ARM WS0 target pair 8N + 6S.
+    assert_eq!(cpu.step_timed(&mut memory).unwrap(), expected(15, 0, 0));
 }
 
 #[test]
@@ -130,7 +130,7 @@ fn load_pc_adds_refill_and_does_not_count_fetch_as_data() {
     let (mut cpu, mut memory) = arm(0xe590_f000);
     cpu.registers[0] = DATA;
     memory.write32(DATA, ROM_START + 0x100).unwrap();
-    assert_eq!(cpu.step_timed(&mut memory).unwrap(), expected(20, 6, 1));
+    assert_eq!(cpu.step_timed(&mut memory).unwrap(), expected(15, 6, 1));
 }
 
 #[test]
@@ -321,7 +321,7 @@ fn software_interrupts_and_exception_returns_use_new_code_region_and_state() {
         cpu.registers[14] = ROM_START + 0x100;
         assert_eq!(
             cpu.step_timed(&mut memory).unwrap(),
-            expected(if thumb_state { 11 } else { 20 }, 0, 0)
+            expected(if thumb_state { 9 } else { 15 }, 0, 0)
         );
     }
 }

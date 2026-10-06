@@ -89,17 +89,12 @@ pub fn bus_cycles(waitcnt: u16, address: u32, width: AccessWidth, kind: AccessKi
     }
 }
 
+/// Target/decode pair only. The caller separately charges the old-state source fetch.
 pub(crate) fn refill_cycles(waitcnt: u16, target: u32, width: AccessWidth) -> u32 {
     bus_cycles(waitcnt, target, width, AccessKind::NonSequential)
         + bus_cycles(
             waitcnt,
             target.wrapping_add(width.bytes()),
-            width,
-            AccessKind::Sequential,
-        )
-        + bus_cycles(
-            waitcnt,
-            target.wrapping_add(2 * width.bytes()),
             width,
             AccessKind::Sequential,
         )

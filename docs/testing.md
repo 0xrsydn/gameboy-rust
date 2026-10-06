@@ -83,7 +83,7 @@ They check both target alignments, mirrors/wrap, captured target+2 versus later 
 Original SWI/IRQ handlers verify return-time history. Failed returns, cold entry, region boundaries, DMA lane effects, and BIOS isolation retain checks.
 DMA tests compare source/destination lane updates against a byte-array reference, then apply the resumed PC+4 fetch.
 They cover channel preemption, blocked sources, failures, mirrors, pre-start lane establishment, cold fills, and other-region snapshot isolation.
-IRQ tests verify local-latch preservation; PC discontinuities verify new pipeline-fill samples.
+IRQ tests verify discarded-source lane updates and preservation across non-IWRAM fetches; PC discontinuities verify new pipeline-fill samples.
 Timed/untimed tests verify CPU results and nominal clock costs.
 Host/fetch isolation, separate BIOS history, unsupported stores/data regions, nominal device progression, and DMA diagnostics also have checks.
 ARM instruction-buffer tests verify retained P+4/P+8 words across CPU stores, DMA transfers, and host writes.
@@ -252,9 +252,13 @@ The bounded graphics frame runner is checked for instruction errors and timeouts
 Timing tests cover every ROM wait-state setting, access width, ROM window, and 128 KiB boundary handling.
 Fetch-address regressions place executing instructions before memory-region and ROM page/wait-window boundaries.
 They check ARM/Thumb widths, cold/retained pipelines, independent N/S tables, DMA resume, and pre-write WAITCNT settings.
-Other checks cover deferred fetch errors, unchanged nominal refill totals, timer advancement, and subsequent IRQ sampling.
+Other checks cover deferred fetch errors, source-plus-target refill totals, timer advancement, and subsequent IRQ sampling.
 Startup-ROM and timer expectations now use P+8/P+4 rather than the executing address; data and rollback assertions remain intact.
 See [fetch-address timing](research/fetch-address-timing.md) for the bounded scope.
+Refill timing tests cover incoming/outgoing widths, all ROM wait settings, and target first/second/third-slot page boundaries.
+They verify source DMA overrides, split wait-window pairs, missing source/target diagnostics, masked IRQ isolation, and device totals.
+IRQ history tests verify word/halfword lane updates without invented cold fills or BIOS instruction snapshots.
+See [refill timing](research/refill-fetch-timing.md) for source evidence and public-report changes.
 Instruction timing tests cover arithmetic, shifts, branches, transfers, block operations, multiply, and exception returns.
 Timed and untimed execution are compared across all 65,536 Thumb encodings with fixed initial registers.
 Timer/IRQ tests verify that changing WAITCNT changes when an interrupt is sampled.

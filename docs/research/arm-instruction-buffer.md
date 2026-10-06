@@ -69,7 +69,8 @@ Failed-instruction tests continue to assert full-state preservation.
 
 This implements persistent ARM instruction words, not a complete cycle-by-cycle pipeline.
 Cold fill and target-pair samples do not add nominal cycles or data accesses.
-The existing destination-based refill summaries and one-shot DMA resume timing remain unchanged.
+The later [refill timing extension](refill-fetch-timing.md) replaces destination-only costs with source-fetch and target-pair costs.
+IRQ entry also samples its discarded old-state fetch before the vector pair.
 The later [fetch-address timing extension](fetch-address-timing.md) selects non-refill code cost from the newly sampled address.
 Access kinds, cold-fill startup costs, and refill scheduling remain incomplete.
 
