@@ -59,7 +59,9 @@ Exact startup/completion placement remains nominal, not independently verified p
 See [CPU resume timing](cpu.md#nominal-cpu-resume-after-dma) for failure, idle, and refill rules.
 Startup scheduling delays, channel-resumption costs, a full CPU fetch pipeline, and display-bus contention remain unmodeled.
 
-Special timing modes (sound FIFO/video capture), Game Pak DRQ, and prohibited source mode 3 return `DmaError::UnsupportedControl`.
+Special timing supports DMA1/FIFO A and DMA2/FIFO B with four-word blocks, forced word width, and fixed destinations.
+Timer-driven requests, repeat, and completion IRQs are described in [Direct Sound](audio.md).
+Other special-mode pairings, video capture, Game Pak DRQ, and prohibited source mode 3 return `DmaError::UnsupportedControl`.
 DMA reads below work RAM reuse known channel data as described below. They never expose BIOS bytes.
 DMA writes to DMA registers return `DmaError::RegisterDestination`; self-modifying transfers are not supported.
 Other accesses use the existing memory map, alignment checks, mirrors, and I/O write rules.

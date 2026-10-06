@@ -53,9 +53,12 @@ The repository is a Cargo workspace with three crates:
 | `crates/gba-core/src/cpu/fetch_history_tests.rs` | Shared sample consumption, no execution-entry rereads, and failed-step retry |
 | `crates/gba-core/src/cpu/fetch_boundary_tests.rs` | Actual fetch-region snapshots, split refills, IWRAM lane requirements, ROM-window boundaries, and nominal timing |
 | `crates/gba-core/src/io.rs` | I/O registers, timers, HALT/STOP wake-up, next-event bounds, and IRQ latches |
-| `crates/gba-core/src/io/inactive.rs` | Disabled sound and disconnected serial initialization with explicit unsupported-activity validation |
+| `crates/gba-core/src/audio.rs` | Direct Sound FIFO/playback state, idle PSG/wave banks, and instantaneous stereo mixing |
+| `crates/gba-core/tests/direct_sound.rs` | FIFO lanes/reset, signed mixing, timer selection, DMA refill, and HALT/STOP |
+| `crates/gba-core/src/memory/audio_step_tests.rs` | Audio access phases, shadow validation, and CPU/DMA failure rollback |
+| `crates/gba-core/src/io/inactive.rs` | Disconnected serial initialization with explicit unsupported-activity validation |
 | `crates/gba-core/tests/inactive_devices.rs` | Device masks, wave RAM, GPIO pull-ups, serial data, and failed CPU/DMA write isolation |
-| `crates/gba-core/src/io/timer_step.rs` | Staged timer bank, shared divider phase, and timer IF bits at ordered CPU/DMA bus phases |
+| `crates/gba-core/src/io/timer_step.rs` | Staged timer/audio state, divider phase, timer IF bits, and sound refill requests at ordered CPU/DMA bus phases |
 | `crates/gba-core/src/memory/timer_step_tests.rs` | Timer access phases, coherent lanes, cascades, IF ordering, rollback, DMA, idle, and clock ownership |
 | `crates/gba-core/src/display.rs` | Display clock, scanline status, comparison edges, and display IRQ events |
 | `crates/gba-core/src/dma.rs` | DMA registers, internal pointers, retained channel data, trigger state, priority, and completion IRQs |

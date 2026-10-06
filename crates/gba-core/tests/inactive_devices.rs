@@ -38,7 +38,7 @@ fn disabled_sound_registers_masks_lanes_and_wave_ram() {
     assert_eq!(bus.read16(SOUNDCNT_H).unwrap(), 0x7700);
     assert_eq!(bus.read16(SOUNDBIAS).unwrap(), 0xc3fe);
     // FIFOs are not ordinary register latches.
-    assert!(bus.write32(0x040000a0, 0).is_err());
+    bus.write32(0x040000a0, 0).unwrap();
     assert!(bus.read32(0x040000a0).is_err());
 }
 
@@ -80,7 +80,6 @@ fn idle_normal_serial_data_and_control_have_distinct_widths() {
 fn unsupported_operations_have_specific_retryable_diagnostics() {
     let mut bus = memory();
     for (address, value, description) in [
-        (SOUNDCNT_X, 0x80, "sound master enable"),
         (SIOCNT, 0x80, "serial transfer start"),
         (SIOCNT + 1, 0x20, "multiplayer/UART"),
         (RCNT + 1, 0x40, "Joybus serial mode"),
@@ -105,9 +104,10 @@ fn unsupported_operations_have_specific_retryable_diagnostics() {
 #[test]
 fn block_store_rejects_later_activation_before_earlier_control_writes() {
     let code: [u32; 7] = [
-        0xe3a00301, 0xe2800080, 0xe59f1008, 0xe3a02080, 0xe8a00006, 0xeafffffe, 0x770f0000,
+        0xe3a00301, 0xe2800060, 0xe59f1008, 0xe3a02902, 0xe8a00006, 0xeafffffe, 0x12345678,
     ];
-    let bus = Memory::new(code.into_iter().flat_map(u32::to_le_bytes).collect()).unwrap();
+    let mut bus = Memory::new(code.into_iter().flat_map(u32::to_le_bytes).collect()).unwrap();
+    bus.write16(SOUNDCNT_X, 0x80).unwrap();
     let mut machine = Machine::new(Cpu::new(ROM_START), bus);
     for _ in 0..4 {
         machine.step().unwrap();
@@ -115,24 +115,25 @@ fn block_store_rejects_later_activation_before_earlier_control_writes() {
     let before = machine.cpu().clone();
     let cycles = machine.cycles();
     let error = machine.step().unwrap_err();
-    assert!(error.to_string().contains("sound master enable"));
+    assert!(error.to_string().contains("PSG channel trigger"));
     assert_eq!(machine.cpu(), &before);
     assert_eq!(machine.cycles(), cycles);
-    assert_eq!(machine.memory().read16(SOUNDCNT_H).unwrap(), 0);
+    assert_eq!(machine.memory().read16(0x04000060).unwrap(), 0);
     assert_eq!(machine.step(), Err(error));
 }
 
 #[test]
 fn dma_activation_error_preserves_channel_progress_and_clocks() {
     let mut bus = memory();
-    bus.write32(0x02000000, 0x80).unwrap();
+    bus.write16(SOUNDCNT_X, 0x80).unwrap();
+    bus.write32(0x02000000, 0x8000).unwrap();
     bus.write32(DMA_BASE, 0x02000000).unwrap();
-    bus.write32(DMA_BASE + 4, SOUNDCNT_X).unwrap();
+    bus.write32(DMA_BASE + 4, 0x04000064).unwrap();
     bus.write32(DMA_BASE + 8, 0x84000001).unwrap();
     let mut machine = Machine::new(Cpu::new(ROM_START), bus);
     let before = machine.cpu().clone();
     let error = machine.step().unwrap_err();
-    assert!(error.to_string().contains("sound master enable"));
+    assert!(error.to_string().contains("PSG channel trigger"));
     assert_eq!(machine.cycles(), 0);
     assert_eq!(machine.cpu(), &before);
     assert_eq!(machine.step(), Err(error));

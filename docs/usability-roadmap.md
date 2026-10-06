@@ -39,8 +39,9 @@ The [pinned Pong homebrew](public-pong.md) passes scripted menus, ball movement,
 The native Darwin window also starts and presents frames without a diagnostic.
 This exposed and corrected missing firmware affine-scale initialization, without a game-specific patch.
 Frame-based scenarios and the preparation adapter now make the result repeatable.
-A local Emerald run now passes its initial all-device reset and stops at sound master enable.
-See [the runtime result](research/emerald-reset.md). Active audio-device behavior is the next demonstrated startup requirement.
+A local Emerald run now passes its initial all-device reset and master sound enable, then stops at a PSG channel 1 trigger.
+The core has a tested Direct Sound subset, but no continuous sample stream or desktop audio output.
+See [the runtime result](research/emerald-reset.md). PSG playback is the next demonstrated startup requirement.
 The separate save requirement remains cartridge SRAM, followed by safe host save persistence.
 SRAM is byte-addressable battery-backed save memory. Flash and EEPROM remain separate protocols.
 

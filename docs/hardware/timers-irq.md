@@ -7,7 +7,7 @@
 Otherwise it services one ready DMA data unit, keeping the CPU paused.
 If HALT is waiting and no DMA is ready, it advances device clocks to the next event without executing CPU code.
 Otherwise, it samples the IRQ line, including the CPU's interrupt mask, then enters IRQ mode or executes one instruction.
-Each successful step advances display and timer clocks by its nominal cost.
+Each successful step advances display, timer, and Direct Sound clocks by its nominal cost.
 `Machine::last_timing()` reports separate code, data, internal, and idle cycle totals for the last successful step.
 `StepTiming::idle_cycles` counts device-clock cycles during HALT; it does not count CPU work.
 IRQ entry is a separate step; the vector instruction runs on the following step.
@@ -15,7 +15,7 @@ Entry charges the discarded incoming-state PC+8/PC+4 fetch and the ARM vector pa
 DMA resume can make the discarded fetch non-sequential. Missing discarded bytes do not prevent IRQ entry.
 See [refill timing](../research/refill-fetch-timing.md) for history effects and remaining limits.
 A device event during a step can trigger IRQ entry once no DMA is ready and CPU masks allow delivery.
-Timer accesses use ordered bus-completion phases. Other device writes still take effect before their bulk clock update.
+Timer and sound accesses use ordered bus-completion phases. Other device writes still take effect before their bulk clock update.
 `StepKind::Dma { channel }` identifies a DMA unit. `StepKind::HaltIdle` identifies one bounded HALT clock advance.
 `StepKind::StopIdle` identifies a stopped system with no clock progress.
 The other step kinds remain `Instruction` and `IrqEntry`.
@@ -34,10 +34,11 @@ The transaction also owns timer IF bits. Reads see overflows through the current
 A later internal cycle can raise an acknowledged timer request again. Non-timer IF bits retain their existing behavior.
 IRQ delivery still waits until the next machine step. A committed timer request can wake HALT, but not STOP.
 
-Successful steps commit timers, the shared divider phase, and timer IF bits.
-Failed steps discard staged counters, divider progress, reload/control writes, and requests.
+Successful steps commit timers, the shared divider phase, timer IF bits, and Direct Sound state.
+Failed steps discard staged counters, divider progress, timer/audio writes, FIFO consumption, and requests.
 Display and other device clocks then advance once, without advancing timers again.
-Those devices still use the bulk scheduler. Mid-instruction display events, general bus arbitration, and IRQ synchronization delays remain unmodeled.
+Display and remaining devices still use the bulk scheduler. Mid-instruction display events, general bus arbitration, and IRQ synchronization delays remain unmodeled.
+[Direct Sound](audio.md) consumes selected timer overflows in the timer transaction; sound DMA requests commit at step boundaries.
 Host clock advances and HALT idle batches retain ordinary bulk timer advancement; STOP idle does not advance timers.
 
 The unchanged [prefetch cancellation probe](../research/prefetch-cancellation.md) now matches both published interval totals and actual timer samples.
@@ -92,7 +93,8 @@ See [prescaler evidence and original tests](../research/timer-prescaler.md).
 
 Hardware startup and register-write delays are still not modeled. Writes retain the immediate bus-completion policy.
 The shared-phase tests validate this bounded model, not absolute enable/reload edges on hardware.
-Audio events and interrupt sources other than timers, display events, DMA completion, and keypad input are not implemented.
+Timers 0 and 1 can clock Direct Sound playback and request FIFO DMA independently of timer IRQ enable.
+Interrupt sources other than timers, display events, DMA completion, and keypad input are not implemented.
 
 `--timer-demo` executes original ARM code that configures Timer 0, IE, and IME.
 The timer overflows after 16 supplied cycles and enters the original handler through vector `0x18`.
@@ -228,7 +230,7 @@ The current desktop demos do not enter STOP; the frontend does not yet provide a
 
 Only keypad wake-up is implemented. General-purpose serial and Game Pak wake sources require their missing external devices.
 Oscillator restart delays, exact entry/wake edges, and hardware-specific IF behavior remain unverified.
-There is no host-thread sleep, wall-clock accounting, or audio clock implementation.
+There is no host-thread sleep or wall-clock accounting. STOP freezes the emulated timer-driven audio clock.
 
 The graphics demo now uses the optional original BIOS replacement's VBlankIntrWait service.
 Its IRQ callback acknowledges VBlank and updates the BIOS RAM flag before the service returns.

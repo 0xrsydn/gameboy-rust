@@ -1,5 +1,6 @@
 //! An educational GBA starting point, not a game-compatible emulator.
 
+pub mod audio;
 pub mod bios;
 pub mod cpu;
 pub mod display;

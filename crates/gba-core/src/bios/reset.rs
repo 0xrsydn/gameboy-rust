@@ -92,12 +92,15 @@ fn emit_ram_reset(a: &mut ArmImage) {
     a.literal(1, SOUNDCNT_X);
     store_halfword(a, 0); // Disable sound; PSG register state is held in reset.
     a.literal(1, SOUNDCNT_H);
+    a.emit(0xe3a0_3c88); // MOV r3,#0x8800 (clear both FIFO queues)
+    store_halfword(a, 0);
+    a.emit(0xe3a0_3000); // MOV r3,#0
     store_halfword(a, 0);
     a.literal(1, SOUNDBIAS);
     a.emit(0xe3a0_3c02); // MOV r3,#0x200 (bias default)
     store_halfword(a, 0);
     a.emit(0xe3a0_3000); // MOV r3,#0
-    clear_words(a, WAVE_RAM, 16); // Accessible inactive bank; other bank cannot be enabled yet.
+    clear_words(a, WAVE_RAM, 16); // CPU-accessible inactive bank 1; bank 0 is retained.
 
     a.label("ram_reset_other");
     a.emit(0xe310_0080); // TST r0,#other registers

@@ -19,6 +19,32 @@ const REGIONS: [(u32, u32, u32); 5] = [
 ];
 const MARKER: u32 = 0xa55a_c33c;
 
+#[test]
+fn sound_reset_clears_disabled_fifo_queues_and_only_accessible_wave_bank() {
+    use gba_core::io::{FIFO_A, SOUNDCNT_H, SOUNDCNT_X, TIMER_BASE, WAVE_RAM};
+    for thumb in [false, true] {
+        let (mut machine, return_pc) = prepare(0x40, thumb, 0x1f);
+        let bus = machine.memory_mut();
+        bus.write16(SOUNDCNT_X, 0x80).unwrap();
+        bus.write16(0x04000070, 0x40).unwrap();
+        bus.write32(WAVE_RAM, MARKER).unwrap(); // CPU bank 0.
+        bus.write16(SOUNDCNT_X, 0).unwrap();
+        bus.write32(WAVE_RAM, MARKER).unwrap(); // CPU bank 1.
+        bus.write32(FIFO_A, 0x7f7f7f7f).unwrap();
+        complete(&mut machine, return_pc);
+        let bus = machine.memory_mut();
+        assert_eq!(bus.read16(SOUNDCNT_X).unwrap(), 0);
+        assert_eq!(bus.read32(WAVE_RAM).unwrap(), 0);
+        bus.write16(SOUNDCNT_X, 0x80).unwrap();
+        bus.write16(0x04000070, 0x40).unwrap();
+        assert_eq!(bus.read32(WAVE_RAM).unwrap(), MARKER);
+        bus.write16(SOUNDCNT_H, 0x0304).unwrap();
+        bus.write32(TIMER_BASE, 0x0080ffff).unwrap();
+        bus.advance_cycles(1);
+        assert_eq!(bus.audio_level().left, 0);
+    }
+}
+
 fn literal(code: &mut Vec<u32>, register: u32, value: u32) {
     code.extend([0xe59f_0000 | register << 12, 0xea00_0000, value]);
 }

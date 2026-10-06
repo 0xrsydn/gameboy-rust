@@ -1,13 +1,12 @@
 //! GBA I/O subset: DMA, timers, interrupts, WAITCNT, display, keypad input,
-//! disabled sound state, and disconnected serial initialization.
-//! Timers share a free-running prescaler phase. Hardware startup/write delays,
-//! audio events, and interrupt delivery delays are not modeled.
+//! Direct Sound, and disconnected serial initialization.
+//! Timers share a free-running prescaler phase. Hardware startup/write delays
+//! and interrupt delivery delays are not modeled.
 
 mod inactive;
-pub use inactive::{
-    JOYCNT, JOY_RECV, JOY_TRANS, RCNT, SIOCNT, SIODATA32, SIODATA8, SOUNDBIAS, SOUNDCNT_H,
-    SOUNDCNT_X, SOUND_START, WAVE_RAM,
-};
+use crate::audio::Audio;
+pub use crate::audio::{FIFO_A, FIFO_B, SOUNDBIAS, SOUNDCNT_H, SOUNDCNT_X, SOUND_START, WAVE_RAM};
+pub use inactive::{JOYCNT, JOY_RECV, JOY_TRANS, RCNT, SIOCNT, SIODATA32, SIODATA8};
 mod timer_step;
 pub(crate) use timer_step::TimerStep;
 use timer_step::TIMER_IRQ_MASK;
@@ -157,6 +156,7 @@ enum PowerState {
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub(crate) struct Io {
     inactive: inactive::Inactive,
+    pub(crate) audio: Audio,
     timers: [Timer; 4],
     // Low ten system-clock bits cover every supported divider. STOP freezes this phase.
     timer_phase: u16,
@@ -181,7 +181,8 @@ pub(crate) struct Io {
 
 impl Io {
     pub(crate) fn mapped(address: u32) -> bool {
-        inactive::Inactive::mapped(address)
+        Audio::mapped(address)
+            || inactive::Inactive::mapped(address)
             || matches!(address, 0x0400_0000..=0x0400_0057 | DMA_BASE..=DMA_END | 0x0400_0100..=0x0400_010f | 0x0400_0130..=0x0400_0133 | 0x0400_0200..=0x0400_020b | POSTFLG..=0x0400_0303)
     }
 
@@ -190,6 +191,9 @@ impl Io {
     }
 
     pub(crate) fn read8(&self, address: u32) -> Option<u8> {
+        if Audio::mapped(address) {
+            return self.audio.read8(address);
+        }
         if inactive::Inactive::mapped(address) {
             return self.inactive.read8(address);
         }
@@ -420,17 +424,25 @@ impl Io {
     }
 
     pub(crate) fn commit_timer_step(&mut self, step: TimerStep) {
+        self.audio = step.audio;
+        self.dma.trigger_sound(self.audio.take_requests());
         self.timers = step.timers;
         self.timer_phase = step.phase;
         self.pending = (self.pending & !TIMER_IRQ_MASK) | step.pending;
         self.wake_if_requested();
     }
 
-    fn advance_timer_bank(timers: &mut [Timer; 4], phase: &mut u16, cycles: u32) -> u16 {
+    fn advance_timer_bank(
+        timers: &mut [Timer; 4],
+        phase: &mut u16,
+        audio: &mut Audio,
+        cycles: u32,
+    ) -> u16 {
         let mut pending = 0;
         let mut overflows = 0;
         for (index, timer) in timers.iter_mut().enumerate() {
             overflows = timer.advance(cycles, overflows, *phase);
+            audio.timer_overflows(index, overflows);
             if overflows != 0 && timer.control & 0x40 != 0 {
                 pending |= 1 << (3 + index);
             }
@@ -473,8 +485,13 @@ impl Io {
         self.dma.trigger(vblank, hblank);
         self.pending |= self.display.advance(cycles);
         if advance_timers {
-            self.pending |=
-                Self::advance_timer_bank(&mut self.timers, &mut self.timer_phase, cycles);
+            self.pending |= Self::advance_timer_bank(
+                &mut self.timers,
+                &mut self.timer_phase,
+                &mut self.audio,
+                cycles,
+            );
+            self.dma.trigger_sound(self.audio.take_requests());
         }
         self.wake_if_requested();
     }

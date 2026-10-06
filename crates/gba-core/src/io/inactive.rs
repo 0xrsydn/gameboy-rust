@@ -1,14 +1,7 @@
-//! Disabled sound and disconnected serial initialization state.
-//! Sound enable, FIFO writes, serial transfers, UART/multiplayer/Joybus modes,
-//! and GPIO interrupts remain explicit diagnostics, not silent device stubs.
+//! Disconnected serial initialization state. Active transfers remain diagnostic.
 
 use super::replace_byte;
 
-pub const SOUND_START: u32 = 0x0400_0060;
-pub const SOUNDCNT_H: u32 = 0x0400_0082;
-pub const SOUNDCNT_X: u32 = 0x0400_0084;
-pub const SOUNDBIAS: u32 = 0x0400_0088;
-pub const WAVE_RAM: u32 = 0x0400_0090;
 pub const SIODATA32: u32 = 0x0400_0120;
 pub const SIOCNT: u32 = 0x0400_0128;
 pub const SIODATA8: u32 = 0x0400_012a;
@@ -19,11 +12,6 @@ pub const JOY_TRANS: u32 = 0x0400_0154;
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub(super) struct Inactive {
-    sound_control: u16,
-    bias: u16,
-    // With sound disabled, SOUND3CNT_L is zero. The CPU accesses bank 1;
-    // bank 0 stays zero because enabling sound/bank selection is unsupported.
-    wave: [u8; 16],
     serial_data: [u8; 4],
     serial_send: u8,
     serial_control: u16,
@@ -33,7 +21,6 @@ pub(super) struct Inactive {
 impl Inactive {
     pub(super) fn mapped(address: u32) -> bool {
         matches!(address,
-            SOUND_START..=0x0400_008b | WAVE_RAM..=0x0400_009f |
             SIODATA32..=0x0400_0123 | SIOCNT..=0x0400_012b |
             RCNT..=0x0400_0135 | JOYCNT..=0x0400_0141 |
             JOY_RECV..=0x0400_0157)
@@ -43,9 +30,6 @@ impl Inactive {
     /// stores can validate all values before committing any RAM/I/O writes.
     pub(super) fn unsupported(address: u32, value: u8) -> Option<&'static str> {
         match address {
-            SOUNDCNT_X if value & 0x80 != 0 => {
-                Some("sound master enable (audio engine not implemented)")
-            }
             SIOCNT if value & 0x80 != 0 => Some("serial transfer start"),
             0x0400_0129 if value & 0x20 != 0 => Some("multiplayer/UART serial mode"),
             0x0400_0135 if value & 0x40 != 0 => Some("Joybus serial mode"),
@@ -62,16 +46,10 @@ impl Inactive {
     }
 
     pub(super) fn read8(&self, address: u32) -> Option<u8> {
-        if (WAVE_RAM..=WAVE_RAM + 15).contains(&address) {
-            return Some(self.wave[(address - WAVE_RAM) as usize]);
-        }
         if (SIODATA32..=SIODATA32 + 3).contains(&address) {
             return Some(self.serial_data[(address - SIODATA32) as usize]);
         }
         let value = match address & !1 {
-            SOUNDCNT_H => self.sound_control,
-            SOUNDBIAS => self.bias,
-            SOUND_START..=0x0400_008a => 0, // PSG stays reset while master enable is clear.
             SIOCNT => {
                 let si = if self.rcnt & 0x8000 != 0 {
                     self.gpio_pins() & 4
@@ -96,25 +74,17 @@ impl Inactive {
 
     pub(super) fn write8(&mut self, address: u32, value: u8) {
         debug_assert!(Self::unsupported(address, value).is_none());
-        if (WAVE_RAM..=WAVE_RAM + 15).contains(&address) {
-            self.wave[(address - WAVE_RAM) as usize] = value;
-            return;
-        }
         if (SIODATA32..=SIODATA32 + 3).contains(&address) {
             self.serial_data[(address - SIODATA32) as usize] = value;
             return;
         }
         match address & !1 {
-            SOUNDCNT_H => {
-                self.sound_control = replace_byte(self.sound_control, address, value) & 0x770f
-            }
-            SOUNDBIAS => self.bias = replace_byte(self.bias, address, value) & 0xc3fe,
             SIOCNT => {
                 self.serial_control = replace_byte(self.serial_control, address, value) & 0x500b
             }
             SIODATA8 if address & 1 == 0 => self.serial_send = value,
             RCNT => self.rcnt = replace_byte(self.rcnt, address, value) & 0x80ff,
-            _ => {} // Disabled PSG writes and unused/read-only bits have no effect.
+            _ => {} // Unused/read-only bits have no effect.
         }
     }
 }

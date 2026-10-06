@@ -1,5 +1,7 @@
 use std::{cell::Cell, error::Error, fmt};
 
+#[cfg(test)]
+mod audio_step_tests;
 mod fetch;
 #[cfg(test)]
 mod fetch_tests;
@@ -18,6 +20,7 @@ pub(crate) use fetch::InstructionFetch;
 use iwram_bus::IwramBus;
 
 use crate::{
+    audio::{Audio, StereoLevel},
     cpu::InstructionSet,
     display::{DisplayPosition, CYCLES_PER_LINE, HBLANK_START, VISIBLE_LINES},
     dma::{DmaError, DMA_BASE, DMA_END},
@@ -97,7 +100,7 @@ struct CpuAccess {
 /// Successful DMA accesses drive local lanes even before the first CPU instruction.
 /// Channel data remains separate; general and sub-instruction CPU bus handoff is unmodeled.
 /// Instruction buffering and supported bus history consume shared fetch samples.
-/// Timer data accesses use staged machine-step time; other per-access device timing remains unmodeled.
+/// Timer and sound accesses use staged machine-step time; other per-access device timing remains unmodeled.
 pub struct Memory {
     external_ram: Vec<u8>,
     internal_ram: Vec<u8>,
@@ -160,6 +163,17 @@ impl Memory {
         let mut memory = Self::new(rom)?;
         memory.bios = Some(bios);
         Ok(memory)
+    }
+
+    /// Current committed Direct Sound mixer level. This is not a host sample stream.
+    pub fn audio_level(&self) -> StereoLevel {
+        self.io.audio.level()
+    }
+
+    fn audio_state(&self) -> Audio {
+        self.timer_step
+            .get()
+            .map_or(self.io.audio, |step| step.audio)
     }
 
     /// Total elapsed emulated clock cycles, wrapping at u64::MAX. Reads/writes
@@ -727,7 +741,7 @@ impl Memory {
         bytes: [u8; N],
     ) -> Result<(), MemoryError> {
         let index = self.write_index::<N>(address)?;
-        Self::validate_io_values(address, &bytes)?;
+        Self::validate_io_values(&mut self.audio_state(), address, &bytes)?;
         self.record_access(
             address,
             match N {
@@ -753,6 +767,15 @@ impl Memory {
             self.iwram_bus.access(address, width, value);
         }
         if address >> 24 == 0x04 {
+            if Audio::mapped(address) {
+                if let Some(mut step) = self.timer_step.get() {
+                    step.audio.write(address, &bytes);
+                    self.timer_step.set(Some(step));
+                } else {
+                    self.io.audio.write(address, &bytes);
+                }
+                return Ok(());
+            }
             if address & !3 == KEYINPUT {
                 self.io.write_keypad(address, &bytes);
                 return Ok(());
@@ -843,17 +866,26 @@ impl Memory {
         }
     }
 
-    fn validate_io_values(address: u32, bytes: &[u8]) -> Result<(), MemoryError> {
+    fn validate_io_values(
+        audio: &mut Audio,
+        address: u32,
+        bytes: &[u8],
+    ) -> Result<(), MemoryError> {
         if address >> 24 == 0x04 {
             for (offset, &value) in bytes.iter().enumerate() {
                 let address = address + offset as u32;
-                if let Some(operation) = Io::unsupported_write(address, value) {
+                if let Some(operation) = Io::unsupported_write(address, value)
+                    .or_else(|| audio.unsupported(address, value))
+                {
                     return Err(MemoryError::UnsupportedIo {
                         address,
                         value,
                         operation,
                     });
                 }
+            }
+            if Audio::mapped(address) {
+                audio.write(address, bytes);
             }
         }
         Ok(())
@@ -863,9 +895,10 @@ impl Memory {
     /// leave a partial block store. This is not a model of hardware data aborts.
     /// Mapped I/O reads currently have no side effects; writes cannot fail after validation.
     pub(crate) fn write_words(&mut self, writes: &[(u32, u32)]) -> Result<(), MemoryError> {
+        let mut audio = self.audio_state();
         for &(address, value) in writes {
             self.write_index::<4>(address)?;
-            Self::validate_io_values(address, &value.to_le_bytes())?;
+            Self::validate_io_values(&mut audio, address, &value.to_le_bytes())?;
         }
         for &(address, value) in writes {
             // The map cannot change between validation and these writes.

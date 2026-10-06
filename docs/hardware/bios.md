@@ -216,11 +216,12 @@ Supported flags can be combined:
 | 3 | Clear all 96 KiB of video RAM: `0x06000000..0x06017fff` |
 | 4 | Clear sprite attribute memory (OAM): `0x07000000..0x070003ff` |
 | 5 | Reset supported idle serial state and select general-purpose inputs |
-| 6 | Reset disabled sound state, mixing control, bias, and accessible wave RAM |
+| 6 | Disable sound, reset FIFO queues and mixing control, set bias, and clear accessible wave bank 1 |
 | 7 | Reset supported display, DMA, timer, and interrupt registers as described below |
 
 All low-byte flag combinations, including `r0=0xff`, are accepted within the supported device subset.
-This is not full audio or serial support. [Sound activation](audio.md) and [serial transfers](serial.md) still fail explicitly.
+This is not full audio or serial support. [PSG playback](audio.md) and [serial transfers](serial.md) still fail explicitly.
+Sound reset retains wave bank 0 and the separate in-flight playback word; exact firmware sound-reset equivalence is not established.
 The firmware always clears the low halfword of SIODATA32, even when bit 5 is clear; its upper halfword is preserved.
 
 Every supported request first writes `DISPCNT=0x0080`, including requests with no selected flags.
@@ -509,5 +510,5 @@ Unsupported SWIs, unsupported exception vectors, and null/misaligned IRQ callbac
 The CPU reports `CpuError::UnsupportedInstruction` with `bios::UNSUPPORTED_TRAP`, rather than silently treating a service as a no-op.
 Invalid arithmetic/decompression arguments use the same CPU error type with the distinct `bios::INVALID_ARGUMENT_TRAP` instruction.
 Prior boot/service steps remain committed on failure.
-Active sound, serial transfers, HardReset, and serial/Game Pak STOP wake-up remain unimplemented.
+PSG playback, host audio output, serial transfers, HardReset, and serial/Game Pak STOP wake-up remain unimplemented.
 This subset is not sufficient for Pokémon Emerald compatibility.

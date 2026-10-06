@@ -1,6 +1,7 @@
 //! Four-channel GBA direct memory access (DMA) controller.
 //! Transfers are scheduled one data unit at a time. Startup/resumption delays,
-//! CPU bus handoff, sound FIFO, video capture, and Game Pak DRQ are not modeled.
+//! CPU bus handoff, video capture, and Game Pak DRQ are not modeled.
+//! Sound requests support DMA1/FIFO A and DMA2/FIFO B; other pairings are diagnostic.
 //! Each channel retains known source data across blocks, including blocked reads.
 
 use std::{error::Error, fmt};
@@ -79,12 +80,16 @@ impl Channel {
         (self.control >> 12) & 3
     }
 
-    fn unsupported(&self) -> bool {
-        self.start_timing() == 3 || self.control & 0x800 != 0 || self.control & 0x180 == 0x180
+    fn unsupported(&self, index: usize) -> bool {
+        (self.start_timing() == 3
+            && (!(1..=2).contains(&index)
+                || self.destination != crate::audio::FIFO_A + (index as u32 - 1) * 4))
+            || self.control & 0x800 != 0
+            || self.control & 0x180 == 0x180
     }
 
     fn width(&self) -> AccessWidth {
-        if self.control & 0x400 != 0 {
+        if self.start_timing() == 3 || self.control & 0x400 != 0 {
             AccessWidth::Word
         } else {
             AccessWidth::Halfword
@@ -92,7 +97,9 @@ impl Channel {
     }
 
     fn initial_count(&self, index: usize) -> u32 {
-        if self.count != 0 {
+        if self.start_timing() == 3 {
+            4
+        } else if self.count != 0 {
             u32::from(self.count)
         } else if index == 3 {
             0x1_0000
@@ -183,6 +190,15 @@ impl Dma {
         }
     }
 
+    pub(crate) fn trigger_sound(&mut self, requests: [bool; 2]) {
+        for (index, requested) in requests.into_iter().enumerate() {
+            let channel = &mut self.channels[index + 1];
+            if requested && channel.enabled() && channel.start_timing() == 3 && !channel.active {
+                channel.active = true;
+            }
+        }
+    }
+
     /// Select the highest-priority ready channel without changing its state.
     /// Unsupported enabled modes report a diagnostic rather than silently waiting.
     pub(crate) fn next(&self) -> Result<Option<Transfer>, DmaError> {
@@ -190,7 +206,7 @@ impl Dma {
             if !channel.enabled() {
                 continue;
             }
-            if channel.unsupported() {
+            if channel.unsupported(index) {
                 return Err(DmaError::UnsupportedControl {
                     channel: index,
                     control: channel.control,
@@ -225,7 +241,11 @@ impl Dma {
         channel.current_destination = advance_address(
             channel.current_destination,
             width,
-            (channel.control >> 5) & 3,
+            if channel.start_timing() == 3 {
+                2
+            } else {
+                (channel.control >> 5) & 3
+            },
         );
         channel.remaining -= 1;
         channel.first = false;
@@ -236,7 +256,7 @@ impl Dma {
         if channel.control & 0x200 != 0 && channel.start_timing() != 0 {
             channel.remaining = channel.initial_count(index);
             channel.first = true;
-            if channel.control & 0x60 == 0x60 {
+            if channel.start_timing() != 3 && channel.control & 0x60 == 0x60 {
                 channel.current_destination = channel.destination & !(width - 1);
             }
         } else {
