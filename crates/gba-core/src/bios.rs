@@ -18,7 +18,7 @@ mod run_length;
 
 use crate::{
     cpu::Cpu,
-    io::{HALTCNT, IME, POSTFLG},
+    io::{BG2PA, HALTCNT, IME, POSTFLG},
     machine::Machine,
     memory::{Memory, MemoryError, BIOS_SIZE, ROM_START},
 };
@@ -34,8 +34,8 @@ pub const UNSUPPORTED_TRAP: u32 = 0xe7f0_00f0;
 pub const INVALID_ARGUMENT_TRAP: u32 = 0xe7f0_00f1;
 
 /// Start at reset with our optional firmware. Call Machine::step to execute boot.
-/// Boot initializes three stacks, POSTFLG, and the IRQ communication words, then
-/// enters ROM_START in ARM System mode. It does not validate a cartridge header,
+/// Boot initializes three stacks, POSTFLG, the IRQ communication words, and
+/// identity BG2/BG3 matrices, then enters ROM_START in ARM System mode. It does not validate a cartridge header,
 /// reproduce Nintendo's boot process, or provide file loading.
 pub fn boot(rom: Vec<u8>) -> Result<Machine, MemoryError> {
     Ok(Machine::new(
@@ -86,6 +86,14 @@ pub fn image() -> Vec<u8> {
     a.emit(0xe581_0004); // STR r0,[r1,#4] (callback pointer)
     a.literal(1, IME);
     a.emit(0xe581_0000); // STR r0,[r1] (disable IRQ delivery during minimal boot)
+                         // Bitmap and affine ROMs can rely on firmware's identity transform.
+                         // Fresh device state supplies zero PB/PC/origins; do not change raw I/O reset defaults.
+    a.literal(1, BG2PA);
+    a.emit(0xe3a0_0c01); // MOV r0,#256
+    a.emit(0xe1c1_00b0); // STRH r0,[r1]     (BG2PA)
+    a.emit(0xe1c1_00b6); // STRH r0,[r1,#6]  (BG2PD)
+    a.emit(0xe1c1_01b0); // STRH r0,[r1,#16] (BG3PA)
+    a.emit(0xe1c1_01b6); // STRH r0,[r1,#22] (BG3PD)
     a.literal(1, POSTFLG);
     a.emit(0xe3a0_0001); // MOV r0,#1
     a.emit(0xe5c1_0000); // STRB r0,[r1]

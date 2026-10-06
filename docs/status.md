@@ -76,6 +76,7 @@ Update this file when a feature lands or a limit is removed.
 - 256 KiB external work RAM and 32 KiB internal work RAM, including mirrors.
 - Read-only cartridge bytes in the three GBA cartridge windows.
 - Raw ROM-file loading with original BIOS boot, terminal diagnostics, and final CPU/step reports.
+- Firmware boot initializes BG2/BG3 identity scales for bitmap and affine programs that do not program their own matrices.
 - ROM windows with scanline capture, keyboard input, focus-loss release, bounded execution slices, and interactive keypad wake from STOP.
 - Optional ROM-window frame limits and an original input-test ROM generator.
 - Headless JSON ROM suites with PC or VBlank completion, register/CPSR/memory/pixel assertions, scheduled buttons, bounded budgets, and structured failure reports.

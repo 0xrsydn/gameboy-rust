@@ -231,6 +231,13 @@ Shared timer prescaler phase:
 
 See [shared divider scope and tests](research/timer-prescaler.md). The correction does not implement delayed register writes or startup edges.
 
+General gameplay and boot graphics:
+
+- [ZeroDayArcade Pong at c784b603](https://github.com/ZeroDayArcade/Pong-Homebrew-GBA/tree/c784b6036a4f188c50932b411e98126bfcbd07d6), for a licensed independent homebrew, source-defined menu/input behavior, and bitmap startup requirements.
+- [mGBA I/O initialization at 3a5e34be](https://github.com/mgba-emu/mgba/blob/3a5e34be33dc7f8f707e5bc9db69e8a430046f21/src/gba/io.c), cross-checked with its BIOS reset implementation for identity affine scales.
+- [gbadoc register summary](https://gbadev.net/gbadoc/registers.html), for affine coefficient meanings. See [boot graphics evidence](research/boot-video.md).
+- [tolik518/GBA_Pong](https://github.com/tolik518/GBA_Pong/tree/422e22a5d1f7d11710e03ffc19d5bff6ac95240f): a future homebrew candidate found during research. It has not been built or tested here.
+
 Use [GBATEK](https://problemkaputt.de/gbatek.htm) and ARM7TDMI documentation for further hardware work.
 Only use game ROMs that you may lawfully use. Do not commit game ROMs, BIOS files, or game assets.
 The ignore file excludes `roms/`, common game ROM extensions, and save files.

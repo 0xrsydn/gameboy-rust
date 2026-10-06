@@ -76,6 +76,7 @@ The repository is a Cargo workspace with three crates:
 | `crates/gba-core/src/lib.rs` | Core modules |
 | `crates/gba-demos/src/lib.rs` | Demo modules, original instruction/exception bytes, and raw input-test ROM |
 | `crates/gba-core/src/bios.rs` | Original ARM BIOS image builder, minimal boot, IRQ dispatch, waits, and memory services |
+| `crates/gba-core/tests/bios/boot_video.rs` | Firmware identity scales, bitmap/affine startup rendering, capture, and raw-memory isolation |
 | `crates/gba-core/src/bios/reset.rs` | Emitted ARM SoftReset and selective RegisterRamReset; CPU banks, RAM clearing, and supported device-register resets |
 | `crates/gba-core/src/bios/arithmetic.rs` | Emitted ARM division and integer-square-root routines |
 | `crates/gba-core/src/bios/affine.rs` | Emitted ARM background/sprite matrix services, range checks, and generated sine table |

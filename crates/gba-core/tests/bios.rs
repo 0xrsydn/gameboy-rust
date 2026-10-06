@@ -20,6 +20,8 @@ mod angles;
 mod arithmetic;
 #[path = "bios/bit_unpack.rs"]
 mod bit_unpack;
+#[path = "bios/boot_video.rs"]
+mod boot_video;
 #[path = "bios/differential.rs"]
 mod differential;
 #[path = "bios/huffman.rs"]

@@ -23,6 +23,12 @@ Minimal boot initializes:
 - Supervisor stack: `0x03007fe0`.
 - BIOS IRQ flags at `0x03007ff8` and the callback pointer at `0x03007ffc`: zero.
 - IME: zero; POSTFLG: one.
+- BG2/BG3 affine PA and PD: 256 (identity scale), through executed ARM halfword stores.
+  Fresh device state supplies zero PB, PC, and origins. Raw `Memory::new` defaults remain unchanged.
+
+This prevents bitmap and affine ROMs from sampling one pixel across the screen when they rely on firmware initialization.
+Original regressions verify bitmap coordinates, both affine backgrounds, and scanline capture without ROM-side matrix writes.
+See the [boot graphics investigation](../research/boot-video.md) for the independent homebrew failure and evidence.
 
 It then enters `0x08000000` in ARM System mode with IRQ/FIQ masks clear.
 It does not reproduce Nintendo's logo, cartridge-header checks, RAM clearing, boot delays, or full hardware initialization.
