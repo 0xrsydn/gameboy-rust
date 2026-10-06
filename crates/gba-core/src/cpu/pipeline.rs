@@ -83,6 +83,12 @@ impl Cpu {
             memory.fetch_instruction(pc, instruction_set),
             memory.fetch_instruction(pc.wrapping_add(instruction_set.width()), instruction_set),
         ];
+        for (sample, kind) in fetches
+            .iter()
+            .zip([AccessKind::NonSequential, AccessKind::Sequential])
+        {
+            memory.record_code_access(sample.address(), instruction_set.access_width(), kind);
+        }
         memory.refill_cpu_bus_history(&fetches);
         self.pipeline = Some(Pipeline {
             pc,

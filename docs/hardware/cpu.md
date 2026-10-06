@@ -356,6 +356,12 @@ The writable mask is `0x5fff`; the Game Pak type flag reads as GBA, and the uppe
 A CPU write to WAITCNT does not retroactively change that instruction's code-access cost.
 The new settings apply to subsequent code accesses.
 
+Timed CPU execution uses an ordered `CpuTiming` transaction: source fetch, actual data accesses, internal work, then target-pair fetches.
+A failed instruction discards the entire transaction. Target samples do not add duplicate fetch or data costs.
+IRQ entry records its source fetch and vector pair in the same path.
+Device clocks still advance once after the successful step; this is not per-cycle scheduling.
+See [Game Pak prefetch research](../research/gamepak-prefetch.md) for this prerequisite and unresolved queue behavior.
+
 ### Nominal CPU resume after DMA
 
 A successful DMA unit marks the next CPU instruction's nominal code access non-sequential.

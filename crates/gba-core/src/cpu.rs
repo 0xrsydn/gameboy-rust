@@ -257,6 +257,7 @@ impl Cpu {
         let result = self.execute_instruction(instruction, memory);
         memory.end_cpu_access(result.is_ok());
         if result.is_ok() {
+            memory.record_internal_cycles(summary.internal);
             if summary.refill {
                 self.refill_pipeline(memory);
             } else {

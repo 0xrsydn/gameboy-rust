@@ -5,14 +5,14 @@
 use super::{Cpu, CpuError, InstructionSet};
 use crate::{
     memory::Memory,
-    timing::{bus_cycles, refill_cycles, AccessKind, AccessWidth, StepTiming},
+    timing::{AccessKind, AccessWidth, StepTiming},
 };
 
 #[derive(Default)]
 pub(super) struct Summary {
     data: bool,
     pub(super) refill: bool,
-    internal: u32,
+    pub(super) internal: u32,
 }
 
 impl Summary {
@@ -43,7 +43,7 @@ impl Summary {
 }
 
 impl InstructionSet {
-    fn access_width(self) -> AccessWidth {
+    pub(super) fn access_width(self) -> AccessWidth {
         match self {
             Self::Arm => AccessWidth::Word,
             Self::Thumb => AccessWidth::Halfword,
@@ -57,27 +57,18 @@ impl Cpu {
     /// Failed instructions discard their timing trace and retain existing diagnostics.
     pub fn step_timed(&mut self, memory: &mut Memory) -> Result<StepTiming, CpuError> {
         let fetched = self.fetch(memory)?;
-        let instruction = fetched.instruction;
-        let summary = self.instruction_summary(instruction);
-        let fetch_address = fetched.lookahead.address();
-        let width = self.instruction_set.access_width();
-        // A WAITCNT store affects subsequent instructions, not this code access.
-        let waitcnt = memory.waitcnt();
         let code_kind = memory.cpu_code_kind(self.next_fetch_kind());
-        memory.begin_data_timing();
+        // Source timing precedes data accesses and their WAITCNT writes.
+        memory.begin_cpu_timing();
+        memory.record_code_access(
+            fetched.lookahead.address(),
+            self.instruction_set.access_width(),
+            code_kind,
+        );
         let result = self.execute_fetched(fetched, memory);
-        let data_cycles = memory.end_data_timing();
+        let timing = memory.end_cpu_timing(result.is_ok());
         result?;
-        let mut code_cycles = bus_cycles(waitcnt, fetch_address, width, code_kind);
-        if summary.refill {
-            code_cycles += refill_cycles(waitcnt, self.pc(), self.instruction_set.access_width());
-        }
-        Ok(StepTiming {
-            code_cycles,
-            data_cycles,
-            internal_cycles: summary.internal,
-            idle_cycles: 0,
-        })
+        Ok(timing)
     }
 
     /// Accept IRQ between instructions, discard the old-state fetch, then refill ARM.
@@ -89,15 +80,12 @@ impl Cpu {
         if !self.take_interrupt(memory.irq_pending(), false) {
             return None;
         }
-        let waitcnt = memory.waitcnt();
+        memory.begin_cpu_timing();
         let fetch = memory.fetch_instruction(address, state);
+        memory.record_code_access(fetch.address(), state.access_width(), kind);
         memory.discarded_cpu_fetch(&fetch);
         self.refill_pipeline(memory);
-        Some(StepTiming {
-            code_cycles: bus_cycles(waitcnt, fetch.address(), state.access_width(), kind)
-                + refill_cycles(waitcnt, self.pc(), self.instruction_set.access_width()),
-            ..StepTiming::default()
-        })
+        Some(memory.end_cpu_timing(true))
     }
 
     fn arm_summary(&self, instruction: u32) -> Summary {

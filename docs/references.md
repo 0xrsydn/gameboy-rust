@@ -199,6 +199,16 @@ Persistent fetch access-kind research:
 See [persistent fetch access kinds](research/fetch-access-sequencing.md) for scope, cold-start policy, and regression-report changes.
 These are source comparisons, not hardware timing measurements or external-emulator test runs.
 
+Game Pak prefetch research:
+
+- [GBATEK GamePak Prefetch](https://www.problemkaputt.de/gbatek-gba-gamepak-prefetch.htm), for capacity, opcode-only service, and idle-bus progress.
+- [mGBA cycle counting and prefetch](https://mgba.io/2015/06/27/cycle-counting-prefetch/), for independent cartridge progress and original hardware-timing test leads.
+- The pinned NanoBoyAdvance bus timing above, for queued/in-progress/miss cases and completion-edge cancellation stalls.
+- [ares prefetch at 6f6786e0](https://github.com/ares-emulator/ares/blob/6f6786e04f0822a3475463df284f313ab8518d51/ares/gba/cpu/prefetch.cpp), compared with its pinned bus dispatcher above, for halfword ownership, full-buffer stopping, and page-boundary behavior.
+
+See [prefetch evidence and timing prerequisites](research/gamepak-prefetch.md).
+The source differences remain validation questions. No Game Pak prefetch implementation or hardware conformance result is claimed yet.
+
 Use [GBATEK](https://problemkaputt.de/gbatek.htm) and ARM7TDMI documentation for further hardware work.
 Only use game ROMs that you may lawfully use. Do not commit game ROMs, BIOS files, or game assets.
 The ignore file excludes `roms/`, common game ROM extensions, and save files.

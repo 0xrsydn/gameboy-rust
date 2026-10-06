@@ -45,6 +45,7 @@ Update this file when a feature lands or a limit is removed.
 - STOP freezes CPU/DMA/device clocks, retains device phases, and reports a stopped frame runner without spinning.
 - Machine execution to the next VBlank event, with a configurable step limit.
 - CPU/device stepping with nominal ARM7 instruction costs and memory wait states.
+- Ordered CPU timing transactions record source, data, internal, and refill costs, with whole-step diagnostic rollback.
 - Code costs use actual ARM PC+8/Thumb PC+4 source fetches and branch/exception target pairs, including region and ROM boundaries.
 - IRQ entry samples its discarded incoming-state fetch before the ARM vector pair, with local IWRAM history updates.
 - Persistent fetch access kinds follow CPU data/internal work, compose with DMA resume, and reset after target refills.
@@ -166,7 +167,9 @@ Writes to cartridge addresses return errors instead of modeling cartridge hardwa
    Keep unknown history diagnostic until fetch ordering and latch ownership have independent coverage.
    Validate BIOS snapshots with independent hardware tests before claiming exact refill or data-access history.
    The desktop runner still uses only the original BIOS. Keep protected reads image-derived for all supplied images.
-2. Add Game Pak prefetch with verified startup and invalidation rules.
+2. Add Game Pak prefetch using the ordered CPU timing path; bit 14 still does not accelerate execution.
+   Verify queue startup, full-buffer restart, page boundaries, partial ARM fetches, and invalidation before enabling it.
+   See [prefetch research and prerequisites](research/gamepak-prefetch.md).
    Validate cold-start costs, then extend per-access device updates, bus arbitration, and timer/IRQ delays.
 3. Validate keypad retrigger behavior with hardware tests and add remaining device registers; extend BIOS reset coverage as sound/serial support becomes available.
    Validate STOP entry/wake edges and add external wake sources and remaining DMA device modes.

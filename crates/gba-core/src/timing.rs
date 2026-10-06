@@ -89,33 +89,103 @@ pub fn bus_cycles(waitcnt: u16, address: u32, width: AccessWidth, kind: AccessKi
     }
 }
 
-/// Target/decode pair only. The caller separately charges the old-state source fetch.
-pub(crate) fn refill_cycles(waitcnt: u16, target: u32, width: AccessWidth) -> u32 {
-    bus_cycles(waitcnt, target, width, AccessKind::NonSequential)
-        + bus_cycles(
-            waitcnt,
-            target.wrapping_add(width.bytes()),
-            width,
-            AccessKind::Sequential,
-        )
-}
-
-/// A data-only trace. Instruction fetches and branch refills are charged by the
-/// CPU timing summary, not here. Actual CPU bus calls supply addresses and widths.
+/// One speculative instruction/IRQ timing transaction. Events arrive in source,
+/// data, internal, then target-pair order. Device clocks still advance in bulk.
+/// Code uses the entry WAITCNT snapshot; data uses settings at each bus access.
 #[derive(Debug, Default, Clone, Copy)]
-pub(crate) struct DataTiming {
-    pub cycles: u32,
-    next: Option<u32>,
+pub(crate) struct CpuTiming {
+    pub total: StepTiming,
+    code_waitcnt: u16,
+    next_data: Option<u32>,
+    // The largest supported step is LDM with PC: source + 16 data + I + 2 targets.
+    // Production builds keep only costs and sequencing state, not an event log.
+    #[cfg(test)]
+    events: [Option<TimingEvent>; 20],
+    #[cfg(test)]
+    event_count: usize,
 }
 
-impl DataTiming {
-    pub fn access(&mut self, waitcnt: u16, address: u32, width: AccessWidth) {
-        let kind = if self.next == Some(address) {
+impl CpuTiming {
+    pub fn new(code_waitcnt: u16) -> Self {
+        Self {
+            code_waitcnt,
+            ..Self::default()
+        }
+    }
+
+    pub fn code(&mut self, address: u32, width: AccessWidth, kind: AccessKind) {
+        let cycles = bus_cycles(self.code_waitcnt, address, width, kind);
+        self.total.code_cycles += cycles;
+        #[cfg(test)]
+        self.record(TimingEvent::Code {
+            address,
+            width,
+            kind,
+            waitcnt: self.code_waitcnt,
+            cycles,
+        });
+    }
+
+    pub fn data(&mut self, waitcnt: u16, address: u32, width: AccessWidth) {
+        let kind = if self.next_data == Some(address) {
             AccessKind::Sequential
         } else {
             AccessKind::NonSequential
         };
-        self.cycles += bus_cycles(waitcnt, address, width, kind);
-        self.next = Some(address.wrapping_add(width.bytes()));
+        let cycles = bus_cycles(waitcnt, address, width, kind);
+        self.total.data_cycles += cycles;
+        self.next_data = Some(address.wrapping_add(width.bytes()));
+        #[cfg(test)]
+        self.record(TimingEvent::Data {
+            address,
+            width,
+            kind,
+            waitcnt,
+            cycles,
+        });
     }
+
+    pub fn internal(&mut self, cycles: u32) {
+        self.total.internal_cycles += cycles;
+        #[cfg(test)]
+        if cycles != 0 {
+            self.record(TimingEvent::Internal { cycles });
+        }
+    }
+
+    #[cfg(test)]
+    fn record(&mut self, event: TimingEvent) {
+        self.events[self.event_count] = Some(event);
+        self.event_count += 1;
+    }
+
+    #[cfg(test)]
+    pub fn events(&self) -> Vec<TimingEvent> {
+        self.events[..self.event_count]
+            .iter()
+            .map(|event| event.unwrap())
+            .collect()
+    }
+}
+
+#[cfg(test)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum TimingEvent {
+    Code {
+        address: u32,
+        width: AccessWidth,
+        kind: AccessKind,
+        waitcnt: u16,
+        cycles: u32,
+    },
+    Data {
+        address: u32,
+        width: AccessWidth,
+        kind: AccessKind,
+        waitcnt: u16,
+        cycles: u32,
+    },
+    Internal {
+        cycles: u32,
+    },
 }

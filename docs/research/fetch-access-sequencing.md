@@ -126,4 +126,5 @@ The timer therefore runs two additional cycles before the handler stops it.
 - Game Pak prefetch, configurable EWRAM timing, display contention, and DMA during internal cycles remain unimplemented.
 - IRQ synchronization delays and complete BIOS/general-bus latch history remain incomplete.
 
-The next timing work is Game Pak prefetch, with explicit startup and invalidation rules and independent tests.
+The later [prefetch prerequisite](gamepak-prefetch.md) records source, data, internal, and refill costs in order without changing totals.
+The next timing work remains an active Game Pak queue, with verified startup and invalidation rules and independent tests.

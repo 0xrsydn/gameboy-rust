@@ -265,6 +265,11 @@ They use independent N/S tables across every ROM window and wait setting, includ
 They check timed/untimed equivalence, clones, IRQ/DMA composition, repeated transfers, PC-load refills, failed steps, and cold-start policy.
 Page/wait-window crossings, masked IRQs, host/HALT isolation, and pre-write WAITCNT settings retain separate checks.
 See [persistent fetch access kinds](research/fetch-access-sequencing.md) for evidence and public-report changes.
+Timing-event tests inspect source/data/internal/refill order and metadata independently of aggregate cycle costs.
+They cover the full LDM register list, PC loads, Thumb POP, state changes, skipped branches, swaps, shifts, and IRQ entry.
+WAITCNT snapshots, late failure rollback, deferred fetch errors, and host/untimed/DMA isolation have separate checks.
+Test-only event logs do not add a production allocation or a public trace API.
+See [prefetch prerequisites](research/gamepak-prefetch.md); these tests do not establish an active Game Pak prefetch implementation.
 Instruction timing tests cover arithmetic, shifts, branches, transfers, block operations, multiply, and exception returns.
 Timed and untimed execution are compared across all 65,536 Thumb encodings with fixed initial registers.
 Timer/IRQ tests verify that changing WAITCNT changes when an interrupt is sampled.

@@ -8,6 +8,8 @@ mod irq_fetch_tests;
 mod iwram_bus;
 #[cfg(test)]
 mod iwram_history_tests;
+#[cfg(test)]
+mod timing_event_tests;
 pub(crate) use fetch::InstructionFetch;
 use iwram_bus::IwramBus;
 
@@ -17,7 +19,7 @@ use crate::{
     dma::{DmaError, DMA_BASE, DMA_END},
     input::Buttons,
     io::{Io, HALTCNT, KEYINPUT, POSTFLG},
-    timing::{bus_cycles, AccessKind, AccessWidth, DataTiming, StepTiming},
+    timing::{bus_cycles, AccessKind, AccessWidth, CpuTiming, StepTiming},
     video::{self, sprites::pipeline, Framebuffer, VideoError},
 };
 
@@ -89,7 +91,9 @@ pub struct Memory {
     bios: Option<Vec<u8>>,
     io: Io,
     cycles: u64,
-    data_timing: Cell<Option<DataTiming>>,
+    cpu_timing: Cell<Option<CpuTiming>>,
+    #[cfg(test)]
+    last_cpu_timing: Option<CpuTiming>,
     // A completed DMA unit breaks the CPU's next nominal code-access sequence.
     cpu_resume_nonsequential: bool,
     cpu_access: Option<CpuAccess>,
@@ -114,7 +118,9 @@ impl Memory {
             bios: None,
             io: Io::default(),
             cycles: 0,
-            data_timing: Cell::new(None),
+            cpu_timing: Cell::new(None),
+            #[cfg(test)]
+            last_cpu_timing: None,
             cpu_resume_nonsequential: false,
             cpu_access: None,
             bios_prefetch: None,
@@ -509,19 +515,47 @@ impl Memory {
         }
     }
 
-    pub(crate) fn begin_data_timing(&self) {
-        debug_assert!(self.data_timing.get().is_none());
-        self.data_timing.set(Some(DataTiming::default()));
+    pub(crate) fn begin_cpu_timing(&self) {
+        debug_assert!(self.cpu_timing.get().is_none());
+        self.cpu_timing.set(Some(CpuTiming::new(self.waitcnt())));
     }
 
-    pub(crate) fn end_data_timing(&self) -> u32 {
-        self.data_timing.take().map_or(0, |trace| trace.cycles)
+    pub(crate) fn end_cpu_timing(&mut self, succeeded: bool) -> StepTiming {
+        let trace = self
+            .cpu_timing
+            .take()
+            .expect("CPU timing transaction is active");
+        if !succeeded {
+            return StepTiming::default();
+        }
+        #[cfg(test)]
+        {
+            self.last_cpu_timing = Some(trace);
+        }
+        trace.total
+    }
+
+    pub(crate) fn record_code_access(&self, address: u32, width: AccessWidth, kind: AccessKind) {
+        if let Some(mut trace) = self.cpu_timing.get() {
+            trace.code(address, width, kind);
+            self.cpu_timing.set(Some(trace));
+        }
+    }
+
+    pub(crate) fn record_internal_cycles(&self, cycles: u32) {
+        if cycles == 0 {
+            return;
+        }
+        if let Some(mut trace) = self.cpu_timing.get() {
+            trace.internal(cycles);
+            self.cpu_timing.set(Some(trace));
+        }
     }
 
     fn record_access(&self, address: u32, width: AccessWidth) {
-        if let Some(mut trace) = self.data_timing.get() {
-            trace.access(self.waitcnt(), address, width);
-            self.data_timing.set(Some(trace));
+        if let Some(mut trace) = self.cpu_timing.get() {
+            trace.data(self.waitcnt(), address, width);
+            self.cpu_timing.set(Some(trace));
         }
     }
 
