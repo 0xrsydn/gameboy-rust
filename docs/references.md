@@ -189,6 +189,16 @@ Refill and IRQ fetch-timing research:
 See [source-fetch and target-pair timing](research/refill-fetch-timing.md) for the implementation and public-report audit.
 Source review and comparisons between our own core versions are not physical-hardware timing validation.
 
+Persistent fetch access-kind research:
+
+- [ARM7TDMI load-multiple timing](https://support.arm.com/documentation/ddi0210/c/Instruction-Cycle-Timings/Load-multiple-registers), for separate prefetch, data-transfer, and internal-cycle phases.
+- [NanoBoyAdvance ARM handlers](https://github.com/nba-emu/NanoBoyAdvance/blob/55b5cf0ae3d929582ac5bfd486558173502b8354/src/nba/src/arm/handlers/handler32.inl) and [Thumb handlers](https://github.com/nba-emu/NanoBoyAdvance/blob/55b5cf0ae3d929582ac5bfd486558173502b8354/src/nba/src/arm/handlers/handler16.inl), for next-fetch kinds after data/internal work.
+- Its [bus timing](https://github.com/nba-emu/NanoBoyAdvance/blob/55b5cf0ae3d929582ac5bfd486558173502b8354/src/nba/src/bus/timing.cc), for separate internal and ROM costs when prefetch is inactive.
+- [ares processor memory helpers](https://github.com/ares-emulator/ares/blob/6f6786e04f0822a3475463df284f313ab8518d51/ares/component/processor/arm7tdmi/memory.cpp), [instruction loop](https://github.com/ares-emulator/ares/blob/6f6786e04f0822a3475463df284f313ab8518d51/ares/component/processor/arm7tdmi/instruction.cpp), and [ARM handlers](https://github.com/ares-emulator/ares/blob/6f6786e04f0822a3475463df284f313ab8518d51/ares/component/processor/arm7tdmi/instructions-arm.cpp), for independent burst termination and fetch-before-execution ordering.
+
+See [persistent fetch access kinds](research/fetch-access-sequencing.md) for scope, cold-start policy, and regression-report changes.
+These are source comparisons, not hardware timing measurements or external-emulator test runs.
+
 Use [GBATEK](https://problemkaputt.de/gbatek.htm) and ARM7TDMI documentation for further hardware work.
 Only use game ROMs that you may lawfully use. Do not commit game ROMs, BIOS files, or game assets.
 The ignore file excludes `roms/`, common game ROM extensions, and save files.

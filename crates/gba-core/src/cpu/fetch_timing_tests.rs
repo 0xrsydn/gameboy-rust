@@ -164,9 +164,10 @@ fn a_boundary_waitcnt_store_uses_old_fetch_settings_and_the_next_fetch_uses_new_
     cpu.registers[0] = 0xc0; // WS1 N=3, S=2.
     cpu.registers[1] = WAITCNT;
     let cost = cpu.step_timed(&mut memory).unwrap();
-    assert_eq!(cost.code_cycles, 10); // Old WS1 N=5, S=5 at lookahead 0x0a000004.
+    assert_eq!(cost.code_cycles, 10); // Old WS1 S+S=10 at lookahead 0x0a000004.
     assert_eq!(cost.data_cycles, 1);
     assert_eq!(memory.waitcnt(), 0xc0);
+    assert_eq!(cpu.step_timed(&mut memory).unwrap().code_cycles, 5); // Store's next fetch: new N+S.
     assert_eq!(cpu.step_timed(&mut memory).unwrap().code_cycles, 4);
 }
 

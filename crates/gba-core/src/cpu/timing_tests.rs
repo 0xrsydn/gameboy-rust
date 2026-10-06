@@ -338,9 +338,9 @@ fn waitcnt_store_charges_old_code_settings_and_new_settings_apply_next_step() {
     let mut cpu = Cpu::new(ROM_START);
     cpu.registers[0] = WAITCNT;
     cpu.registers[1] = 0x18; // N=3 and S=2 per halfword
-    assert_eq!(cpu.step_timed(&mut memory).unwrap(), expected(8, 1, 0));
+    assert_eq!(cpu.step_timed(&mut memory).unwrap(), expected(6, 1, 0)); // Incoming S at old WAITCNT.
     assert_eq!(memory.waitcnt(), 0x18);
-    assert_eq!(cpu.step_timed(&mut memory).unwrap(), expected(4, 0, 0));
+    assert_eq!(cpu.step_timed(&mut memory).unwrap(), expected(5, 0, 0)); // Following N at new WAITCNT.
 }
 
 #[test]

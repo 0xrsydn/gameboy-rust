@@ -104,16 +104,18 @@ A buffered fetch error fails only if execution reaches that slot. No automatic h
 A failed instruction preserves all CPU state, including the old buffer; its speculative advance is discarded.
 A successful branch discards abandoned-path errors and replaces them with target fetch results.
 
-CPU clones and equality include the buffer. Architectural state checks are separate from full-state rollback checks in tests.
+CPU clones and equality include the buffer and its next fetch access kind.
+Architectural state checks are separate from full-state rollback checks in tests.
 `Cpu::invalidate_pipeline()` explicitly discards buffered instructions without changing registers, flags, or device clocks.
 Use it after debugger code repair or when attaching different memory to a retained CPU.
+Invalidation also resets the CPU fetch kind to the nominal cold-start S policy; Memory's DMA override remains separate.
 Do not call it for ordinary CPU/DMA stores: that would hide self-modifying-code behavior.
 
 This is instruction buffering, not a complete timed fetch pipeline.
 Sampling adds no data accesses or independent device-clock updates.
 Code timing charges the source fetch and target pair once, with a DMA resume override on the source access.
 Instruction buffering and supported bus history now consume the same mapped fetch samples.
-Complete fetch-driven bus history, access-kind sequencing, per-access device updates, and DMA arbitration remain incomplete.
+Complete fetch-driven bus history, per-access device updates, and DMA arbitration remain incomplete.
 See the [ARM evidence and diagnostic policy](../research/arm-instruction-buffer.md), [Thumb extension](../research/thumb-instruction-buffer.md),
 and [shared fetch samples](../research/shared-fetch-samples.md).
 
@@ -287,7 +289,7 @@ ARM `TST`, `TEQ`, `CMP`, and `CMN` encodings with unused destination bits set to
 These compare/status forms do not write the arithmetic result to PC. Execution continues at the next sequential address.
 In User/System modes, they perform ordinary test/compare flag updates without a mode change.
 Invalid saved modes still produce an atomic diagnostic. Failed conditions do not restore or validate status.
-Nominal timing remains one sequential code access, plus an internal cycle for register-specified shifts; there is no refill cost.
+Nominal timing uses the incoming code access kind, plus an internal cycle for register-specified shifts; there is no refill cost.
 This fixes the mode-switch expectation in public `jsmolka/gba-tests` ARM test 234 and agrees with mGBA's shared ALU flag handling.
 Instruction buffering is discarded on a state change without an ordinary refill.
 Instruction-state-changing compare forms and exact pipeline behavior remain hardware-unverified.
@@ -311,29 +313,35 @@ Neither constructor provides Nintendo BIOS services or initializes BIOS-managed 
 
 ## Instruction and bus timing
 
-The timing model uses ARM7 cycle summaries:
+The timing model distinguishes these ARM7 cycle types:
 
 - **S:** sequential memory access.
 - **N:** non-sequential memory access.
 - **I:** internal CPU cycle, always one clock cycle.
 
-An ordinary arithmetic instruction costs 1S. A register-specified shift adds 1I, even for a zero shift amount.
-Loads cost a code S access, a data N access, and 1I. Stores use N for code and data.
-Block transfers charge N for the first data word and S for each following word.
-Loads add 1I. Loading PC also adds the branch refill cost.
+Every instruction charges its source fetch using the incoming access kind retained by the CPU buffer.
+Ordinary arithmetic and immediate shifts leave the next fetch S.
+Register-specified shifts add 1I, even for a zero shift amount, and leave the next fetch N.
+Loads and stores start their data accesses with N and leave the next source fetch N.
+Block transfers use N for the first data word and S for each following word.
+Loads add 1I. Loading PC also fetches a target pair, which restores S for subsequent target execution.
 Branches, PC writes, software interrupts, and IRQ entry charge one source fetch plus a target N+S pair.
 The source fetch uses the incoming state at P+2W. The target pair uses the resulting state at T and T+W.
 The first target instruction charges T+2W when it executes; the refill does not charge it early.
-A skipped conditional instruction only pays its code S access.
+A skipped conditional instruction only pays its incoming code access and leaves the following fetch S.
 Thumb `BL` charges one source fetch for each half; only its suffix adds the target N+S pair.
 Multiply costs vary with the incoming multiplier's upper bytes; accumulate and long forms add internal cycles.
 ARM uses Rs for this calculation. Thumb multiply uses the incoming destination register.
+Multiply internal cycles leave the following fetch N. Swaps also leave N after their data/internal work.
+Successful target refills end with S, overriding sequence breaks from preceding data/internal work.
+IRQ entry uses the interrupted buffer's incoming kind before replacing that buffer.
 
 Source code costs use the new instruction fetch address: P+8 for ARM and P+4 for Thumb.
 The incoming instruction state selects the width. The sampled fetch address selects the memory region and ROM wait-state window.
 A 128 KiB ROM boundary therefore forces N timing when lookahead reaches it, not when execution reaches it later.
 This applies to cold and retained pipelines without adding separate startup-fill costs.
-See [fetch-address timing](../research/fetch-address-timing.md) and [refill timing](../research/refill-fetch-timing.md) for evidence and limits.
+See [fetch-address timing](../research/fetch-address-timing.md), [refill timing](../research/refill-fetch-timing.md),
+and [persistent access kinds](../research/fetch-access-sequencing.md) for evidence and limits.
 
 Data costs use the addresses and widths of actual CPU bus calls, after alignment handling.
 BIOS, internal work RAM, OAM, and supported I/O accesses cost one cycle.
@@ -355,7 +363,8 @@ This applies even when DMA only accesses RAM. Consecutive units retain one pendi
 The source fetch uses its actual lookahead address, incoming width, and current WAITCNT with N instead of S.
 This includes branches and accepted IRQ entry; target pairs still use N then S.
 ARM word accesses retain an S cost for their second halfword.
-Stores and ROM boundaries that already use N do not receive an additional cost.
+CPU history and ROM boundaries that already require N do not receive an additional access.
+A completed load or store can establish a new N requirement after consuming the DMA override.
 
 Successful timed or untimed CPU execution consumes pending resume, including skipped conditions and internal-memory instructions.
 Successful machine IRQ entry also consumes it. Failed CPU/DMA steps preserve it.
@@ -370,8 +379,9 @@ See [the evidence and limitations](../research/dma-resume-timing.md).
 
 Important timing limits:
 
-- Source S/N kinds follow instruction-local summaries, not complete neighboring instruction/data-access sequencing.
+- Source S/N kinds follow the preceding successful instruction; data timing still uses an instruction-local trace.
 - Code costs follow actual source and target-pair addresses, but cold current/decode fills have no separate startup charge.
+  Cold entry, debugger invalidation, and PC/state mismatches use nominal S, not hardware-validated startup timing.
 - Refill cost calculation does not read target bytes. ARM/Thumb instruction-buffer and local IWRAM bus-history samples add no extra cycles.
 - Target-pair sampling cannot fail the branch early. An invalid branch target still fails on the following instruction fetch.
 - Game Pak prefetch is not implemented. WAITCNT bit 14 is stored but does not accelerate execution.

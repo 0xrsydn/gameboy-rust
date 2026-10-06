@@ -42,6 +42,8 @@ mod fetch_boundary_tests;
 #[cfg(test)]
 mod fetch_history_tests;
 #[cfg(test)]
+mod fetch_sequence_tests;
+#[cfg(test)]
 mod fetch_timing_tests;
 #[cfg(test)]
 mod instruction_tests;
@@ -176,7 +178,7 @@ impl InstructionSet {
 }
 
 /// ARM/Thumb interpreter with register banks, instruction buffering, and nominal costs.
-/// Clone/equality include buffered fetch results and their instruction-set tag.
+/// Clone/equality include buffered fetch results, instruction state, and next fetch kind.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Cpu {
     registers: [u32; 16],
@@ -242,7 +244,7 @@ impl Cpu {
     ) -> Result<(), CpuError> {
         let pipeline::Fetched {
             instruction,
-            continuation,
+            mut continuation,
             lookahead,
             fill,
         } = fetched;
@@ -250,14 +252,15 @@ impl Cpu {
         // Always clear the access context, including on diagnostic errors.
         let pc = self.pc();
         let instruction_set = self.instruction_set;
-        let refill = self.instruction_refills(instruction);
+        let summary = self.instruction_summary(instruction);
         memory.begin_cpu_access(pc, self.instruction_set, fill.as_ref(), &lookahead);
         let result = self.execute_instruction(instruction, memory);
         memory.end_cpu_access(result.is_ok());
         if result.is_ok() {
-            if refill {
+            if summary.refill {
                 self.refill_pipeline(memory);
             } else {
+                continuation.next_access = summary.next_fetch_kind();
                 // A state change without an ordinary refill starts a cold sequence.
                 self.pipeline = if self.instruction_set == instruction_set
                     && self.pc() == pc.wrapping_add(instruction_set.width())

@@ -36,7 +36,7 @@ For an instruction executing at P, `Cpu::step_timed` charges its sampled lookahe
 
 - ARM source: P+8, word width.
 - Thumb source: P+4, halfword width.
-- Access kind: the existing instruction-local summary, overridden to N after successful DMA.
+- Access kind: now retained from the preceding instruction by the [sequencing extension](fetch-access-sequencing.md), with DMA override.
 - WAITCNT: captured before instruction effects.
 
 If the instruction refills, timing also charges N(T) and S(T+W) using the resulting state.
@@ -112,11 +112,11 @@ The stopped counter therefore increases by five even though the final machine-cy
 
 ## Remaining limits
 
-- Source access kinds still use instruction-local summaries, including the existing store rule.
-  Neighboring instruction/data-access sequencing is not a complete chronological bus trace.
+- The later [sequencing extension](fetch-access-sequencing.md) retains the next source kind after CPU data/internal work.
+  Data timing and device scheduling still do not form a complete chronological bus trace.
 - Cold current/decode fills have no separate startup timing charge.
 - BIOS retained history is not a complete refill/data-access bus latch.
 - Missing instruction bytes remain diagnostics, not hardware prefetch aborts.
 - Game Pak prefetch, per-access device updates, display contention, configurable EWRAM timing, and sub-instruction DMA arbitration remain unimplemented.
 
-The next timing work is independently verified access-kind sequencing between instructions and data accesses.
+The next timing work is Game Pak prefetch with verified startup and invalidation rules.

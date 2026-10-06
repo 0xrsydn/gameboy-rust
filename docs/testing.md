@@ -88,7 +88,8 @@ Timed/untimed tests verify CPU results and nominal clock costs.
 Host/fetch isolation, separate BIOS history, unsupported stores/data regions, nominal device progression, and DMA diagnostics also have checks.
 ARM instruction-buffer tests verify retained P+4/P+8 words across CPU stores, DMA transfers, and host writes.
 They cover refill target pairs, PC writes to fallthrough, conditional branches, ARM/Thumb transitions, exception entry/return, and deferred fetch errors.
-Full CPU equality checks buffer rollback and cloning. Successful instruction-semantic tests compare architectural state separately.
+Full CPU equality checks buffer and next-fetch-kind rollback and cloning.
+Successful instruction-semantic tests compare architectural state separately.
 Explicit invalidation tests cover debugger repair. Timed/untimed tests verify equal buffers without added nominal cycles.
 The display-runner error test allows an already buffered branch to complete before the patched unsupported word executes.
 Thumb instruction-buffer tests verify retained P+2/P+4 halfwords, BL prefix/suffix behavior, and state-tagged target pairs.
@@ -259,6 +260,11 @@ Refill timing tests cover incoming/outgoing widths, all ROM wait settings, and t
 They verify source DMA overrides, split wait-window pairs, missing source/target diagnostics, masked IRQ isolation, and device totals.
 IRQ history tests verify word/halfword lane updates without invented cold fills or BIOS instruction snapshots.
 See [refill timing](research/refill-fetch-timing.md) for source evidence and public-report changes.
+Instruction-pair tests cover following-fetch kinds after transfers, swaps, register shifts, multiplies, status operations, and skipped conditions.
+They use independent N/S tables across every ROM window and wait setting, including settings where N is cheaper than S.
+They check timed/untimed equivalence, clones, IRQ/DMA composition, repeated transfers, PC-load refills, failed steps, and cold-start policy.
+Page/wait-window crossings, masked IRQs, host/HALT isolation, and pre-write WAITCNT settings retain separate checks.
+See [persistent fetch access kinds](research/fetch-access-sequencing.md) for evidence and public-report changes.
 Instruction timing tests cover arithmetic, shifts, branches, transfers, block operations, multiply, and exception returns.
 Timed and untimed execution are compared across all 65,536 Thumb encodings with fixed initial registers.
 Timer/IRQ tests verify that changing WAITCNT changes when an interrupt is sampled.

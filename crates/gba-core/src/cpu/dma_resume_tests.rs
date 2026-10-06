@@ -165,6 +165,8 @@ fn failed_cpu_fetch_and_data_access_preserve_resume_until_success() {
     assert_eq!(timing.code_cycles, 8);
     assert_eq!(timing.data_cycles, 6);
     assert_eq!(timing.internal_cycles, 1);
+    // The successful load creates a new sequence break after consuming DMA resume.
+    assert_eq!(cpu.step_timed(&mut bus).unwrap().code_cycles, 8);
     assert_eq!(cpu.step_timed(&mut bus).unwrap().code_cycles, 6);
 }
 
@@ -191,7 +193,7 @@ fn host_accesses_and_clock_advances_do_not_consume_resume_but_untimed_cpu_does()
 fn skipped_conditions_stores_and_boundaries_consume_resume_without_double_charging() {
     for (pc, instruction, data) in [
         (PC, 0x0591_0000, 0),                      // LDREQ skipped: Z is clear.
-        (PC, 0xe581_0000, 6),                      // STR already has an N code access.
+        (PC, 0xe581_0000, 6), // STR uses DMA's N, then breaks the following fetch.
         (ROM_START + 0x20000 - 8, 0xe1a0_0000, 0), // PC+8 fetch boundary already forces N.
     ] {
         let (mut cpu, mut bus) = program(false, pc, instruction);
@@ -199,6 +201,10 @@ fn skipped_conditions_stores_and_boundaries_consume_resume_without_double_chargi
         let timing = cpu.step_timed(&mut bus).unwrap();
         assert_eq!(timing.code_cycles, 8);
         assert_eq!(timing.data_cycles, data);
+        assert_eq!(
+            cpu.step_timed(&mut bus).unwrap().code_cycles,
+            if data == 6 { 8 } else { 6 }
+        );
         assert_eq!(cpu.step_timed(&mut bus).unwrap().code_cycles, 6);
     }
 }
@@ -210,6 +216,7 @@ fn waitcnt_cpu_store_uses_old_code_cost_but_dma_store_applies_before_resume() {
     cpu.registers[1] = WAITCNT;
     dma(&mut bus);
     assert_eq!(cpu.step_timed(&mut bus).unwrap().code_cycles, 8);
+    assert_eq!(cpu.step_timed(&mut bus).unwrap().code_cycles, 5); // Store breaks the next fetch; new N=3, S=2.
     assert_eq!(cpu.step_timed(&mut bus).unwrap().code_cycles, 4);
 
     let (mut cpu, mut bus) = program(false, PC, 0xe1a0_0000);

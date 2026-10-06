@@ -1,6 +1,6 @@
 //! Nominal ARM7 instruction-cycle summaries, separate from instruction semantics.
 //! Code costs use source-fetch and target-pair addresses; data costs use actual bus accesses.
-//! Source access kinds remain instruction-local nominal summaries.
+//! Successful execution records the next fetch kind in the instruction buffer.
 
 use super::{Cpu, CpuError, InstructionSet};
 use crate::{
@@ -9,13 +9,23 @@ use crate::{
 };
 
 #[derive(Default)]
-struct Summary {
-    code_kind: AccessKind,
-    refill: bool,
+pub(super) struct Summary {
+    data: bool,
+    pub(super) refill: bool,
     internal: u32,
 }
 
 impl Summary {
+    /// Data accesses and internal cycles break the following code sequence.
+    /// A refill ends with a sequential target fetch and starts a new sequence.
+    pub(super) fn next_fetch_kind(&self) -> AccessKind {
+        if !self.refill && (self.data || self.internal != 0) {
+            AccessKind::NonSequential
+        } else {
+            AccessKind::Sequential
+        }
+    }
+
     fn branch() -> Self {
         Self {
             refill: true,
@@ -25,11 +35,7 @@ impl Summary {
 
     fn transfer(load: bool, pc: bool) -> Self {
         Self {
-            code_kind: if load {
-                AccessKind::Sequential
-            } else {
-                AccessKind::NonSequential
-            },
+            data: true,
             refill: load && pc,
             internal: u32::from(load),
         }
@@ -52,15 +58,12 @@ impl Cpu {
     pub fn step_timed(&mut self, memory: &mut Memory) -> Result<StepTiming, CpuError> {
         let fetched = self.fetch(memory)?;
         let instruction = fetched.instruction;
-        let summary = match self.instruction_set {
-            InstructionSet::Arm => self.arm_summary(instruction),
-            InstructionSet::Thumb => self.thumb_summary(instruction),
-        };
+        let summary = self.instruction_summary(instruction);
         let fetch_address = fetched.lookahead.address();
         let width = self.instruction_set.access_width();
         // A WAITCNT store affects subsequent instructions, not this code access.
         let waitcnt = memory.waitcnt();
-        let code_kind = memory.cpu_code_kind(summary.code_kind);
+        let code_kind = memory.cpu_code_kind(self.next_fetch_kind());
         memory.begin_data_timing();
         let result = self.execute_fetched(fetched, memory);
         let data_cycles = memory.end_data_timing();
@@ -82,11 +85,11 @@ impl Cpu {
     pub(crate) fn take_irq_timed(&mut self, memory: &mut Memory) -> Option<StepTiming> {
         let state = self.instruction_set;
         let address = self.pc().wrapping_add(2 * state.width());
+        let kind = memory.cpu_code_kind(self.next_fetch_kind());
         if !self.take_interrupt(memory.irq_pending(), false) {
             return None;
         }
         let waitcnt = memory.waitcnt();
-        let kind = memory.cpu_code_kind(AccessKind::Sequential);
         let fetch = memory.fetch_instruction(address, state);
         memory.discarded_cpu_fetch(&fetch);
         self.refill_pipeline(memory);
@@ -122,6 +125,7 @@ impl Cpu {
         }
         if instruction & 0x0fb0_0ff0 == 0x0100_0090 {
             return Summary {
+                data: true,
                 internal: 1,
                 ..Summary::default()
             }; // SWP: two N data accesses
@@ -158,12 +162,12 @@ impl Cpu {
         }
     }
 
-    // Share the existing control-flow classification with bounded bus history.
+    // Classify before instruction effects in both timed and untimed execution.
     // A PC write can refill even when its target equals the sequential address.
-    pub(super) fn instruction_refills(&self, instruction: u32) -> bool {
+    pub(super) fn instruction_summary(&self, instruction: u32) -> Summary {
         match self.instruction_set {
-            InstructionSet::Arm => self.arm_summary(instruction).refill,
-            InstructionSet::Thumb => self.thumb_summary(instruction).refill,
+            InstructionSet::Arm => self.arm_summary(instruction),
+            InstructionSet::Thumb => self.thumb_summary(instruction),
         }
     }
 

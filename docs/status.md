@@ -47,6 +47,7 @@ Update this file when a feature lands or a limit is removed.
 - CPU/device stepping with nominal ARM7 instruction costs and memory wait states.
 - Code costs use actual ARM PC+8/Thumb PC+4 source fetches and branch/exception target pairs, including region and ROM boundaries.
 - IRQ entry samples its discarded incoming-state fetch before the ARM vector pair, with local IWRAM history updates.
+- Persistent fetch access kinds follow CPU data/internal work, compose with DMA resume, and reset after target refills.
 - Game Pak wait-state control (`WAITCNT`) for all three ROM windows.
 - Sequential/non-sequential data accesses, branch refill costs, and variable multiply timing.
 - Optional caller-supplied 16 KiB BIOS mapping, with CPU read protection based on retained ARM PC+8 or aligned Thumb PC+4 words.
@@ -114,6 +115,7 @@ Block transfers validate all accesses before committing register, RAM, or I/O ch
 This diagnostic policy does not reproduce partial transfers during hardware data aborts.
 CPU instructions, including swaps, finish before a newly requested DMA unit runs. Sub-instruction bus arbitration is not modeled.
 CPU/bus costs are nominal estimates, not a cycle-accurate implementation.
+The instruction buffer retains the next fetch kind; cold startup costs and per-access device scheduling remain unmodeled.
 Graphics support includes Mode 0–5 debug snapshots and HBlank row capture with sprites, mosaic, windows, and color effects.
 Internal affine origins, vertical window flags, and vertical mosaic counters track line boundaries.
 Horizontal window comparators retain four-cycle event history.
@@ -164,8 +166,8 @@ Writes to cartridge addresses return errors instead of modeling cartridge hardwa
    Keep unknown history diagnostic until fetch ordering and latch ownership have independent coverage.
    Validate BIOS snapshots with independent hardware tests before claiming exact refill or data-access history.
    The desktop runner still uses only the original BIOS. Keep protected reads image-derived for all supplied images.
-2. Extend instruction-local source access kinds into verified neighboring instruction/data-access sequencing.
-   Add startup costs, Game Pak prefetch, per-access device updates, and timer/IRQ delays.
+2. Add Game Pak prefetch with verified startup and invalidation rules.
+   Validate cold-start costs, then extend per-access device updates, bus arbitration, and timer/IRQ delays.
 3. Validate keypad retrigger behavior with hardware tests and add remaining device registers; extend BIOS reset coverage as sound/serial support becomes available.
    Validate STOP entry/wake edges and add external wake sources and remaining DMA device modes.
 4. Replace nominal sprite work limits with verified individual fetch timing; add background fetch timing and per-pixel composition.

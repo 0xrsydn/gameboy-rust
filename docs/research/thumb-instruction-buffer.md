@@ -46,6 +46,7 @@ CPU stores, DMA transfers, and host writes never replace retained instructions a
 `Cpu::invalidate_pipeline()` explicitly discards retained instructions for debugger repair or attachment to different memory.
 It does not clear separate BIOS or IWRAM bus history.
 CPU clones own independent buffers; full CPU equality includes them.
+The later [sequencing extension](fetch-access-sequencing.md) also retains the next fetch kind in each buffer.
 
 ## Separation from bus history and timing
 

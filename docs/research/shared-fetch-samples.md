@@ -57,7 +57,7 @@ Strict instruction reads never use protected BIOS or unused-memory data fallback
 - All unused-memory data reads within an instruction still use its entry snapshot.
 - DMA remains scheduled between whole instructions. Sampling does not add an interleaving point.
 - Non-refill timing now consumes the sample's address in the [fetch-address extension](fetch-address-timing.md).
-- Refills now charge the source fetch and target pair; instruction-local source access kinds remain nominal.
+- Refills now charge the source fetch and target pair; the [sequencing extension](fetch-access-sequencing.md) retains incoming source kinds.
 - Per-access device updates, Game Pak prefetch, and exact refill/arbitration timing remain incomplete.
 
 ## Original tests

@@ -72,7 +72,8 @@ Cold fill and target-pair samples do not add nominal cycles or data accesses.
 The later [refill timing extension](refill-fetch-timing.md) replaces destination-only costs with source-fetch and target-pair costs.
 IRQ entry also samples its discarded old-state fetch before the vector pair.
 The later [fetch-address timing extension](fetch-address-timing.md) selects non-refill code cost from the newly sampled address.
-Access kinds, cold-fill startup costs, and refill scheduling remain incomplete.
+The later [sequencing extension](fetch-access-sequencing.md) stores the next fetch kind in the instruction buffer.
+Cold-fill startup costs and per-access scheduling remain incomplete.
 
 ARM PC+8 open bus and protected BIOS readback remain separate snapshots.
 The [shared fetch sample](shared-fetch-samples.md) supplies the instruction-buffer entry and supported bus snapshots without duplicate reads.

@@ -52,12 +52,13 @@ The repository is a Cargo workspace with three crates:
 | `crates/gba-core/src/dma.rs` | DMA registers, internal pointers, retained channel data, trigger state, priority, and completion IRQs |
 | `crates/gba-core/src/machine.rs` | Timed CPU/DMA/device stepping and IRQ delivery |
 | `crates/gba-core/src/timing.rs` | Bus widths, wait-state costs, and timing breakdowns |
-| `crates/gba-core/src/cpu/pipeline.rs` | CPU-owned ARM/Thumb instructions, PC/state tags, deferred fetch diagnostics, refill sampling, and explicit invalidation |
+| `crates/gba-core/src/cpu/pipeline.rs` | CPU-owned ARM/Thumb instructions, PC/state tags, next fetch kind, deferred diagnostics, refills, and invalidation |
 | `crates/gba-core/src/cpu/arm_pipeline_tests.rs` | ARM self-modifying code, branches, target pairs, DMA isolation, exceptions, errors, and timing equivalence |
 | `crates/gba-core/src/cpu/thumb_pipeline_tests.rs` | Thumb retained halfwords, BL prefix/suffix, state-tagged refills, DMA isolation, rollback, and timing equivalence |
-| `crates/gba-core/src/cpu/timing.rs` | Source-fetch/target-pair costs, IRQ fetch integration, nominal access kinds, and data accounting |
+| `crates/gba-core/src/cpu/timing.rs` | Source-fetch/target-pair costs, IRQ integration, next-fetch classification, and data accounting |
 | `crates/gba-core/src/cpu/fetch_timing_tests.rs` | Fetch-region/page/wait-window costs, DMA resume, WAITCNT stores, deferred errors, and timer/IRQ effects |
 | `crates/gba-core/src/cpu/refill_timing_tests.rs` | Refill source/target widths, wait settings, boundaries, DMA resume, and IRQ diagnostics |
+| `crates/gba-core/src/cpu/fetch_sequence_tests.rs` | Instruction-pair access kinds, transfer/internal-cycle breaks, refills, IRQ/DMA composition, and rollback |
 | `crates/gba-core/src/memory/irq_fetch_tests.rs` | Discarded IRQ fetch lanes, cold/retained entry, BIOS-history isolation, and deferred vector errors |
 | `crates/gba-core/src/cpu/dma_resume_tests.rs` | One-shot non-sequential DMA resume costs, wait settings, failures, idle, IRQs, and API isolation |
 | `crates/gba-core/src/cpu/timing_tests.rs` | Instruction timing and semantic-equivalence checks |

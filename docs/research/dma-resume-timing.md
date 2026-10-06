@@ -53,7 +53,9 @@ DMA still executes only between instructions, not between data accesses or durin
 The later [refill timing extension](refill-fetch-timing.md) replaces destination-only summaries with source-fetch and target-pair costs.
 Resume changes the source access to N; the first target access independently remains N.
 No extra access is appended. A resumed ROM branch can therefore cost more than its non-resumed refill.
-Stores and fetches at 128 KiB ROM boundaries already use N and receive no duplicate cost.
+The later [sequencing extension](fetch-access-sequencing.md) applies each instruction's data/internal effects to the following source fetch.
+CPU history, DMA resume, and ROM page boundaries can all require N without duplicating an access.
+A completed transfer after DMA can establish a new N requirement for the following fetch.
 Game Pak prefetch remains unimplemented; WAITCNT bit 14 does not alter this nominal timing path.
 
 This change does not select a DMA value for CPU open-bus reads.

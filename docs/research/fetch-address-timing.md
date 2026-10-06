@@ -27,7 +27,8 @@ All programs are original; no external source code or ROM was imported.
 
 `Cpu::step_timed` captures the address of `Fetched.lookahead` before execution.
 For a non-refill instruction, it passes that address to `bus_cycles` with the incoming instruction width.
-The existing instruction summary selects sequential or non-sequential access, with the pending DMA resume override.
+The later [sequencing extension](fetch-access-sequencing.md) retains the incoming access kind from the preceding instruction.
+The pending DMA resume still overrides that source access to N.
 WAITCNT is captured before CPU execution, so a CPU store cannot retroactively change its own fetch cost.
 
 The same rule applies to cold and retained pipelines.
@@ -65,8 +66,8 @@ Timer tests and the original timer demo now reflect this bounded rule.
 
 The later [refill timing extension](refill-fetch-timing.md) also charges source fetches and target pairs for branches and IRQ entry.
 
-- Instruction-local S/N summaries remain in use, including the existing store rule.
-  Neighboring instruction/data-access sequencing is not a complete chronological bus trace.
+- Source S/N kinds now follow the preceding instruction's data/internal work.
+  Data timing and device scheduling still do not form a complete chronological bus trace.
 - Refills now charge one source fetch plus the target N+S pair, not an additional fetch beside the old destination-only summary.
 - Thumb BL prefixes use their lookahead address; suffixes add the target pair.
 - Cold fills have no separate startup charge, even though their samples update supported bus history.
@@ -74,7 +75,7 @@ The later [refill timing extension](refill-fetch-timing.md) also charges source 
 - Game Pak prefetch, display contention, configurable EWRAM timing, and sub-instruction DMA arbitration remain unimplemented.
 
 This is a fetch-address correction within the existing timing model, not cycle-accurate emulation.
-The next timing step is verified access-kind sequencing between instructions and data accesses.
+The next timing step is Game Pak prefetch with verified startup and invalidation rules.
 
 ## Original regression coverage
 

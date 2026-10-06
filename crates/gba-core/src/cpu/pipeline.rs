@@ -1,6 +1,9 @@
-//! ARM/Thumb instruction buffering. Timing and bus ownership remain separate.
+//! ARM/Thumb instruction buffering and the next CPU fetch access kind.
 use super::{Cpu, CpuError, InstructionSet};
-use crate::memory::{InstructionFetch, Memory, MemoryError};
+use crate::{
+    memory::{InstructionFetch, Memory, MemoryError},
+    timing::AccessKind,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct Pipeline {
@@ -9,6 +12,7 @@ pub(super) struct Pipeline {
     // Deferred strict-fetch results for the next execute and decode positions.
     // Thumb halfwords are zero-extended; their upper bits are not another opcode.
     instructions: [Result<u32, MemoryError>; 2],
+    pub(super) next_access: AccessKind,
 }
 
 pub(super) struct Fetched {
@@ -21,9 +25,19 @@ pub(super) struct Fetched {
 impl Cpu {
     /// Discard buffered instructions after debugger code edits or rebinding memory.
     /// Ordinary CPU/DMA stores and host inspection must not call this automatically.
-    /// The next step fills from its current PC/state without adding nominal cycles.
+    /// The next step uses nominal S startup with no separate fill charge.
+    /// This also discards the prior CPU fetch kind, but not Memory's DMA override.
     pub fn invalidate_pipeline(&mut self) {
         self.pipeline = None;
+    }
+
+    /// Cold/debugger entry keeps the existing nominal S startup policy.
+    /// A mismatched PC/state cannot reuse another sequence's access kind.
+    pub(super) fn next_fetch_kind(&self) -> AccessKind {
+        self.pipeline
+            .as_ref()
+            .filter(|pipe| pipe.pc == self.pc() && pipe.instruction_set == self.instruction_set)
+            .map_or(AccessKind::Sequential, |pipe| pipe.next_access)
     }
 
     pub(super) fn fetch(&self, memory: &Memory) -> Result<Fetched, CpuError> {
@@ -53,6 +67,7 @@ impl Cpu {
                 pc: pc.wrapping_add(width),
                 instruction_set,
                 instructions: [decode, fetched.instruction.clone()],
+                next_access: AccessKind::Sequential, // Set from execution only on success.
             },
             lookahead: fetched,
             fill,
@@ -73,6 +88,7 @@ impl Cpu {
             pc,
             instruction_set,
             instructions: fetches.map(|fetch| fetch.instruction),
+            next_access: AccessKind::Sequential,
         });
     }
 }

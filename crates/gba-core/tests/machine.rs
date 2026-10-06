@@ -65,8 +65,8 @@ fn timer_demo_configures_hardware_in_cpu_code_and_handles_exactly_one_irq() {
     assert_eq!(machine.cpu().registers()[10], 1);
     assert_eq!(machine.memory().read16(IF).unwrap(), 0);
     assert_eq!(machine.memory().read16(TIMER_BASE + 2).unwrap(), 0);
-    // IRQ entry gains five cycles before the timer stops; return loses five afterward.
-    assert_eq!(machine.memory().read16(TIMER_BASE).unwrap(), 0xfff9);
+    // Persistent fetch kinds move costs between setup instructions and the running timer.
+    assert_eq!(machine.memory().read16(TIMER_BASE).unwrap(), 0xfffb);
     for _ in 0..100 {
         assert_eq!(machine.step().unwrap(), StepKind::Instruction);
     }

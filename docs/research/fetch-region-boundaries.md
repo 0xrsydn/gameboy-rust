@@ -78,7 +78,8 @@ A retry takes a new lookahead sample from current memory.
 
 The later [fetch-address timing extension](fetch-address-timing.md) charges non-refill code at the actual lookahead address.
 The [refill timing extension](refill-fetch-timing.md) also charges source fetches and target pairs individually.
-Instruction-local access kinds and cold-start costs remain nominal.
+The later [sequencing extension](fetch-access-sequencing.md) retains source kinds across CPU data/internal work.
+Cold-start costs remain nominal.
 Per-access device updates, video-bus contention, general DMA handoff, and Game Pak prefetch remain incomplete.
 No boundary timing accuracy is claimed.
 
