@@ -46,6 +46,10 @@ impl Session {
         })
     }
 
+    pub fn set_cartridge_hardware(&mut self, hardware: gba_core::cartridge::CartridgeHardware) {
+        self.machine.memory_mut().set_cartridge_hardware(hardware);
+    }
+
     pub fn frame(&self) -> &Framebuffer {
         &self.frame
     }

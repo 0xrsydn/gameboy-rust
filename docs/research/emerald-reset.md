@@ -25,8 +25,8 @@ Byte, halfword, word, block-store, and DMA validation retain explicit errors wit
 Use a local ROM that you may lawfully use:
 
 ```sh
-direnv exec . cargo run --locked --release -- --rom roms/pokemon-emerald.gba --steps 1000000
-direnv exec . cargo run --locked --release -- --rom roms/pokemon-emerald.gba --window --frames 120
+direnv exec . cargo run --locked --release -- --rom roms/pokemon-emerald.gba --rtc --steps 2000000
+direnv exec . cargo run --locked --release -- --rom roms/pokemon-emerald.gba --rtc --window --frames 60
 ```
 
 The earlier reset-only implementation stopped at master sound enable (`0x04000084`, PC `0x082e0518`).
@@ -64,13 +64,18 @@ A child cannot start itself without a parent clock. No linked transfer, assigned
 The send register supports 16-bit data; receive latches do not become invented peer data.
 See [the register model and evidence limits](../hardware/serial.md#disconnected-multiplayer-configuration).
 
-Both terminal and native runs now reach a Game Pak GPIO control write:
+Multiplayer configuration then reached a Game Pak GPIO control write (`0x080000c8`, PC `0x082e29f8`).
+The optional [cartridge GPIO/RTC interface](../hardware/cartridge-gpio.md) now supports read enable, directions, pin latches, and RTC control transactions.
+Select it explicitly with `--rtc`; ordinary ROM bytes and other ROMs' default hardware remain unchanged.
+No host date, RTC calendar, or successful calendar read is invented.
+
+Both terminal and native runs with `--rtc` now reach a calendar-read command:
 
 ```text
-Steps: 956055; instructions: 953375; IRQ entries: 80; DMA units: 2600; HALT idle: 0
-Nominal cycles: 3514932
-PC=0x082e29f8
-read-only memory at 0x080000c8
+Steps: 957729; instructions: 955049; IRQ entries: 80; DMA units: 2600; HALT idle: 0
+Nominal cycles: 3520685
+PC=0x082e28a6
+unsupported RTC calendar access: write 0x07 at 0x080000c4
 ```
 
 The native run captures twelve startup frames. These do not establish a working title screen or gameplay.
@@ -85,10 +90,11 @@ Workspace debug/release tests, strict Clippy, public ARM/Thumb/memory/BIOS check
 Native ROM-window tests and graphics smoke modes pass on Darwin arm64.
 The pinned Pong debug/release reports match.
 
-The next requirement is cartridge GPIO, starting with the control register at `0x080000c8`.
-Research the Game Pak data/direction/control registers and real-time clock protocol before implementing them.
-Keep ordinary ROM writes read-only. Do not hide the failure by ignoring every cartridge write.
-This serial result does not establish linked gameplay or serial GPIO interrupt support.
+The next requirement is RTC calendar transfers with an explicit clock-source model.
+Implement validated date/time formats, read snapshots, writes/reset, and clock ownership without putting host time in the core.
+Keep battery persistence and cartridge IRQ behavior explicit; do not equate GBA STOP with stopping a battery-powered RTC.
+Ordinary ROM writes remain read-only. Without `--rtc`, the earlier GPIO diagnostic is still expected.
+This result does not establish gameplay, linked transfers, or cartridge/serial GPIO interrupt support.
 
 Noise now has deterministic counter clocks and shares tested length/envelope logic with the independent pulse channels.
 Sweep applies only to channel 1. Direct Sound has FIFO clocks and nominal DMA requests.

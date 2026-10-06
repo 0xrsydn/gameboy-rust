@@ -77,6 +77,43 @@ fn raw_original_program_runs_with_a_bounded_report_without_changing_the_file() {
     assert_eq!(fs::read(path).unwrap(), original);
 }
 
+fn rtc_setup() -> Vec<u32> {
+    // Original LDR/MOV/STRH/LDRH/loop: enable GPIO reads, then inspect control.
+    vec![
+        0xe59f100c, 0xe3a00001, 0xe1c100b0, 0xe1d120b0, 0xeafffffe, 0x080000c8,
+    ]
+}
+
+#[test]
+fn rtc_selection_is_explicit_and_does_not_modify_the_rom_file() {
+    let fixture = Fixture::new();
+    let path = fixture.rom(&rtc_setup());
+    let original = fs::read(&path).unwrap();
+    let absent = run(&path, "100");
+    assert_eq!(absent.status.code(), Some(1));
+    assert!(stderr(&absent).contains("read-only memory at 0x080000c8"));
+    let selected = command()
+        .arg("--rtc")
+        .arg("--rom")
+        .arg(&path)
+        .args(["--steps", "100"])
+        .output()
+        .unwrap();
+    assert!(selected.status.success(), "{}", stderr(&selected));
+    assert!(stdout(&selected).contains("RTC selected: GPIO and command/control only"));
+    assert!(stdout(&selected).contains("r2=0x00000001"));
+    assert_eq!(fs::read(&path).unwrap(), original);
+    let duplicate = command()
+        .arg("--rom")
+        .arg(&path)
+        .args(["--rtc", "--rtc", "--steps", "100"])
+        .output()
+        .unwrap();
+    assert_eq!(duplicate.status.code(), Some(1));
+    assert!(stderr(&duplicate).contains("usage:"));
+    assert!(duplicate.stdout.is_empty());
+}
+
 #[test]
 fn stop_is_a_normal_bounded_outcome() {
     let fixture = Fixture::new();
@@ -216,8 +253,12 @@ fn native_rom_window_presents_file_bytes_and_reports_stop_cpu_and_video_errors()
         thread,
         time::{Duration, Instant},
     };
-    fn window(path: &Path) -> Output {
-        let mut child = command()
+    fn window(path: &Path, rtc: bool) -> Output {
+        let mut command = command();
+        if rtc {
+            command.arg("--rtc");
+        }
+        let mut child = command
             .arg("--rom")
             .arg(path)
             .args(["--window", "--frames", "3"])
@@ -243,7 +284,7 @@ fn native_rom_window_presents_file_bytes_and_reports_stop_cpu_and_video_errors()
     let fixture = Fixture::new();
     let path = fixture.0.join("original-input.gba");
     fs::write(&path, gba_demos::input_rom()).unwrap();
-    let output = window(&path);
+    let output = window(&path, false);
     assert!(
         output.status.success(),
         "{} {}",
@@ -252,6 +293,11 @@ fn native_rom_window_presents_file_bytes_and_reports_stop_cpu_and_video_errors()
     );
     assert!(stdout(&output).contains("Captured ROM frames: 3"));
     assert!(stdout(&output).contains("Result: window frame limit reached"));
+    let rtc_path = fixture.rom(&rtc_setup());
+    let rtc_output = window(&rtc_path, true);
+    assert!(rtc_output.status.success(), "{}", stderr(&rtc_output));
+    assert!(stdout(&rtc_output).contains("Captured ROM frames: 3"));
+    assert!(stdout(&rtc_output).contains("r2=0x00000001"));
     for (code, error) in [
         (vec![0xef03_0000, 0xeaff_fffe], "entered STOP"),
         (vec![0xee00_0000], "instruction"),
@@ -267,7 +313,7 @@ fn native_rom_window_presents_file_bytes_and_reports_stop_cpu_and_video_errors()
                 .collect::<Vec<_>>(),
         )
         .unwrap();
-        let output = window(&path);
+        let output = window(&path, false);
         assert_eq!(output.status.code(), Some(1), "{}", stdout(&output));
         assert!(stdout(&output).contains("Result: ROM window diagnostic"));
         assert!(stdout(&output).contains("Captured ROM frames: 0"));

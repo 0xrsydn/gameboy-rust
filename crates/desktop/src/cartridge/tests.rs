@@ -26,7 +26,8 @@ fn options_require_both_flags_in_either_order() {
                 parse_args(&arguments).unwrap(),
                 Options {
                     path: "original program.gba".into(),
-                    mode: Mode::Terminal { steps: count }
+                    mode: Mode::Terminal { steps: count },
+                    hardware: CartridgeHardware::None
                 }
             );
         }

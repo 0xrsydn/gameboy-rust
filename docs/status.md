@@ -76,6 +76,8 @@ Update this file when a feature lands or a limit is removed.
 - `SWP`/`SWPB`, including unaligned word rotation and register aliases.
 - 256 KiB external work RAM and 32 KiB internal work RAM, including mirrors.
 - Read-only cartridge bytes in the three GBA cartridge windows.
+- Explicit cartridge RTC selection with first-window GPIO read enable, direction/latch behavior, and serial command/control transactions.
+- Cartridge GPIO changes participate in CPU/DMA rollback and block-store preflight without modifying ROM bytes.
 - Raw ROM-file loading with original BIOS boot, terminal diagnostics, and final CPU/step reports.
 - Firmware boot initializes BG2/BG3 identity scales for bitmap and affine programs that do not program their own matrices.
 - RegisterRamReset supports disabled sound and disconnected serial initialization, including the common `r0=0xff` request.
@@ -139,6 +141,8 @@ Horizontal window comparators retain four-cycle event history.
 Sprite rows prepare one line ahead with a whole-row cycle40 sample and nominal per-row work limits.
 Individual fetch timing, hardware-accurate work cutoffs, video-bus contention, and per-pixel color composition remain unimplemented.
 There is no host audio output or cartridge save support.
+The optional [cartridge GPIO/RTC subset](hardware/cartridge-gpio.md) supports command/control only, selected with `--rtc` in ROM modes.
+RTC calendar access, clock advancement, persistence, interrupts, GPIO aliases, and byte writes remain unsupported or unverified.
 The [audio subset](hardware/audio.md) supports Direct Sound, both PSG pulse channels, noise channel 4, idle wave channel 3 state, and instantaneous digital mixing.
 It does not yet provide a continuous sample stream. Wave channel 3 playback and unverified sound-DMA pairings remain diagnostic.
 PSG timing and signed mixing are nominal; hardware startup edges and analog behavior remain unverified.
@@ -161,7 +165,9 @@ It also passes the pulse/noise triggers and normal-mode RCNT configuration.
 It also completes a CpuSet call to address zero through the corrected ignored BIOS-write behavior.
 It also accepts an external-clock serial request without inventing clock edges or completion.
 It now also completes internally clocked normal transfers and selects idle multiplayer mode.
-It next stops at a Game Pak GPIO control write (`0x080000c8`, PC `0x082e29f8`). Cartridge GPIO remains unimplemented.
+With explicit `--rtc` selection, it also passes Game Pak GPIO configuration and reaches an RTC calendar-read command.
+That command remains diagnostic (`0x080000c4`, PC `0x082e28a6`); no date is fabricated.
+Without `--rtc`, cartridge GPIO writes still return read-only diagnostics.
 No title-screen, gameplay, or audible-game compatibility is established.
 See [the startup result](research/emerald-reset.md) for the bounded run and next investigation.
 See [cartridge loading](hardware/cartridge.md) for file limits, step budgets, and exit status.
@@ -192,7 +198,7 @@ Host inspection and instruction fetches remain strict. Other unmapped reads retu
 Reads beyond the supplied cartridge bytes also return errors.
 Direct memory-bus halfword and word accesses require alignment.
 CPU load/store instructions apply ARM7TDMI alignment and rotation rules before accessing the bus.
-Writes to cartridge addresses return errors instead of modeling cartridge hardware.
+Ordinary ROM writes remain read-only. Only the explicitly selected cartridge GPIO register subset accepts writes.
 
 ## Next steps
 

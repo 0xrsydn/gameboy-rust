@@ -8,9 +8,11 @@ use crate::cartridge::window::{Session, Update};
 pub fn run(
     bytes: Vec<u8>,
     frame_limit: Option<u64>,
+    hardware: gba_core::cartridge::CartridgeHardware,
     writer: &mut impl Write,
 ) -> Result<(), Box<dyn Error>> {
     let mut session = Session::new(bytes)?;
+    session.set_cartridge_hardware(hardware);
     writeln!(
         writer,
         "ROM window: Arrows=D-pad; Z/X=A/B; Q/W=L/R; Enter=Start; Backspace=Select; Escape exits."

@@ -48,6 +48,9 @@ The repository is a Cargo workspace with three crates:
 | `crates/gba-core/src/cpu/transfer_tests.rs` | Stack, addressing, overlap, empty-list, and swap tests |
 | `crates/gba-core/src/cpu/tests.rs` | Condition truth tables and immediate arithmetic tests |
 | `crates/gba-core/src/cpu/instruction_tests.rs` | Register operations, transfers, branches, and edge cases |
+| `crates/gba-core/src/cartridge.rs` | Explicit GPIO/RTC selection, ROM read overlay, pin directions, serial command/control, and bounded diagnostics |
+| `crates/gba-core/tests/cartridge_gpio.rs` | GPIO lanes, ROM preservation, RTC framing/control/aborts, unsupported commands, and DMA3 access |
+| `crates/gba-core/src/memory/cartridge_step_tests.rs` | ARM/Thumb GPIO timing, rejected command-edge rollback, block preflight, and staged fetch/read overlays |
 | `crates/gba-core/src/memory.rs` | Memory mapping, I/O routing, write validation, and device clock |
 | `crates/gba-core/src/memory/fetch.rs` | Strict instruction samples with captured region-dependent bus observations |
 | `crates/gba-core/src/memory/fetch_tests.rs` | Fetch widths, bus lanes, captured refill/BIOS values, strict errors, and side-effect isolation |

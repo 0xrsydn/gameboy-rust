@@ -13,13 +13,14 @@ use std::{
 
 use gba_core::{
     bios,
+    cartridge::CartridgeHardware,
     machine::{Machine, MachineError, StepKind},
     memory::ROM_CAPACITY,
 };
 
 const MAX_STEPS: u64 = 100_000_000;
 const MAX_FRAMES: u64 = 100_000;
-const USAGE: &str = "usage: gameboy-rust --rom PATH (--steps COUNT | --window [--frames COUNT]); steps: 1..=100000000, frames: 1..=100000; do not combine with demo or help options";
+const USAGE: &str = "usage: gameboy-rust --rom PATH [--rtc] (--steps COUNT | --window [--frames COUNT]); steps: 1..=100000000, frames: 1..=100000; do not combine with demo or help options";
 
 #[derive(Debug, PartialEq, Eq)]
 enum Mode {
@@ -31,6 +32,7 @@ enum Mode {
 pub struct Options {
     path: PathBuf,
     mode: Mode,
+    hardware: CartridgeHardware,
 }
 
 pub fn parse_args(args: &[OsString]) -> io::Result<Options> {
@@ -39,6 +41,7 @@ pub fn parse_args(args: &[OsString]) -> io::Result<Options> {
     let mut steps = None;
     let mut frames = None;
     let mut window = false;
+    let mut hardware = CartridgeHardware::None;
     let mut args = args.iter();
     while let Some(arg) = args.next() {
         if arg == "--rom" && path.is_none() {
@@ -47,6 +50,8 @@ pub fn parse_args(args: &[OsString]) -> io::Result<Options> {
                 .filter(|value| !value.is_empty())
                 .ok_or_else(invalid)?;
             path = Some(PathBuf::from(value));
+        } else if arg == "--rtc" && hardware == CartridgeHardware::None {
+            hardware = CartridgeHardware::Rtc;
         } else if arg == "--window" && !window {
             window = true;
         } else if (arg == "--steps" && steps.is_none()) || (arg == "--frames" && frames.is_none()) {
@@ -83,6 +88,7 @@ pub fn parse_args(args: &[OsString]) -> io::Result<Options> {
     Ok(Options {
         path: path.ok_or_else(invalid)?,
         mode,
+        hardware,
     })
 }
 
@@ -237,12 +243,20 @@ pub fn execute(options: Options, writer: &mut impl Write) -> Result<(), Box<dyn 
         writer,
         "Original BIOS replacement; no commercial-game compatibility claim."
     )?;
+    if options.hardware == CartridgeHardware::Rtc {
+        writeln!(writer, "RTC selected: GPIO and command/control only; calendar and IRQ commands remain diagnostic.")?;
+    }
     let steps = match options.mode {
         Mode::Terminal { steps } => steps,
-        Mode::Window { frames } => return crate::desktop::run_rom(bytes, frames, writer),
+        Mode::Window { frames } => {
+            return crate::desktop::run_rom(bytes, frames, options.hardware, writer)
+        }
     };
     writeln!(writer, "Machine-step limit: {steps} (includes boot)")?;
     let mut machine = bios::boot(bytes)?;
+    machine
+        .memory_mut()
+        .set_cartridge_hardware(options.hardware);
     let report = run_bounded(&mut machine, steps);
     write_report(writer, &machine, &report)?;
     writer.flush()?;

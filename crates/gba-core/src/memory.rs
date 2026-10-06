@@ -2,6 +2,8 @@ use std::{cell::Cell, error::Error, fmt};
 
 #[cfg(test)]
 mod audio_step_tests;
+#[cfg(test)]
+mod cartridge_step_tests;
 mod fetch;
 #[cfg(test)]
 mod fetch_tests;
@@ -25,6 +27,7 @@ use iwram_bus::IwramBus;
 
 use crate::{
     audio::{Audio, StereoLevel},
+    cartridge::{Cartridge, CartridgeHardware},
     cpu::InstructionSet,
     display::{DisplayPosition, CYCLES_PER_LINE, HBLANK_START, VISIBLE_LINES},
     dma::{DmaError, DMA_BASE, DMA_END},
@@ -119,6 +122,8 @@ pub struct Memory {
     video_ram: Vec<u8>,
     oam: Vec<u8>,
     rom: Vec<u8>,
+    cartridge: Cartridge,
+    cartridge_step: Cell<Option<Cartridge>>,
     bios: Option<Vec<u8>>,
     io: Io,
     cycles: u64,
@@ -148,6 +153,8 @@ impl Memory {
             video_ram: vec![0; VRAM_SIZE],
             oam: vec![0; 1024],
             rom,
+            cartridge: Cartridge::default(),
+            cartridge_step: Cell::new(None),
             bios: None,
             io: Io::default(),
             cycles: 0,
@@ -174,6 +181,20 @@ impl Memory {
         let mut memory = Self::new(rom)?;
         memory.bios = Some(bios);
         Ok(memory)
+    }
+
+    /// Replace optional cartridge hardware with its initial state. Call between machine steps.
+    /// This never modifies the supplied ROM bytes or enables a host clock.
+    pub fn set_cartridge_hardware(&mut self, hardware: CartridgeHardware) {
+        assert!(
+            self.cartridge_step.get().is_none(),
+            "active cartridge transaction"
+        );
+        self.cartridge = Cartridge::new(hardware);
+    }
+
+    fn cartridge_state(&self) -> Cartridge {
+        self.cartridge_step.get().unwrap_or(self.cartridge)
     }
 
     /// Current committed audio mixer level. This is not a host sample stream.
@@ -221,10 +242,12 @@ impl Memory {
     pub(crate) fn begin_timer_step(&self) {
         debug_assert!(self.timer_step.get().is_none());
         self.timer_step.set(Some(self.io.timer_step()));
+        self.cartridge_step.set(Some(self.cartridge));
     }
 
     pub(crate) fn discard_timer_step(&self) {
         self.timer_step.set(None);
+        self.cartridge_step.set(None);
     }
 
     fn advance_timer_step(&self, cycles: u32) {
@@ -241,6 +264,10 @@ impl Memory {
             .take()
             .expect("machine timer transaction is active");
         self.io.commit_timer_step(step);
+        self.cartridge = self
+            .cartridge_step
+            .take()
+            .expect("active cartridge transaction");
         // Staged devices already reached this boundary. Advance remaining devices exactly once.
         self.advance_running_cycles_with_timers(cycles, false);
     }
@@ -732,6 +759,9 @@ impl Memory {
 
     // Strict lookup for host access, instruction fetches, and prefetch snapshots.
     fn read_mapped_byte(&self, address: u32) -> Result<u8, MemoryError> {
+        if let Some(value) = self.cartridge_state().read8(address) {
+            return Ok(value);
+        }
         match address >> 24 {
             0x00 => self
                 .bios
@@ -784,6 +814,8 @@ impl Memory {
     ) -> Result<(), MemoryError> {
         let index = self.write_index::<N>(address, access)?;
         Self::validate_io_values(&mut self.audio_state(), address, &bytes)?;
+        let mut cartridge = self.cartridge_state();
+        cartridge.write(address, &bytes)?;
         self.record_access(
             address,
             match N {
@@ -793,6 +825,14 @@ impl Memory {
                 _ => unreachable!("unsupported bus width"),
             },
         );
+        if cartridge.mapped(address) {
+            if self.cartridge_step.get().is_some() {
+                self.cartridge_step.set(Some(cartridge));
+            } else {
+                self.cartridge = cartridge;
+            }
+            return Ok(());
+        }
         if address < BIOS_SIZE as u32 {
             // Only validated CPU/DMA writes reach here. Pay the bus cost but
             // never modify the mapped ROM image or drive BIOS read history.
@@ -928,7 +968,14 @@ impl Memory {
                 }
                 Ok(0) // I/O does not use a RAM index.
             }
-            0x08..=0x0d => Err(MemoryError::ReadOnly(address)),
+            0x08..=0x0d => {
+                for offset in 0..N as u32 {
+                    if !self.cartridge_state().mapped(address + offset) {
+                        return Err(MemoryError::ReadOnly(address + offset));
+                    }
+                }
+                Ok(0)
+            }
             _ => Err(MemoryError::Unmapped(address)),
         }
     }
@@ -975,6 +1022,7 @@ impl Memory {
     pub(crate) fn write_words(&mut self, writes: &[(u32, u32)]) -> Result<(), MemoryError> {
         let mut audio = self.audio_state();
         let mut serial = self.serial_state();
+        let mut cartridge = self.cartridge_state();
         let timing = self.cpu_timing.get();
         let devices = self.timer_step.get();
         // Preflight ordered data phases on temporary device/timing copies.
@@ -984,6 +1032,7 @@ impl Memory {
                 self.write_index::<4>(address, self.write_access())?;
                 let bytes = value.to_le_bytes();
                 Self::validate_io_values(&mut audio, address, &bytes)?;
+                cartridge.write(address, &bytes)?;
                 self.record_access(address, AccessWidth::Word);
                 if Serial::mapped(address) {
                     if let Some(mut step) = self.timer_step.get() {
