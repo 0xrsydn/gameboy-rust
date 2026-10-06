@@ -1,17 +1,19 @@
 # Disconnected serial subset
 
-The core supports normal-mode data registers, disconnected external-clock waiting, and general-purpose pins.
-It does not support internally clocked transfers, external clock edges, multiplayer, UART, Joybus communication, or external serial interrupts.
+The core supports disconnected normal-mode transfers, external-clock waiting, and general-purpose pins.
+Internal clocks shift pulled-high input at nominal GBA rates. No link partner is emulated.
+External clock edges, multiplayer, UART, Joybus communication, and GPIO interrupts remain unsupported.
 Unsupported activity remains diagnostic rather than reporting a fabricated completion.
 
 ## Registers
 
-- `SIODATA32` at `0x04000120` is a four-byte latch in the supported normal-mode subset.
-- `SIODATA8` at `0x0400012a` retains its low byte; its upper byte reads zero.
+- `SIODATA32` at `0x04000120` holds the 32-bit shift register. Byte lanes and halfword accesses are supported.
+- `SIODATA8` at `0x0400012a` holds the 8-bit shift register; its upper byte reads zero.
+  Each transfer shifts only its selected data register. The other register retains its value.
 - `SIOCNT` at `0x04000128` retains normal 8/32-bit mode, IRQ configuration, clock selection, and the output-data bit.
   The retained mask is `0x508b`. The disconnected serial input is high, except when a general-purpose output drives it low.
-  Start bit 7 can latch when clock-source bit 0 is clear. Software clears bit 7 to cancel the request.
-  Setting both bits 7 and 0 returns an internally-clocked-transfer diagnostic. Multiplayer/UART mode bit 13 remains unsupported.
+  Start bit 7 requests a transfer. Bit 0 selects external or internal clock; bit 1 selects the internal rate.
+  Completion or software cancellation clears start. Multiplayer/UART mode bit 13 remains unsupported.
 - `RCNT` at `0x04000134` retains mode bits, interrupt configuration, output latches, and pin directions with mask `0xc1ff`.
   With bit 15 clear, bits 8 and 14 are writable latches without GPIO interrupt or Joybus effects.
   With bit 15 set, bit 14 selects Joybus; otherwise bit 8 enables GPIO interrupts. Both active configurations remain diagnostic.
@@ -23,7 +25,7 @@ Unsupported activity remains diagnostic rather than reporting a fabricated compl
   Nonzero writes return an explicit error. Joybus status and data-transfer side effects are not implemented.
 
 GPIO means general-purpose input/output. UART means universal asynchronous receiver/transmitter.
-No external serial device is connected. Elapsed cycles alone do not change serial data or generate an IRQ.
+No external serial device is connected. Only an enabled internal serial clock can shift data or generate a completion IRQ.
 Configuration that hardware accepts in other modes can still be rejected by this intentionally limited subset.
 
 ## External-clock waiting
@@ -36,11 +38,62 @@ Repeated start writes do not complete the request. Software can cancel it by cle
 
 General-purpose mode does not shift serial data. A retained external-clock start bit has no link-port effect there.
 Returning to normal mode still cannot complete a transfer without external clock edges.
-Selecting internal clock while start is set remains diagnostic, including after an external request.
+Selecting internal clock while an unshifted request is pending starts a fresh nominal bit period.
 This is a disconnected waiting model, not an implementation of a connected link or an external clock-input API.
 
 Original tests cover both widths, rate settings, control lanes, cancellation, GPIO selection, HALT/STOP, and ARM/Thumb stores.
 DMA tests distinguish its own completion IRQ from a serial IRQ. Invalid word/block stores cannot leave a partial start request.
+
+## Internal clocks and completion
+
+Normal mode shifts most-significant bit first. At each nominal sampling edge, the selected register shifts left and receives a one.
+The disconnected SI input is high. Completion therefore leaves `0xff` or `0xffffffff`, without inventing peer data.
+Reads between edges expose the partially shifted value. SO waveforms and normal-mode RCNT pin samples remain unmodeled.
+
+At the nominal 16,777,216 Hz system clock:
+
+| SIOCNT bit 1 | Cycles per bit | 8-bit transfer | 32-bit transfer |
+| --- | --- | --- | --- |
+| 0 | 64 | 512 cycles | 2,048 cycles |
+| 1 | 8 | 64 cycles | 256 cycles |
+
+The first sample occurs one full bit period after activation. Selecting internal clock for an unshifted external request uses this same rule.
+A repeated start write with unchanged width/clock fields preserves the current phase and remaining bit count.
+A width/clock change before any bit has shifted starts a fresh period. Data writes before that first bit preserve the phase.
+Software cancellation clears progress but retains already shifted data.
+Whole-access writes merge control and data lanes before applying start/cancel behavior; byte writes remain separate accesses.
+
+Completion clears start and latches IF bit 7 when SIOCNT bit 14 is enabled at the final edge.
+IE, IME, and CPSR.I gate wake-up or delivery, not request latching. Clearing IF acknowledges the request.
+A completed request does not reassert IF without another transfer.
+HALT continues internal shifting and bounds its idle batch at serial completion. STOP freezes the bit phase and remaining count.
+Only keypad wake is implemented for STOP; serial GPIO wake still requires its missing external-input model.
+
+### Bus timing and validation
+
+Serial state shares the timer/audio transaction during CPU instructions, IRQ entry, and DMA units.
+Each access observes all elapsed source/data cycles through its bus-completion phase.
+A start write excludes its preceding cycles. A load excludes its trailing internal cycle.
+IF reads and acknowledgements include serial completion through that access, alongside timer requests.
+Successful steps commit serial state and requests once. Failed steps discard speculative shifts, writes, and completion IRQs.
+The display/capture scheduler does not clock serial again after that commit.
+CPU-only stepping can change registers but does not advance serial clocks.
+
+Block-store preflight simulates ordered access phases on temporary timing/device copies before committing any write.
+Validation can therefore accept reconfiguration when an earlier request completes before the write reaches the bus.
+The actual transfers then execute once from the original state. Other IF sources and DMA completion flags remain independent.
+
+### Bounded behavior
+
+After any bit has shifted, changes to width, clock selection/rate, or the selected data register remain diagnostic while start stays set.
+Selecting GPIO during an internally clocked request also remains diagnostic. Clear start before these operations.
+IRQ-enable and idle SO configuration writes remain supported without restarting progress.
+These limits also apply to BIOS services that write serial registers; cancel active transfers before requesting serial reset.
+Unverified live reconfiguration is not silently approximated.
+
+The period arithmetic follows documented GBA rates. Activation phase, mid-transfer register visibility, and exact pin edges lack physical-hardware validation.
+No external pin waveform, cable, connected partner, or serial-device protocol is implemented.
+Original tests cover individual shifts, batching, cancellation, IRQ gating, HALT/STOP, bus phases, DMA, capture independence, and rollback.
 
 ## BIOS reset
 
@@ -52,15 +105,16 @@ Clearing SIOCNT cancels a pending external-clock request. Unselected serial rese
 
 Original tests cover independent byte lanes, input pull-ups, output directions, reset flag selection, and explicit unsupported operations.
 Whole-access and block-store validation prevent a rejected control value from committing preceding bytes or registers.
-RCNT selection bits share the high byte. Each high-byte write replaces the complete selection, so validation needs no retained-mode shadow.
+Static RCNT mode rejection uses the complete high byte. Live-transfer validation additionally uses staged serial state.
 Mode-gating tests cover every high-byte value, previous modes, low-byte preservation, CPU stores, DMA retries, and unchanged interrupt state.
 Inactive configuration bits do not wake HALT. RCNT word accesses still reject the unmapped padding at `0x04000136`.
 
 ## References
 
 - [GBATEK reset functions](https://problemkaputt.de/gbatek-bios-reset-functions.htm): reset flags, general-purpose selection, and the unconditional SIODATA32 side effect.
-- [GBATEK normal serial mode](https://problemkaputt.de/gbatek-sio-normal-mode.htm): data widths, input status, writable unused RCNT bits 8/14, and external-clock slave start/wait/timeout behavior.
-- [mGBA serial implementation at 3a5e34be](https://github.com/mgba-emu/mgba/blob/3a5e34be33dc7f8f707e5bc9db69e8a430046f21/src/gba/sio.c): compared normal-mode control and completion paths. Its no-driver scheduled completion does not establish disconnected external-clock hardware behavior; this core does not copy that fallback.
+- [GBATEK normal serial mode](https://problemkaputt.de/gbatek-sio-normal-mode.htm): data widths, MSB-first shifting, rates, pulled-high SI, start/completion, IRQ selection, and external-clock waiting.
+- [GBATEK mode summary](https://problemkaputt.de/gbatek-sio-control-registers-summary.htm): RCNT/SIOCNT mode selection.
+- [mGBA serial implementation at 3a5e34be](https://github.com/mgba-emu/mgba/blob/3a5e34be33dc7f8f707e5bc9db69e8a430046f21/src/gba/sio.c): cross-checked normal transfer-duration arithmetic and completion IRQ handling. Its no-driver scheduled completion and zero receive data are not copied; they do not establish disconnected hardware behavior.
 - [GBATEK](https://mgba-emu.github.io/gbatek/): GBA general-purpose pin directions, internal pull-ups, SI falling-edge interrupts, and the SIO mode-selection table.
 - [mGBA BIOS implementation at 3a5e34be](https://github.com/mgba-emu/mgba/blob/3a5e34be33dc7f8f707e5bc9db69e8a430046f21/src/gba/bios.c): functional serial reset defaults, not copied source.
 

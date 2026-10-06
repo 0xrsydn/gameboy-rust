@@ -544,5 +544,6 @@ Unsupported SWIs, unsupported exception vectors, and null/misaligned IRQ callbac
 The CPU reports `CpuError::UnsupportedInstruction` with `bios::UNSUPPORTED_TRAP`, rather than silently treating a service as a no-op.
 Invalid arithmetic/decompression arguments use the same CPU error type with the distinct `bios::INVALID_ARGUMENT_TRAP` instruction.
 Prior boot/service steps remain committed on failure.
-PSG wave channel 3, host audio output, serial transfers, HardReset, and serial/Game Pak STOP wake-up remain unimplemented.
+PSG wave channel 3, host audio output, connected serial links, HardReset, and serial/Game Pak STOP wake-up remain unimplemented.
+Disconnected normal serial transfers use the [bounded serial model](serial.md); cancel active transfers before BIOS serial reset.
 This subset is not sufficient for Pokémon Emerald compatibility.

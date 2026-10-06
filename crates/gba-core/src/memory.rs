@@ -13,6 +13,8 @@ mod iwram_history_tests;
 #[cfg(test)]
 mod prefetch_tests;
 #[cfg(test)]
+mod serial_step_tests;
+#[cfg(test)]
 mod timer_step_tests;
 #[cfg(test)]
 mod timing_event_tests;
@@ -25,7 +27,7 @@ use crate::{
     display::{DisplayPosition, CYCLES_PER_LINE, HBLANK_START, VISIBLE_LINES},
     dma::{DmaError, DMA_BASE, DMA_END},
     input::Buttons,
-    io::{Io, TimerStep, HALTCNT, KEYINPUT, POSTFLG},
+    io::{Io, Serial, TimerStep, HALTCNT, KEYINPUT, POSTFLG},
     timing::{AccessKind, AccessWidth, CpuTiming, Prefetch, StepTiming},
     video::{self, sprites::pipeline, Framebuffer, VideoError},
 };
@@ -107,7 +109,7 @@ struct CpuAccess {
 /// Successful DMA accesses drive local lanes even before the first CPU instruction.
 /// Channel data remains separate; general and sub-instruction CPU bus handoff is unmodeled.
 /// Instruction buffering and supported bus history consume shared fetch samples.
-/// Timer and sound accesses use staged machine-step time; other per-access device timing remains unmodeled.
+/// Timer, sound, and serial accesses use staged machine-step time; other per-access device timing remains unmodeled.
 pub struct Memory {
     external_ram: Vec<u8>,
     internal_ram: Vec<u8>,
@@ -177,6 +179,12 @@ impl Memory {
         self.io.audio.level()
     }
 
+    fn serial_state(&self) -> Serial {
+        self.timer_step
+            .get()
+            .map_or(self.io.serial, |step| step.serial)
+    }
+
     fn audio_state(&self) -> Audio {
         self.timer_step
             .get()
@@ -231,7 +239,7 @@ impl Memory {
             .take()
             .expect("machine timer transaction is active");
         self.io.commit_timer_step(step);
-        // Timers already reached this boundary. Advance other devices exactly once.
+        // Staged devices already reached this boundary. Advance remaining devices exactly once.
         self.advance_running_cycles_with_timers(cycles, false);
     }
 
@@ -258,7 +266,7 @@ impl Memory {
             self.io.advance(cycles - advanced, advance_timers);
         } else {
             // Split at display and sprite-preparation edges. Video writes have
-            // already committed. Machine timer transactions skip this bulk timer clock.
+            // already committed. Staged devices skip their bulk clock on machine steps.
             let mut remaining = cycles;
             while remaining != 0 {
                 let position = self.io.display_position();
@@ -689,6 +697,12 @@ impl Memory {
     fn read_byte(&self, address: u32) -> Result<u8, MemoryError> {
         if address >> 24 == 0x04 {
             if let Some(step) = self.timer_step.get() {
+                if Serial::mapped(address) {
+                    return step
+                        .serial
+                        .read8(address)
+                        .ok_or(MemoryError::Unmapped(address));
+                }
                 if let Some(value) = step.read8(address, self.io.read8(address).unwrap_or(0)) {
                     return Ok(value);
                 }
@@ -798,6 +812,18 @@ impl Memory {
             self.iwram_bus.access(address, width, value);
         }
         if address >> 24 == 0x04 {
+            if Serial::mapped(address) {
+                let mut serial = self.serial_state();
+                Self::validate_serial(&serial, address, &bytes)?;
+                serial.write(address, &bytes);
+                if let Some(mut step) = self.timer_step.get() {
+                    step.serial = serial;
+                    self.timer_step.set(Some(step));
+                } else {
+                    self.io.serial = serial;
+                }
+                return Ok(());
+            }
             if Audio::mapped(address) {
                 if let Some(mut step) = self.timer_step.get() {
                     step.audio.write(address, &bytes);
@@ -930,15 +956,49 @@ impl Memory {
         Ok(())
     }
 
+    fn validate_serial(serial: &Serial, address: u32, bytes: &[u8]) -> Result<(), MemoryError> {
+        if let Some((address, value, operation)) = serial.validate(address, bytes) {
+            return Err(MemoryError::UnsupportedIo {
+                address,
+                value,
+                operation,
+            });
+        }
+        Ok(())
+    }
+
     /// Validate a batch before any RAM or I/O writes. Diagnostic errors cannot
     /// leave a partial block store. This is not a model of hardware data aborts.
     /// Mapped I/O reads currently have no side effects; writes cannot fail after validation.
     pub(crate) fn write_words(&mut self, writes: &[(u32, u32)]) -> Result<(), MemoryError> {
         let mut audio = self.audio_state();
-        for &(address, value) in writes {
-            self.write_index::<4>(address, self.write_access())?;
-            Self::validate_io_values(&mut audio, address, &value.to_le_bytes())?;
-        }
+        let mut serial = self.serial_state();
+        let timing = self.cpu_timing.get();
+        let devices = self.timer_step.get();
+        // Preflight ordered data phases on temporary device/timing copies.
+        // A serial request can finish before a later control write reaches the bus.
+        let validation = (|| {
+            for &(address, value) in writes {
+                self.write_index::<4>(address, self.write_access())?;
+                let bytes = value.to_le_bytes();
+                Self::validate_io_values(&mut audio, address, &bytes)?;
+                self.record_access(address, AccessWidth::Word);
+                if Serial::mapped(address) {
+                    if let Some(mut step) = self.timer_step.get() {
+                        Self::validate_serial(&step.serial, address, &bytes)?;
+                        step.serial.write(address, &bytes);
+                        self.timer_step.set(Some(step));
+                    } else {
+                        Self::validate_serial(&serial, address, &bytes)?;
+                        serial.write(address, &bytes);
+                    }
+                }
+            }
+            Ok(())
+        })();
+        self.cpu_timing.set(timing);
+        self.timer_step.set(devices);
+        validation?;
         for &(address, value) in writes {
             // The map cannot change between validation and these writes.
             self.write32(address, value)?;

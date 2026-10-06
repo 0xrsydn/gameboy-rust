@@ -1,15 +1,16 @@
 //! GBA I/O subset: DMA, timers, interrupts, WAITCNT, display, keypad input,
-//! Direct Sound, and disconnected serial state with external-clock waiting.
+//! Direct Sound, and disconnected normal serial transfers.
 //! Timers share a free-running prescaler phase. Hardware startup/write delays
 //! and interrupt delivery delays are not modeled.
 
-mod inactive;
+mod serial;
 use crate::audio::Audio;
 pub use crate::audio::{FIFO_A, FIFO_B, SOUNDBIAS, SOUNDCNT_H, SOUNDCNT_X, SOUND_START, WAVE_RAM};
-pub use inactive::{JOYCNT, JOY_RECV, JOY_TRANS, RCNT, SIOCNT, SIODATA32, SIODATA8};
+pub(crate) use serial::Serial;
+pub use serial::{JOYCNT, JOY_RECV, JOY_TRANS, RCNT, SIOCNT, SIODATA32, SIODATA8};
 mod timer_step;
 pub(crate) use timer_step::TimerStep;
-use timer_step::TIMER_IRQ_MASK;
+use timer_step::STAGED_IRQ_MASK;
 
 use crate::{
     display::{Display, DisplayPosition, CYCLES_PER_LINE, HBLANK_START, VISIBLE_LINES},
@@ -155,7 +156,7 @@ enum PowerState {
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub(crate) struct Io {
-    inactive: inactive::Inactive,
+    pub(crate) serial: Serial,
     pub(crate) audio: Audio,
     timers: [Timer; 4],
     // Low ten system-clock bits cover every supported divider. STOP freezes this phase.
@@ -182,20 +183,20 @@ pub(crate) struct Io {
 impl Io {
     pub(crate) fn mapped(address: u32) -> bool {
         Audio::mapped(address)
-            || inactive::Inactive::mapped(address)
+            || Serial::mapped(address)
             || matches!(address, 0x0400_0000..=0x0400_0057 | DMA_BASE..=DMA_END | 0x0400_0100..=0x0400_010f | 0x0400_0130..=0x0400_0133 | 0x0400_0200..=0x0400_020b | POSTFLG..=0x0400_0303)
     }
 
     pub(crate) fn unsupported_write(address: u32, value: u8) -> Option<&'static str> {
-        inactive::Inactive::unsupported(address, value)
+        Serial::unsupported(address, value)
     }
 
     pub(crate) fn read8(&self, address: u32) -> Option<u8> {
         if Audio::mapped(address) {
             return self.audio.read8(address);
         }
-        if inactive::Inactive::mapped(address) {
-            return self.inactive.read8(address);
+        if Serial::mapped(address) {
+            return self.serial.read8(address);
         }
         if (DMA_BASE..=DMA_END).contains(&address) {
             return Some(self.dma.read8(address));
@@ -235,8 +236,8 @@ impl Io {
     pub(crate) fn write8(&mut self, address: u32, value: u8) {
         debug_assert!(Self::mapped(address));
         debug_assert!(!(KEYINPUT..=KEYCNT + 1).contains(&address));
-        if inactive::Inactive::mapped(address) {
-            self.inactive.write8(address, value);
+        if Serial::mapped(address) {
+            self.serial.write(address, &[value]);
             return;
         }
         if (DMA_BASE..=DMA_END).contains(&address) {
@@ -336,12 +337,13 @@ impl Io {
         }
     }
 
-    /// Bound an idle batch by the next display edge or independent timer overflow.
+    /// Bound idle by the next display edge, timer overflow, or serial completion.
     /// Display edges keep this finite even without an enabled wake source.
     pub(crate) fn next_event_cycles(&self) -> u32 {
         self.timers
             .iter()
             .filter_map(|timer| timer.next_overflow(self.timer_phase))
+            .chain(self.serial.next_event_cycles())
             .fold(self.display.next_event_cycles(), u32::min)
     }
 
@@ -425,10 +427,11 @@ impl Io {
 
     pub(crate) fn commit_timer_step(&mut self, step: TimerStep) {
         self.audio = step.audio;
+        self.serial = step.serial;
         self.dma.trigger_sound(self.audio.take_requests());
         self.timers = step.timers;
         self.timer_phase = step.phase;
-        self.pending = (self.pending & !TIMER_IRQ_MASK) | step.pending;
+        self.pending = (self.pending & !STAGED_IRQ_MASK) | step.pending;
         self.wake_if_requested();
     }
 
@@ -486,6 +489,7 @@ impl Io {
         self.dma.trigger(vblank, hblank);
         self.pending |= self.display.advance(cycles);
         if advance_timers {
+            self.pending |= self.serial.advance(cycles);
             self.pending |= Self::advance_timer_bank(
                 &mut self.timers,
                 &mut self.timer_phase,

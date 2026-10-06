@@ -155,7 +155,7 @@ impl Machine {
     /// Sample IRQ before executing the next instruction. GBA devices do not
     /// generate FIQ. IRQ entry consumes a separate step and does not clear IF.
     /// CPU/DMA work uses nominal costs; HALT advances exactly to the next device event.
-    /// Timer data accesses use staged bus-completion phases. Other device writes
+    /// Timer, sound, and serial accesses use staged bus-completion phases. Other device writes
     /// precede their bulk clock update. IRQ synchronization delays are not modeled. Opcode
     /// prefetch follows ordered nominal CPU/DMA costs, not per-cycle arbitration.
     /// CPU/DMA diagnostics leave CPU, devices, and the clock unchanged for this step.

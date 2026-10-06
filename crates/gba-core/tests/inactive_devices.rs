@@ -80,7 +80,6 @@ fn idle_normal_serial_data_and_control_have_distinct_widths() {
 fn unsupported_operations_have_specific_retryable_diagnostics() {
     let mut bus = memory();
     for (address, value, description) in [
-        (SIOCNT, 0x81, "internally clocked serial transfer"),
         (SIOCNT + 1, 0x20, "multiplayer/UART"),
         (RCNT + 1, 0xc0, "Joybus serial mode"),
         (RCNT + 1, 0x81, "GPIO serial interrupt"),

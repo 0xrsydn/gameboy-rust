@@ -52,7 +52,7 @@ Update this file when a feature lands or a limit is removed.
 - Persistent fetch access kinds follow CPU data/internal work, compose with DMA resume, and reset after target refills.
 - Game Pak wait-state control (`WAITCNT`) for all three ROM windows.
 - Bit 14 enables a nominal eight-halfword opcode prefetch queue, with partial fetches, cancellation, and DMA/idle integration.
-- Staged timer clocks follow CPU and DMA bus-completion phases, including timer IF reads/acknowledgements and failed-step rollback.
+- Staged timer/audio/serial clocks follow CPU and DMA bus-completion phases, including timer/serial IF reads, acknowledgements, and failed-step rollback.
 - The unchanged original ARM cancellation probe matches both published read interval totals and its unadjusted timer samples.
 - Sequential/non-sequential data accesses, branch refill costs, and variable multiply timing.
 - Optional caller-supplied 16 KiB BIOS mapping, with CPU read protection based on retained ARM PC+8 or aligned Thumb PC+4 words.
@@ -142,8 +142,9 @@ There is no host audio output or cartridge save support.
 The [audio subset](hardware/audio.md) supports Direct Sound, both PSG pulse channels, noise channel 4, idle wave channel 3 state, and instantaneous digital mixing.
 It does not yet provide a continuous sample stream. Wave channel 3 playback and unverified sound-DMA pairings remain diagnostic.
 PSG timing and signed mixing are nominal; hardware startup edges and analog behavior remain unverified.
-The [serial subset](hardware/serial.md) supports normal data, disconnected external-clock waiting, and general-purpose pins.
-External requests retain start/busy without completion or IRQ. Internally clocked transfers and connected links remain unsupported.
+The [serial subset](hardware/serial.md) supports disconnected normal 8/32-bit transfers, external-clock waiting, and general-purpose pins.
+Internal clocks shift high input at nominal rates, clear busy, and request completion IRQs. External requests retain busy without clock edges.
+Connected links, multiplayer/UART, Joybus, GPIO interrupts, and unverified mid-transfer reconfiguration remain unsupported.
 RCNT retains inactive bits 8/14 in normal mode. Effective GPIO interrupt enable and Joybus selection remain diagnostic.
 Mapped I/O covers DMA, timers, interrupts, WAITCNT, display control/status, background control/scroll/affine registers, window/effect registers, KEYINPUT/KEYCNT, POSTFLG, and HALTCNT.
 Keypad IRQs use a documented polling model; hardware retrigger edges and asynchronous input timing remain unverified.
@@ -157,7 +158,7 @@ A local Emerald run now completes its all-device reset and master sound enable.
 It also passes the pulse/noise triggers and normal-mode RCNT configuration.
 It also completes a CpuSet call to address zero through the corrected ignored BIOS-write behavior.
 It also accepts an external-clock serial request without inventing clock edges or completion.
-It next stops when software selects internal serial clock (`0x04000128`, PC `0x082e6eb8`).
+It now also completes internally clocked normal transfers and next stops at multiplayer mode selection (`0x04000129`, PC `0x082e4358`).
 No title-screen, gameplay, or audible-game compatibility is established.
 See [the startup result](research/emerald-reset.md) for the bounded run and next investigation.
 See [cartridge loading](hardware/cartridge.md) for file limits, step budgets, and exit status.

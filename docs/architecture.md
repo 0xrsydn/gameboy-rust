@@ -65,11 +65,13 @@ The repository is a Cargo workspace with three crates:
 | `crates/gba-core/tests/pulse_sound/channel2.rs` | Channel 2 mapping, register gaps, independent state, shared clocks, and sum-before-rounding mixing |
 | `crates/gba-core/tests/direct_sound.rs` | FIFO lanes/reset, signed mixing, timer selection, DMA refill, and HALT/STOP |
 | `crates/gba-core/src/memory/audio_step_tests.rs` | Audio access phases, shadow validation, and CPU/DMA failure rollback |
-| `crates/gba-core/src/io/inactive.rs` | Disconnected serial registers, external-clock waiting, and unsupported-activity validation |
+| `crates/gba-core/src/io/serial.rs` | Disconnected normal serial shifter, internal clocks, external waiting, GPIO latches, and live-write validation |
 | `crates/gba-core/tests/inactive_devices.rs` | Device masks, wave RAM, GPIO pull-ups, serial data, and failed CPU/DMA write isolation |
 | `crates/gba-core/tests/serial_control.rs` | RCNT mode gating, inactive bits, byte/halfword lanes, CPU/DMA diagnostics, and interrupt isolation |
 | `crates/gba-core/tests/serial_external.rs` | External-clock waiting, cancellation, HALT/STOP, ARM/Thumb/DMA starts, and atomic diagnostics |
-| `crates/gba-core/src/io/timer_step.rs` | Staged timer/audio state, divider phase, timer IF bits, and sound refill requests at ordered CPU/DMA bus phases |
+| `crates/gba-core/tests/serial_internal.rs` | Nominal bit edges, widths/rates, cancellation, completion IRQs, HALT/STOP, and live-write limits |
+| `crates/gba-core/src/memory/serial_step_tests.rs` | Serial bus-phase observations, preflight validation, DMA, IF ordering, capture isolation, and rollback |
+| `crates/gba-core/src/io/timer_step.rs` | Staged timer/audio/serial state, divider phase, timer/serial IF bits, and sound refill requests at ordered CPU/DMA bus phases |
 | `crates/gba-core/src/memory/timer_step_tests.rs` | Timer access phases, coherent lanes, cascades, IF ordering, rollback, DMA, idle, and clock ownership |
 | `crates/gba-core/src/display.rs` | Display clock, scanline status, comparison edges, and display IRQ events |
 | `crates/gba-core/src/dma.rs` | DMA registers, internal pointers, retained channel data, trigger state, priority, and completion IRQs |

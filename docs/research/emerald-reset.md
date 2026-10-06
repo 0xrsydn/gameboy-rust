@@ -53,16 +53,21 @@ A local register trace found RCNT zero and a SIOCNT write of `0x5084`: 32-bit mo
 With no connected clock source, this request must wait rather than complete on elapsed CPU cycles.
 The [serial subset](../hardware/serial.md#external-clock-waiting) now retains the request without shifting data or raising a serial IRQ.
 
-Both runs pass that request and next stop when software selects internal clock while start remains set:
+External-clock waiting then reached internal-clock selection at PC `0x082e6eb8`, with start still set.
+The serial model now handles that unshifted transition and clocks normal 8/32-bit transfers at nominal rates.
+It shifts disconnected high input, clears start at completion, and requests serial IRQs through the ordinary device transaction.
+No connected partner, fabricated peer data, or immediate completion was added.
+
+Both runs now reach multiplayer mode selection:
 
 ```text
-Steps: 426523; instructions: 424753; IRQ entries: 2; DMA units: 1768; HALT idle: 0
-Nominal cycles: 1416980
-PC=0x082e6eb8
-unsupported internally clocked serial transfer: write 0x85 at 0x04000128
+Steps: 955967; instructions: 953287; IRQ entries: 80; DMA units: 2600; HALT idle: 0
+Nominal cycles: 3514542
+PC=0x082e4358
+unsupported multiplayer/UART serial mode: write 0x20 at 0x04000129
 ```
 
-The native run captures five startup frames. These do not establish a working title screen or gameplay.
+The native run captures twelve startup frames. These do not establish a working title screen or gameplay.
 Audio-device behavior is validated by original tests, not by audible game output.
 The window run does not reach its requested frame limit and correctly exits with failure.
 Terminal execution is also diagnostic, not a compatibility pass.
@@ -74,11 +79,10 @@ Workspace debug/release tests, strict Clippy, public ARM/Thumb/memory/BIOS check
 Native ROM-window tests and graphics smoke modes pass on Darwin arm64.
 The pinned Pong debug/release reports match.
 
-The next requirement is internally clocked normal serial communication, including switching from a pending external-clock request.
-Implement nominal shift periods, disconnected input sampling, completion, and IRQ behavior with deterministic tests.
-Keep completion consistent with HALT, STOP, instruction timing, and diagnostic rollback.
-Do not invent a connected partner or immediate completion to suppress the diagnostic.
-The external-clock waiting result does not establish linked gameplay or GPIO interrupt support.
+The next requirement is disconnected multiplayer-mode configuration and status, starting with SIOCNT mode value `0x2000`.
+Research mode selection, absent-partner input levels, ready/error flags, and start behavior before extending the model.
+Do not invent connected players or successful linked transfers to suppress the diagnostic.
+The normal-mode result does not establish linked gameplay or GPIO interrupt support.
 
 Noise now has deterministic counter clocks and shares tested length/envelope logic with the independent pulse channels.
 Sweep applies only to channel 1. Direct Sound has FIFO clocks and nominal DMA requests.

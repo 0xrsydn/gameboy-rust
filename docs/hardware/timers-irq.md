@@ -7,7 +7,7 @@
 Otherwise it services one ready DMA data unit, keeping the CPU paused.
 If HALT is waiting and no DMA is ready, it advances device clocks to the next event without executing CPU code.
 Otherwise, it samples the IRQ line, including the CPU's interrupt mask, then enters IRQ mode or executes one instruction.
-Each successful step advances display, timer, and audio clocks by its nominal cost.
+Each successful step advances display, timer, audio, and enabled internal serial clocks by its nominal cost.
 `Machine::last_timing()` reports separate code, data, internal, and idle cycle totals for the last successful step.
 `StepTiming::idle_cycles` counts device-clock cycles during HALT; it does not count CPU work.
 IRQ entry is a separate step; the vector instruction runs on the following step.
@@ -15,7 +15,7 @@ Entry charges the discarded incoming-state PC+8/PC+4 fetch and the ARM vector pa
 DMA resume can make the discarded fetch non-sequential. Missing discarded bytes do not prevent IRQ entry.
 See [refill timing](../research/refill-fetch-timing.md) for history effects and remaining limits.
 A device event during a step can trigger IRQ entry once no DMA is ready and CPU masks allow delivery.
-Timer and sound accesses use ordered bus-completion phases. Other device writes still take effect before their bulk clock update.
+Timer, sound, and serial accesses use ordered bus-completion phases. Other device writes still take effect before their bulk clock update.
 `StepKind::Dma { channel }` identifies a DMA unit. `StepKind::HaltIdle` identifies one bounded HALT clock advance.
 `StepKind::StopIdle` identifies a stopped system with no clock progress.
 The other step kinds remain `Instruction` and `IrqEntry`.
@@ -31,15 +31,18 @@ Timer-start writes do not count preceding cycles. Timer-stop writes count throug
 Block transfers preserve distinct word phases; combined reload/control writes merge at one phase, with reload bytes first.
 
 The transaction also owns timer IF bits. Reads see overflows through the current access; acknowledgements clear earlier timer requests.
-A later internal cycle can raise an acknowledged timer request again. Non-timer IF bits retain their existing behavior.
+A later internal cycle can raise an acknowledged timer request again.
+The same transaction owns serial IF bit 7; serial completion and acknowledgement follow the same access boundaries.
+Other IF sources retain their existing behavior.
 IRQ delivery still waits until the next machine step. A committed timer request can wake HALT, but not STOP.
 
-Successful steps commit timers, the shared divider phase, timer IF bits, and audio state.
-Failed steps discard staged counters, divider progress, timer/audio writes, FIFO consumption, and requests.
+Successful steps commit timers, the shared divider phase, audio/serial state, and timer/serial IF bits.
+Failed steps discard staged counters, divider progress, device writes, FIFO consumption, serial shifts, and requests.
 Display and other device clocks then advance once, without advancing timers again.
 Display and remaining devices still use the bulk scheduler. Mid-instruction display events, general bus arbitration, and IRQ synchronization delays remain unmodeled.
 [Direct Sound](audio.md) consumes selected timer overflows in the timer transaction; sound DMA requests commit at step boundaries.
 The same transaction advances both PSG pulse oscillators, the noise counter, and their shared 512 Hz sequencer independently of the general-purpose timers.
+It also advances [normal serial transfers](serial.md) with nominal internal clocks. External-clock requests cannot progress without a clock source.
 Host clock advances and HALT idle batches retain ordinary bulk timer advancement; STOP idle does not advance timers.
 
 The unchanged [prefetch cancellation probe](../research/prefetch-cancellation.md) now matches both published interval totals and actual timer samples.
@@ -95,7 +98,8 @@ See [prescaler evidence and original tests](../research/timer-prescaler.md).
 Hardware startup and register-write delays are still not modeled. Writes retain the immediate bus-completion policy.
 The shared-phase tests validate this bounded model, not absolute enable/reload edges on hardware.
 Timers 0 and 1 can clock Direct Sound playback and request FIFO DMA independently of timer IRQ enable.
-Interrupt sources other than timers, display events, DMA completion, and keypad input are not implemented.
+Implemented interrupt sources are timers, display events, DMA completion, keypad input, and normal serial completion.
+Other serial modes and external serial interrupts remain unimplemented.
 
 `--timer-demo` executes original ARM code that configures Timer 0, IE, and IME.
 The timer overflows after 16 supplied cycles and enters the original handler through vector `0x18`.
@@ -173,7 +177,7 @@ Wake-up does not acknowledge IF. Clearing IF after wake-up does not put the CPU 
 On the next machine step, ready DMA still takes priority.
 The CPU then enters an unmasked IRQ handler or resumes the next instruction.
 
-Each `HaltIdle` step advances to the earliest display edge or independently clocked timer overflow.
+Each `HaltIdle` step advances to the earliest display edge, independently clocked timer overflow, or internal serial completion.
 Display edges include every HBlank entry and scanline start. Cascaded timers receive pulses at their predecessor's overflow.
 These bounds prevent idle advances from skipping DMA triggers or wake-up events.
 They also keep frame execution bounded when no interrupt can wake the CPU.
@@ -209,7 +213,7 @@ The same selected-button OR/AND logic applies, including the empty-mask behavior
 IME and CPSR.I do not gate wake-up in this functional model.
 A matching condition already present at entry prevents a sustained stop.
 Stale IF flags alone cannot wake STOP, including an old keypad request.
-Timer, display, and DMA requests cannot wake STOP.
+Timer, display, DMA, and internal serial requests cannot wake STOP.
 
 An input sample supplied while stopped updates KEYINPUT and the wake condition without setting IF.
 It does not consume the normal running-state keypad polling history.

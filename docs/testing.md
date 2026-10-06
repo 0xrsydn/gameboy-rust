@@ -292,6 +292,10 @@ Regressions retain the original program and published observations without corre
 Disabled-prefetch controls, delay bounds, completion PCs, and fresh-run determinism have separate checks.
 Instruction timing tests cover arithmetic, shifts, branches, transfers, block operations, multiply, and exception returns.
 Timed and untimed execution are compared across all 65,536 Thumb encodings with fixed initial registers.
+Normal serial tests cover both widths and internal rates, every bit edge, disconnected high input, batching, and completion IRQs.
+They check external-clock handoff, cancellation, phase retention, HALT bounds, STOP freeze/wake, and explicit live-write limits.
+Bus-phase tests cover start/load timing, IF acknowledgement order, CPU/DMA rollback, block preflight, and capture independence.
+These tests validate the documented nominal serial model, not physical link-pin timing or multiplayer compatibility.
 Timer/IRQ tests verify that changing WAITCNT changes when an interrupt is sampled.
 Timer tests cover all prescalers, reload changes, start/stop behavior, byte writes, large clock advances, and cascades.
 Ordered timer tests cover ARM/Thumb sampling, coherent byte lanes, block-transfer phases, reload/control ordering, and prescaler retention.

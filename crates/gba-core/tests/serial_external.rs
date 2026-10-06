@@ -4,7 +4,7 @@ use gba_core::{
     dma::DMA_BASE,
     io::{HALTCNT, IE, IF, IME, RCNT, SIOCNT, SIODATA32, SIODATA8},
     machine::{Machine, StepKind},
-    memory::{Memory, MemoryError, ROM_START},
+    memory::{Memory, ROM_START},
 };
 
 fn memory() -> Memory {
@@ -12,36 +12,22 @@ fn memory() -> Memory {
 }
 
 #[test]
-fn every_low_control_byte_retains_external_busy_but_rejects_internal_start_atomically() {
+fn every_low_control_byte_retains_normal_control_bits_without_immediate_completion() {
     let mut bus = memory();
     for high in [0, 0x10, 0x40, 0x50] {
         for previous in [0x0003, 0x1000, 0x4080, 0x5082] {
             for low in 0..=u8::MAX {
                 bus.write16(SIOCNT, previous).unwrap();
-                let before = bus.read16(SIOCNT).unwrap();
-                let result = bus.write8(SIOCNT, low);
-                if low & 0x80 != 0 && low & 1 != 0 {
-                    assert_eq!(
-                        result,
-                        Err(MemoryError::UnsupportedIo {
-                            address: SIOCNT,
-                            value: low,
-                            operation: "internally clocked serial transfer",
-                        })
-                    );
-                    assert_eq!(bus.read16(SIOCNT).unwrap(), before);
-                } else {
-                    result.unwrap();
-                    assert_eq!(
-                        bus.read16(SIOCNT).unwrap(),
-                        (previous & 0x5000) | u16::from(low & 0x8b) | 4
-                    );
-                    bus.write8(SIOCNT + 1, high).unwrap();
-                    assert_eq!(
-                        bus.read16(SIOCNT).unwrap(),
-                        (u16::from(high) << 8) | u16::from(low & 0x8b) | 4
-                    );
-                }
+                bus.write8(SIOCNT, low).unwrap();
+                assert_eq!(
+                    bus.read16(SIOCNT).unwrap(),
+                    (previous & 0x5000) | u16::from(low & 0x8b) | 4
+                );
+                bus.write8(SIOCNT + 1, high).unwrap();
+                assert_eq!(
+                    bus.read16(SIOCNT).unwrap(),
+                    (u16::from(high) << 8) | u16::from(low & 0x8b) | 4
+                );
                 assert_eq!(bus.read16(IF).unwrap() & 0x80, 0);
             }
         }
@@ -85,9 +71,9 @@ fn gpio_selection_does_not_turn_a_retained_start_bit_into_a_transfer_or_irq() {
     bus.advance_cycles(1000000);
     assert_eq!(bus.read16(SIOCNT).unwrap(), 0x5084);
     assert_eq!(bus.read16(IF).unwrap() & 0x80, 0);
-    // Clock-source changes with start still set remain explicit diagnostics.
-    assert!(bus.write8(SIOCNT, 0x81).is_err());
-    assert_eq!(bus.read16(SIOCNT).unwrap(), 0x5084);
+    // Selecting internal clock starts the pending request, but not instant completion.
+    bus.write8(SIOCNT, 0x81).unwrap();
+    assert_eq!(bus.read16(SIOCNT).unwrap(), 0x5085);
     bus.write16(SIOCNT, 0x5001).unwrap(); // Cancel first, then select internal clock while idle.
     assert_eq!(bus.read16(SIOCNT).unwrap(), 0x5005);
 }
@@ -146,7 +132,7 @@ fn prepared(thumb: bool, instruction: u32, value: u32) -> Machine {
 #[test]
 fn arm_and_thumb_external_starts_complete_as_instructions_not_as_serial_transfers() {
     for thumb in [false, true] {
-        for value in [0x5084, 0x5081] {
+        for value in [0x5084, 0x7080] {
             let mut machine = prepared(thumb, 0xe1c010b0, value); // STRH r1,[r0]
             let cpu = machine.cpu().clone();
             if value == 0x5084 {
@@ -160,9 +146,7 @@ fn arm_and_thumb_external_starts_complete_as_instructions_not_as_serial_transfer
                 assert_eq!(machine.memory().read16(IF).unwrap() & 0x80, 0);
             } else {
                 let error = machine.step().unwrap_err();
-                assert!(error
-                    .to_string()
-                    .contains("internally clocked serial transfer"));
+                assert!(error.to_string().contains("multiplayer/UART serial mode"));
                 assert_eq!(machine.cpu(), &cpu);
                 assert_eq!(machine.cycles(), 0);
                 assert_eq!(machine.memory().read16(SIOCNT).unwrap(), 0x1007);
@@ -198,15 +182,13 @@ fn invalid_word_and_block_writes_do_not_leave_a_partial_external_start() {
 #[test]
 fn dma_start_preserves_serial_wait_and_reports_only_dma_completion() {
     let mut bus = memory();
-    bus.write32(0x02000000, 0x00ab5081).unwrap();
+    bus.write32(0x02000000, 0x00ab7080).unwrap();
     bus.write32(DMA_BASE, 0x02000000).unwrap();
     bus.write32(DMA_BASE + 4, SIOCNT).unwrap();
     bus.write32(DMA_BASE + 8, 0xc4000001).unwrap();
     let mut machine = Machine::new(Cpu::new(ROM_START), bus);
     let error = machine.step().unwrap_err();
-    assert!(error
-        .to_string()
-        .contains("internally clocked serial transfer"));
+    assert!(error.to_string().contains("multiplayer/UART serial mode"));
     assert_eq!(machine.step(), Err(error));
     assert_eq!(machine.cycles(), 0);
     assert_eq!(machine.memory().read16(SIOCNT).unwrap(), 4);
