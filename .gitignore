@@ -1,6 +1,7 @@
 /target/
 /.direnv/
 /roms/
+/.pi/jev-runs/
 *.gba
 *.nds
 *.sav

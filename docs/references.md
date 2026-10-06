@@ -246,6 +246,12 @@ Disabled sound and disconnected serial reset:
 - [GBATEK normal serial mode](https://problemkaputt.de/gbatek-sio-normal-mode.htm) and its [general-purpose register chapter](https://mgba-emu.github.io/gbatek/), for data widths, control fields, and disconnected input pull-ups.
 - [mGBA BIOS implementation at 3a5e34be](https://github.com/mgba-emu/mgba/blob/3a5e34be33dc7f8f707e5bc9db69e8a430046f21/src/gba/bios.c), for functional serial and sound reset defaults. Exact firmware ordering and timing remain unverified.
 
+Optional classifier-assisted debugging:
+
+- [TypeSafe documentation index](https://docs.typesafe.ai/llms.txt), [API reference](https://docs.typesafe.ai/api.md), [models](https://docs.typesafe.ai/models.md), [confidence](https://docs.typesafe.ai/confidence.md), and [Jev limitations](https://docs.typesafe.ai/model-jaggedness/jev-1.13.md), for typed evidence review and its limits.
+- [What is Codemode](https://lucumr.pocoo.org/2026/10/6/codemode/), for bounded harness-side orchestration and game-debugging examples.
+- Installed Pi documentation for Codemode, classifiers, skills, prompt templates, settings, configuration, providers, and project trust. See [the local workflow](jev-debugging.md).
+
 Use [GBATEK](https://problemkaputt.de/gbatek.htm) and ARM7TDMI documentation for further hardware work.
 Only use game ROMs that you may lawfully use. Do not commit game ROMs, BIOS files, or game assets.
 The ignore file excludes `roms/`, common game ROM extensions, and save files.

@@ -1,0 +1,14 @@
+{
+  "case_id": "original-audio-blocker",
+  "observations": [
+    "An original test program requests sound master enable. The emulator rejects this operation because its audio engine is not implemented."
+  ],
+  "checks": [
+    {
+      "name": "sound-start",
+      "result": "fail",
+      "scope": "Sound activation must complete without an unsupported-device diagnostic."
+    }
+  ],
+  "claim": "This program has working sound."
+}

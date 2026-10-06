@@ -19,6 +19,9 @@ The repository is a Cargo workspace with three crates:
 | `tools/prepare_homebrew_pong.py`, `tools/homebrew-pong.lock.json` | Hash-pinned homebrew preparation and source-derived gameplay scenarios |
 | `tools/test_prepare_homebrew_pong.py` | Offline homebrew preparation, provenance, bounds, and destination-safety tests |
 | `.envrc` | Automatic environment loading through direnv |
+| `.pi/prompts/jev-gb-debug.md`, `.pi/skills/jev-gb-debug/SKILL.md` | Project-local optional Jev diagnostic workflow |
+| `tools/jev_gb_debug.py`, `tools/jev-gb-rubric.json` | Bounded evidence validation, optional classifier request, and local evaluation records |
+| `tools/test_jev_gb_debug.py`, `tools/fixtures/jev/` | Offline integration tests and original synthetic classifier probes |
 | `AGENTS.md` | Short orientation for coding agents: crate map, commands, and where docs live |
 | `docs/` | Project documentation; `docs/hardware/` holds per-subsystem behavior notes |
 | `crates/gba-core/src/cpu.rs` | Registers, flags, instruction-set state, and stepping |

@@ -1,0 +1,14 @@
+{
+  "case_id": "original-scripted-gameplay",
+  "observations": [
+    "Original input and rendering assertions passed for menu selection, entering a match, moving a paddle, and stopping movement after button release. No sound, save, or full playthrough test ran."
+  ],
+  "checks": [
+    {
+      "name": "gameplay-input",
+      "result": "pass",
+      "scope": "Only the named menu, match, movement, and release transitions."
+    }
+  ],
+  "claim": "The named scripted gameplay and input checks passed."
+}

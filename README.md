@@ -43,6 +43,7 @@ Use `--test-suite suite.json` for [repeatable headless ROM assertions](docs/rom-
 | [docs/development.md](docs/development.md) | Nix, direnv, and macOS build notes |
 | [docs/testing.md](docs/testing.md) | Validation commands and what the test suites cover |
 | [docs/rom-tests.md](docs/rom-tests.md) | Headless ROM suites, completion checks, assertions, and JSON reports |
+| [docs/jev-debugging.md](docs/jev-debugging.md) | Optional `/jev-gb-debug` workflow, evidence review, and local evaluation records |
 | [docs/public-arm-tests.md](docs/public-arm-tests.md) | Pinned public ARM test, preparation command, results, and limits |
 | [docs/public-thumb-tests.md](docs/public-thumb-tests.md) | Pinned public Thumb test, result protocol, and compatibility baseline |
 | [docs/public-memory-tests.md](docs/public-memory-tests.md) | Pinned public memory test, results, and video-byte coverage limits |

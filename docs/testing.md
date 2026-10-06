@@ -67,6 +67,9 @@ Run the external Pong suite separately; ordinary Cargo and Python tests require 
 Device initialization regressions use original instructions to check disabled sound, wave RAM, disconnected serial pins, and reset flags.
 They verify explicit activation errors and atomic byte/word/block-store/DMA failure behavior.
 The optional [local Emerald startup check](research/emerald-reset.md) now reaches sound activation but still fails deliberately there.
+[Jev evidence review](jev-debugging.md) is optional and never changes deterministic test verdicts.
+Its Python tests mock the provider and verify schemas, response validation, credential handling, non-overwriting logs, and failure behavior.
+Live classifier smoke probes are separate from offline tests and must not become mandatory CI checks.
 Thumb cases also verify the return-to-ARM bridge. Command-line tests cover default ARM selection, explicit Thumb/memory/BIOS selection, and errors.
 Compare/status CPU regressions verify saved flags/masks, bank switching, sequential PC/timing, User/System fallback, and atomic diagnostics.
 Load-alias regressions cover widths, signed/unaligned values, immediate/register offsets, pre/post-indexing, every non-PC register bank, and address wrapping.
