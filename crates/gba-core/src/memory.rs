@@ -9,6 +9,8 @@ mod iwram_bus;
 #[cfg(test)]
 mod iwram_history_tests;
 #[cfg(test)]
+mod prefetch_tests;
+#[cfg(test)]
 mod timing_event_tests;
 pub(crate) use fetch::InstructionFetch;
 use iwram_bus::IwramBus;
@@ -19,7 +21,7 @@ use crate::{
     dma::{DmaError, DMA_BASE, DMA_END},
     input::Buttons,
     io::{Io, HALTCNT, KEYINPUT, POSTFLG},
-    timing::{bus_cycles, AccessKind, AccessWidth, CpuTiming, StepTiming},
+    timing::{AccessKind, AccessWidth, CpuTiming, Prefetch, StepTiming},
     video::{self, sprites::pipeline, Framebuffer, VideoError},
 };
 
@@ -92,6 +94,7 @@ pub struct Memory {
     io: Io,
     cycles: u64,
     cpu_timing: Cell<Option<CpuTiming>>,
+    gamepak_prefetch: Prefetch,
     #[cfg(test)]
     last_cpu_timing: Option<CpuTiming>,
     // A completed DMA unit breaks the CPU's next nominal code-access sequence.
@@ -119,6 +122,7 @@ impl Memory {
             io: Io::default(),
             cycles: 0,
             cpu_timing: Cell::new(None),
+            gamepak_prefetch: Prefetch::default(),
             #[cfg(test)]
             last_cpu_timing: None,
             cpu_resume_nonsequential: false,
@@ -150,6 +154,8 @@ impl Memory {
     /// Advance devices and optional row capture. Multiple unserviced DMA requests
     /// coalesce. No CPU or DMA work is executed by this method. STOP freezes all
     /// progress: supplied cycles are ignored until an external wake condition.
+    /// This device-only API does not advance opcode prefetch. CPU/DMA/HALT steps
+    /// account for their own cartridge-bus time before updating device clocks.
     pub fn advance_cycles(&mut self, cycles: u32) {
         if !self.stopped() {
             self.advance_running_cycles(cycles);
@@ -337,11 +343,16 @@ impl Memory {
         } else {
             AccessKind::Sequential
         };
+        let mut prefetch = self.gamepak_prefetch;
+        prefetch.configure(self.waitcnt());
+        let internal_cycles = if transfer.first { 2 } else { 0 };
+        // Keep the existing whole-unit DMA startup model; no sub-instruction arbitration.
+        prefetch.advance(internal_cycles);
         let timing = StepTiming {
             code_cycles: 0,
-            data_cycles: bus_cycles(self.waitcnt(), transfer.source, transfer.width, kind)
-                + bus_cycles(self.waitcnt(), transfer.destination, transfer.width, kind),
-            internal_cycles: if transfer.first { 2 } else { 0 },
+            data_cycles: prefetch.data(transfer.source, transfer.width, kind)
+                + prefetch.data(transfer.destination, transfer.width, kind),
+            internal_cycles,
             idle_cycles: 0,
         };
         match transfer.width {
@@ -350,6 +361,9 @@ impl Memory {
             AccessWidth::Byte => unreachable!("DMA is never byte-wide"),
         }
         .map_err(map_error)?;
+        // Only a successful unit commits queue progress. A WAITCNT destination can reset it.
+        prefetch.configure(self.waitcnt());
+        self.gamepak_prefetch = prefetch;
         // DMA runs before the resumed CPU fetch. Only actual IWRAM accesses drive
         // its local lanes, in read/write order. Channel halfword duplication is not
         // a full IWRAM bus write. Failed units never reach these history commits.
@@ -500,7 +514,7 @@ impl Memory {
         )
     }
 
-    /// Current Game Pak wait-state control. Prefetch is not implemented.
+    /// Current Game Pak wait-state control, including nominal opcode prefetch enable.
     pub fn waitcnt(&self) -> u16 {
         self.io.waitcnt()
     }
@@ -515,9 +529,21 @@ impl Memory {
         }
     }
 
-    pub(crate) fn begin_cpu_timing(&self) {
+    pub(crate) fn begin_cpu_timing(&self, cold: bool) {
         debug_assert!(self.cpu_timing.get().is_none());
-        self.cpu_timing.set(Some(CpuTiming::new(self.waitcnt())));
+        let mut prefetch = self.gamepak_prefetch;
+        if cold {
+            prefetch.clear();
+        }
+        self.cpu_timing
+            .set(Some(CpuTiming::new(self.waitcnt(), prefetch)));
+    }
+
+    pub(crate) fn advance_halt_cycles(&mut self, cycles: u32) {
+        if !self.stopped() {
+            self.gamepak_prefetch.advance(cycles);
+        }
+        self.advance_cycles(cycles);
     }
 
     pub(crate) fn end_cpu_timing(&mut self, succeeded: bool) -> StepTiming {
@@ -528,6 +554,7 @@ impl Memory {
         if !succeeded {
             return StepTiming::default();
         }
+        self.gamepak_prefetch = trace.prefetch;
         #[cfg(test)]
         {
             self.last_cpu_timing = Some(trace);
@@ -668,6 +695,15 @@ impl Memory {
                     continue; // BIOS-only CPU writes; ignored elsewhere, including STOP requests.
                 }
                 self.io.write8(byte_address, byte);
+            }
+            if address & !3 == crate::io::WAITCNT {
+                // CPU changes are speculative with their timing transaction; host/DMA changes are immediate.
+                if let Some(mut trace) = self.cpu_timing.get() {
+                    trace.prefetch.configure(self.waitcnt());
+                    self.cpu_timing.set(Some(trace));
+                } else {
+                    self.gamepak_prefetch.configure(self.waitcnt());
+                }
             }
             return Ok(());
         }

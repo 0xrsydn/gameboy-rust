@@ -13,7 +13,11 @@ const THUMB: u32 = ROM_START + 0x180;
 const DATA: u32 = 0x0300_1000;
 const ARM_NOP: u32 = 0xe1a0_0000;
 
-fn prepared(thumb: bool, instructions: &[u32], operands: &[(usize, u32)]) -> (Cpu, Memory) {
+pub(super) fn prepared(
+    thumb: bool,
+    instructions: &[u32],
+    operands: &[(usize, u32)],
+) -> (Cpu, Memory) {
     let mut operands = operands.to_vec();
     if thumb {
         operands.push((12, THUMB | 1));
@@ -210,7 +214,7 @@ fn swaps_and_register_shifts_place_internal_cycles_after_their_bus_work() {
 #[test]
 fn waitcnt_store_records_old_source_settings_and_next_step_records_new_settings() {
     for waitcnt in [0x18, 0x4018] {
-        // Prefetch enable is still stored only.
+        // Enabling prefetch does not arm a stream before the next ROM code fetch.
         let (mut cpu, mut memory) = prepared(
             false,
             &[0xe581_0000, ARM_NOP],

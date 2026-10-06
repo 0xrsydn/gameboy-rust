@@ -52,6 +52,9 @@ The repository is a Cargo workspace with three crates:
 | `crates/gba-core/src/dma.rs` | DMA registers, internal pointers, retained channel data, trigger state, priority, and completion IRQs |
 | `crates/gba-core/src/machine.rs` | Timed CPU/DMA/device stepping and IRQ delivery |
 | `crates/gba-core/src/timing.rs` | Bus widths, wait-state costs, ordered CPU timing transactions, and timing breakdowns |
+| `crates/gba-core/src/timing/prefetch.rs` | Nominal eight-halfword opcode queue, partial transfers, capacity stops, and cancellation |
+| `crates/gba-core/src/timing/prefetch/tests.rs` | Wait-state matrices, partial words, cancellation phases, boundaries, configuration, and progress consistency |
+| `crates/gba-core/src/memory/prefetch_tests.rs` | CPU/DMA/idle queue ownership, WAITCNT writes, branch/IRQ timing, API isolation, and rollback |
 | `crates/gba-core/src/cpu/pipeline.rs` | CPU-owned ARM/Thumb instructions, PC/state tags, next fetch kind, deferred diagnostics, refills, and invalidation |
 | `crates/gba-core/src/cpu/arm_pipeline_tests.rs` | ARM self-modifying code, branches, target pairs, DMA isolation, exceptions, errors, and timing equivalence |
 | `crates/gba-core/src/cpu/thumb_pipeline_tests.rs` | Thumb retained halfwords, BL prefix/suffix, state-tagged refills, DMA isolation, rollback, and timing equivalence |

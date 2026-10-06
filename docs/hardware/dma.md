@@ -48,7 +48,11 @@ Timing uses independent source and destination bus costs, including WAITCNT and 
 The first unit uses non-sequential accesses plus two internal cycles. Later units use sequential accesses.
 Each step reports zero code cycles. Overlapping transfers read each unit after the preceding write; they are not bulk host copies.
 A successful unit breaks the next nominal CPU code-access sequence, even if DMA accessed only RAM.
-The resumed non-refill instruction uses N code timing once; later instructions return to their normal summaries.
+The resumed instruction requests N once; enabled opcode prefetch can still satisfy a matching request.
+RAM accesses and the nominal startup cycles advance an active prefetch stream; cartridge accesses cancel it.
+Cancellation can add one data cycle at the final halfword phase. DMA never consumes queued opcodes.
+Only successful units commit queue progress; WAITCNT destinations apply configuration changes after the transfer.
+Exact startup/completion placement remains nominal, not independently verified prefetch arbitration.
 See [CPU resume timing](cpu.md#nominal-cpu-resume-after-dma) for failure, idle, and refill rules.
 Startup scheduling delays, channel-resumption costs, a full CPU fetch pipeline, and display-bus contention remain unmodeled.
 

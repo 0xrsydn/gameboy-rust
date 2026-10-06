@@ -210,7 +210,7 @@ Other commands:
 direnv exec . cargo run --locked -- --cpu-demo
 
 # Run a timer-generated interrupt through an original test handler.
-# Uses nominal instruction/bus costs; prefetch and sub-instruction timing are not modeled.
+# Uses nominal instruction/bus costs and opcode prefetch; sub-instruction device scheduling is not modeled.
 direnv exec . cargo run --locked -- --timer-demo
 
 # Verify 60 CPU-driven frames with scripted movement and color changes.

@@ -56,7 +56,7 @@ No extra access is appended. A resumed ROM branch can therefore cost more than i
 The later [sequencing extension](fetch-access-sequencing.md) applies each instruction's data/internal effects to the following source fetch.
 CPU history, DMA resume, and ROM page boundaries can all require N without duplicating an access.
 A completed transfer after DMA can establish a new N requirement for the following fetch.
-Game Pak prefetch remains unimplemented; WAITCNT bit 14 does not alter this nominal timing path.
+This baseline preceded active prefetch. The later [nominal queue](gamepak-prefetch.md) can satisfy an N resume request from queued code.
 
 This change does not select a DMA value for CPU open-bus reads.
 DMA channel data, persistent local IWRAM lanes, and protected BIOS history remain separate.

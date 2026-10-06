@@ -150,6 +150,7 @@ Display edges include every HBlank entry and scanline start. Cascaded timers rec
 These bounds prevent idle advances from skipping DMA triggers or wake-up events.
 They also keep frame execution bounded when no interrupt can wake the CPU.
 Idle steps neither fetch instructions nor change CPU registers; code, data, and internal cycle counts remain zero.
+HALT idle cycles advance an already active Game Pak opcode prefetch stream, without starting one.
 Exact hardware entry/exit delays and pipeline effects are not modeled.
 
 CPU writes to POSTFLG and HALTCNT take effect only when the executing instruction address is within the 16 KiB BIOS region.
@@ -171,6 +172,7 @@ CPU-only stepping can record HALT/STOP but does not enforce either pause. Use `M
 Writing HALTCNT with bit 7 set requests STOP. Bits 0–6 are ignored.
 The instruction that writes STOP finishes and pays its full nominal cycle cost.
 Later machine steps perform no CPU fetch, DMA transfer, timer tick, or display update.
+The nominal Game Pak prefetch queue also remains frozen.
 `StepKind::StopIdle` reports zero timing; it does not represent elapsed host wall time.
 `Memory::stopped()` and `Machine::stopped()` report this state. The corresponding `halted()` methods return false in STOP.
 

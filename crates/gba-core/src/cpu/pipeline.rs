@@ -31,6 +31,13 @@ impl Cpu {
         self.pipeline = None;
     }
 
+    /// Timing metadata cannot survive a cold or mismatched instruction pipeline.
+    pub(super) fn has_retained_pipeline(&self) -> bool {
+        self.pipeline.as_ref().is_some_and(|pipe| {
+            pipe.pc == self.pc() && pipe.instruction_set == self.instruction_set
+        })
+    }
+
     /// Cold/debugger entry keeps the existing nominal S startup policy.
     /// A mismatched PC/state cannot reuse another sequence's access kind.
     pub(super) fn next_fetch_kind(&self) -> AccessKind {

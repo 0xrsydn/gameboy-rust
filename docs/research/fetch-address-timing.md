@@ -72,10 +72,11 @@ The later [refill timing extension](refill-fetch-timing.md) also charges source 
 - Thumb BL prefixes use their lookahead address; suffixes add the target pair.
 - Cold fills have no separate startup charge, even though their samples update supported bus history.
 - Devices advance once after the whole successful instruction. No per-access timer/IRQ update is introduced.
-- Game Pak prefetch, display contention, configurable EWRAM timing, and sub-instruction DMA arbitration remain unimplemented.
+- Display contention, configurable EWRAM timing, and sub-instruction DMA arbitration remain unimplemented.
+- The later [nominal prefetch queue](gamepak-prefetch.md) changes code costs when bit 14 is enabled.
 
 This is a fetch-address correction within the existing timing model, not cycle-accurate emulation.
-The next timing step is Game Pak prefetch with verified startup and invalidation rules.
+Game Pak prefetch followed this baseline; independent startup and invalidation timing validation remains necessary.
 
 ## Original regression coverage
 

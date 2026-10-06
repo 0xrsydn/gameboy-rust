@@ -123,8 +123,10 @@ The timer therefore runs two additional cycles before the handler stops it.
 - Cold-start costs and state-changing test/compare quirks are not hardware-validated.
 - Data timing still uses an instruction-local access trace. This is not a complete bus-event scheduler.
 - Device clocks still update once per instruction, IRQ entry, or DMA unit.
-- Game Pak prefetch, configurable EWRAM timing, display contention, and DMA during internal cycles remain unimplemented.
+- Configurable EWRAM timing, display contention, and DMA during internal cycles remain unimplemented.
 - IRQ synchronization delays and complete BIOS/general-bus latch history remain incomplete.
 
-The later [prefetch prerequisite](gamepak-prefetch.md) records source, data, internal, and refill costs in order without changing totals.
+The later ordered timing transaction preserved these baseline totals.
+The subsequent [nominal prefetch queue](gamepak-prefetch.md) uses those events and can accelerate code despite a CPU N request.
+CPU access-kind rules remain separate from the queue's cartridge-bus timing.
 The next timing work remains an active Game Pak queue, with verified startup and invalidation rules and independent tests.

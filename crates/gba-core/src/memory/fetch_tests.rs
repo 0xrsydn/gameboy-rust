@@ -142,7 +142,7 @@ fn sampling_has_no_timing_or_history_side_effects_and_never_uses_data_fallback()
     bios[8..12].copy_from_slice(&WORD.to_le_bytes());
     let mut memory = Memory::with_bios(vec![], bios).unwrap();
     memory.cpu_resume_nonsequential = true;
-    memory.begin_cpu_timing();
+    memory.begin_cpu_timing(false);
     let fetch = memory.fetch_instruction(8, InstructionSet::Arm);
     memory.fetch_instruction(0x0300_0000, InstructionSet::Thumb);
     assert_eq!(memory.end_cpu_timing(true), StepTiming::default());

@@ -267,9 +267,14 @@ Page/wait-window crossings, masked IRQs, host/HALT isolation, and pre-write WAIT
 See [persistent fetch access kinds](research/fetch-access-sequencing.md) for evidence and public-report changes.
 Timing-event tests inspect source/data/internal/refill order and metadata independently of aggregate cycle costs.
 They cover the full LDM register list, PC loads, Thumb POP, state changes, skipped branches, swaps, shifts, and IRQ entry.
-WAITCNT snapshots, late failure rollback, deferred fetch errors, and host/untimed/DMA isolation have separate checks.
+WAITCNT snapshots, late failure rollback, deferred fetch errors, and host/DMA isolation have separate checks.
+CPU-only execution joins the timing path when prefetch is enabled.
 Test-only event logs do not add a production allocation or a public trace API.
-See [prefetch prerequisites](research/gamepak-prefetch.md); these tests do not establish an active Game Pak prefetch implementation.
+Prefetch queue tests cover every ROM wait setting and width, partial ARM words, full-buffer stops, restart, and cancellation phases.
+They also check page/window boundaries, configuration changes, and batched-versus-single-clock consistency.
+Integration tests check RAM/internal progress, ROM data stalls, branch and IRQ fetches, CPU-only equivalence, and debugger invalidation.
+WAITCNT CPU/host/DMA writes, RAM/cart DMA, HALT/STOP, failed steps, and missing ROM bytes have separate checks.
+See [prefetch evidence and limits](research/gamepak-prefetch.md). These tests validate the nominal model, not physical-hardware accuracy.
 Instruction timing tests cover arithmetic, shifts, branches, transfers, block operations, multiply, and exception returns.
 Timed and untimed execution are compared across all 65,536 Thumb encodings with fixed initial registers.
 Timer/IRQ tests verify that changing WAITCNT changes when an interrupt is sampled.

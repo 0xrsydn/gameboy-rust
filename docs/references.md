@@ -206,8 +206,13 @@ Game Pak prefetch research:
 - The pinned NanoBoyAdvance bus timing above, for queued/in-progress/miss cases and completion-edge cancellation stalls.
 - [ares prefetch at 6f6786e0](https://github.com/ares-emulator/ares/blob/6f6786e04f0822a3475463df284f313ab8518d51/ares/gba/cpu/prefetch.cpp), compared with its pinned bus dispatcher above, for halfword ownership, full-buffer stopping, and page-boundary behavior.
 
-See [prefetch evidence and timing prerequisites](research/gamepak-prefetch.md).
-The source differences remain validation questions. No Game Pak prefetch implementation or hardware conformance result is claimed yet.
+- [Jgenesis prefetch at fab6e2cc](https://github.com/jsgroth/jgenesis/blob/fab6e2ccc60e492dd68b7f1e927b0829a6d80195/backend/gba-core/src/prefetch.rs) and its [bus integration](https://github.com/jsgroth/jgenesis/blob/fab6e2ccc60e492dd68b7f1e927b0829a6d80195/backend/gba-core/src/bus.rs), for independent halfword capacity, full-buffer pause/restart, CPU delivery, and cancellation rules.
+- [NanoBoyAdvance boundary test at cc3f4a28](https://codeberg.org/nba-emu/hw-test/src/commit/cc3f4a286cdef823980d9b353bd70befc9927d28/bus/128kb-boundary/source/main.c), reviewed for data LDM/DMA boundaries, not active opcode-queue conformance.
+- [PrefetchAbuse](https://github.com/zaydlang/PrefetchAbuse), a search-excerpt-only cancellation-test lead. Its source and ROM were not used.
+
+See [prefetch behavior and evidence](research/gamepak-prefetch.md).
+The nominal queue is implemented. Source differences and live WAITCNT transitions remain validation questions.
+No hardware conformance result is claimed.
 
 Use [GBATEK](https://problemkaputt.de/gbatek.htm) and ARM7TDMI documentation for further hardware work.
 Only use game ROMs that you may lawfully use. Do not commit game ROMs, BIOS files, or game assets.

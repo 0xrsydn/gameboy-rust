@@ -59,7 +59,7 @@ impl Cpu {
         let fetched = self.fetch(memory)?;
         let code_kind = memory.cpu_code_kind(self.next_fetch_kind());
         // Source timing precedes data accesses and their WAITCNT writes.
-        memory.begin_cpu_timing();
+        memory.begin_cpu_timing(fetched.fill.is_some());
         memory.record_code_access(
             fetched.lookahead.address(),
             self.instruction_set.access_width(),
@@ -75,12 +75,13 @@ impl Cpu {
     /// A missing discarded fetch cannot prevent entry or become a current-slot error.
     pub(crate) fn take_irq_timed(&mut self, memory: &mut Memory) -> Option<StepTiming> {
         let state = self.instruction_set;
+        let cold = !self.has_retained_pipeline();
         let address = self.pc().wrapping_add(2 * state.width());
         let kind = memory.cpu_code_kind(self.next_fetch_kind());
         if !self.take_interrupt(memory.irq_pending(), false) {
             return None;
         }
-        memory.begin_cpu_timing();
+        memory.begin_cpu_timing(cold);
         let fetch = memory.fetch_instruction(address, state);
         memory.record_code_access(fetch.address(), state.access_width(), kind);
         memory.discarded_cpu_fetch(&fetch);

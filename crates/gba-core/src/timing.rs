@@ -1,5 +1,8 @@
 //! Nominal GBA bus costs. These calculations do not perform memory accesses.
-//! Game Pak prefetch, display-bus contention, and configurable EWRAM timing are not modeled.
+//! Game Pak prefetch has a separate nominal queue; display contention and configurable EWRAM timing remain unmodeled.
+
+mod prefetch;
+pub(crate) use prefetch::Prefetch;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AccessWidth {
@@ -95,6 +98,8 @@ pub fn bus_cycles(waitcnt: u16, address: u32, width: AccessWidth, kind: AccessKi
 #[derive(Debug, Default, Clone, Copy)]
 pub(crate) struct CpuTiming {
     pub total: StepTiming,
+    pub prefetch: Prefetch,
+    #[cfg(test)]
     code_waitcnt: u16,
     next_data: Option<u32>,
     // The largest supported step is LDM with PC: source + 16 data + I + 2 targets.
@@ -106,15 +111,18 @@ pub(crate) struct CpuTiming {
 }
 
 impl CpuTiming {
-    pub fn new(code_waitcnt: u16) -> Self {
+    pub fn new(code_waitcnt: u16, mut prefetch: Prefetch) -> Self {
+        prefetch.configure(code_waitcnt);
         Self {
+            prefetch,
+            #[cfg(test)]
             code_waitcnt,
             ..Self::default()
         }
     }
 
     pub fn code(&mut self, address: u32, width: AccessWidth, kind: AccessKind) {
-        let cycles = bus_cycles(self.code_waitcnt, address, width, kind);
+        let cycles = self.prefetch.code(address, width, kind);
         self.total.code_cycles += cycles;
         #[cfg(test)]
         self.record(TimingEvent::Code {
@@ -132,7 +140,8 @@ impl CpuTiming {
         } else {
             AccessKind::NonSequential
         };
-        let cycles = bus_cycles(waitcnt, address, width, kind);
+        self.prefetch.configure(waitcnt);
+        let cycles = self.prefetch.data(address, width, kind);
         self.total.data_cycles += cycles;
         self.next_data = Some(address.wrapping_add(width.bytes()));
         #[cfg(test)]
@@ -147,6 +156,7 @@ impl CpuTiming {
 
     pub fn internal(&mut self, cycles: u32) {
         self.total.internal_cycles += cycles;
+        self.prefetch.advance(cycles);
         #[cfg(test)]
         if cycles != 0 {
             self.record(TimingEvent::Internal { cycles });

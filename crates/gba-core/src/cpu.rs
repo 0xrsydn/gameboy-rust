@@ -229,10 +229,16 @@ impl Cpu {
     /// Execute one ARM instruction or one 16-bit Thumb instruction.
     /// Each half of a Thumb BL is a separate step.
     /// This CPU-only API does not execute DMA, advance clocks, or sample device interrupts.
+    /// Enabled opcode prefetch still tracks nominal bus time, as in step_timed.
     /// It records HALTCNT writes but does not enforce HALT. Use Machine::step for integration.
     /// Unsupported operations and memory errors leave CPU state unchanged.
     /// These errors are development diagnostics, not emulated CPU exceptions.
     pub fn step(&mut self, memory: &mut Memory) -> Result<(), CpuError> {
+        // Prefetch timing state must agree across CPU-only and timed calls.
+        // Compute and discard nominal costs without advancing any device clocks.
+        if memory.waitcnt() & 0x4000 != 0 {
+            return self.step_timed(memory).map(|_| ());
+        }
         let instruction = self.fetch(memory)?;
         self.execute_fetched(instruction, memory)
     }

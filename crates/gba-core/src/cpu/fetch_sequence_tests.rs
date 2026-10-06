@@ -134,17 +134,40 @@ fn check_pair(thumb: bool, instruction: u32, breaks: bool) {
                     let extra = if thumb { 0 } else { s };
                     let mut cpu = cpu.clone();
                     // Cold startup keeps the existing nominal S policy.
+                    let first_timing = cpu.step_timed(&mut memory).unwrap();
                     assert_eq!(
-                        cpu.step_timed(&mut memory).unwrap().code_cycles,
+                        first_timing.code_cycles,
                         s + extra,
                         "first fetch for {instruction:08x}"
                     );
                     assert_eq!(
+                        cpu.pipeline.as_ref().unwrap().next_access,
+                        if breaks {
+                            AccessKind::NonSequential
+                        } else {
+                            AccessKind::Sequential
+                        }
+                    );
+                    // RAM/internal work advances the opcode queue, independently of
+                    // the CPU's N request. The Thumb literal load instead cancels it.
+                    let expected = if prefetch != 0 && !(thumb && instruction == 0x4800) {
+                        (s + extra)
+                            .saturating_sub(first_timing.data_cycles + first_timing.internal_cycles)
+                            .max(1)
+                    } else if breaks {
+                        n + extra
+                    } else {
+                        s + extra
+                    };
+                    assert_eq!(
                         cpu.step_timed(&mut memory).unwrap().code_cycles,
-                        if breaks { n + extra } else { s + extra },
+                        expected,
                         "following fetch for {instruction:08x}"
                     );
-                    assert_eq!(cpu.step_timed(&mut memory).unwrap().code_cycles, s + extra);
+                    // Excess queued work can also accelerate a later fetch.
+                    if prefetch == 0 {
+                        assert_eq!(cpu.step_timed(&mut memory).unwrap().code_cycles, s + extra);
+                    }
                     assert_eq!(memory.cycles(), 0);
                 }
             }

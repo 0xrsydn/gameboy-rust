@@ -360,13 +360,39 @@ Timed CPU execution uses an ordered `CpuTiming` transaction: source fetch, actua
 A failed instruction discards the entire transaction. Target samples do not add duplicate fetch or data costs.
 IRQ entry records its source fetch and vector pair in the same path.
 Device clocks still advance once after the successful step; this is not per-cycle scheduling.
-See [Game Pak prefetch research](../research/gamepak-prefetch.md) for this prerequisite and unresolved queue behavior.
+The transaction also stages the nominal Game Pak prefetch queue described below.
+
+### Game Pak opcode prefetch
+
+WAITCNT bit 14 enables an eight-halfword timing queue, separate from retained CPU instructions and bus-history values.
+ROM opcode misses start a stream. Internal work and non-cartridge accesses advance an active stream.
+Matching queued ARM words or Thumb halfwords cost one cycle; partial words wait for the remaining halfword work.
+The CPU-side delivery cycle also advances active background work. A CPU N request can still hit the queue.
+ROM data accesses and nonmatching ROM code requests cancel the stream.
+Cancellation adds one cycle when an active halfword has one cycle remaining.
+Full-buffer production stops until the entries drain; the next empty demand restarts with N timing.
+Background production pauses before 128 KiB boundaries, where demand uses forced-N timing.
+
+The queue stores no instruction bytes and performs no background memory reads.
+Missing lookahead and branch targets therefore keep their existing deferred diagnostic behavior.
+Successful CPU transactions commit queue progress; failures discard it.
+`Cpu::step` maintains the same queue as `Cpu::step_timed` when prefetch is enabled, without advancing device clocks.
+Cold or invalidated CPU pipelines clear staged queue metadata and retain nominal S startup timing.
+
+Changes to ROM wait fields or prefetch enable clear queue metadata after the WAITCNT write.
+PHI/SRAM-only changes preserve it. Exact hardware live-reconfiguration behavior remains unverified.
+RAM DMA and HALT supply idle cartridge time; cartridge DMA cancels the stream. STOP freezes queue progress.
+Host reads and `Memory::advance_cycles` do not advance the queue; machine steps account for progress separately.
+
+These are source-backed nominal rules, not a hardware conformance claim.
+See [queue evidence, regression coverage, and limits](../research/gamepak-prefetch.md).
 
 ### Nominal CPU resume after DMA
 
 A successful DMA unit marks the next CPU instruction's nominal code access non-sequential.
 This applies even when DMA only accesses RAM. Consecutive units retain one pending resume, not multiple penalties.
-The source fetch uses its actual lookahead address, incoming width, and current WAITCNT with N instead of S.
+The source request uses its actual lookahead address, incoming width, and current WAITCNT with N instead of S.
+A matching enabled prefetch stream can satisfy that request without paying the raw N cost.
 This includes branches and accepted IRQ entry; target pairs still use N then S.
 ARM word accesses retain an S cost for their second halfword.
 CPU history and ROM boundaries that already require N do not receive an additional access.
@@ -390,7 +416,7 @@ Important timing limits:
   Cold entry, debugger invalidation, and PC/state mismatches use nominal S, not hardware-validated startup timing.
 - Refill cost calculation does not read target bytes. ARM/Thumb instruction-buffer and local IWRAM bus-history samples add no extra cycles.
 - Target-pair sampling cannot fail the branch early. An invalid branch target still fails on the following instruction fetch.
-- Game Pak prefetch is not implemented. WAITCNT bit 14 is stored but does not accelerate execution.
+- Game Pak prefetch is nominal. Full-buffer restart, page boundaries, cancellation, and live WAITCNT changes need independent hardware validation.
 - PHI and SRAM wait fields are stored; PHI output and SRAM mapping are not implemented.
 - External work RAM timing is fixed. The undocumented memory-control register is not implemented.
 - Exact DMA startup/resumption delays, display-bus contention, shared timer prescaler phase, and timer startup delays remain unmodeled.

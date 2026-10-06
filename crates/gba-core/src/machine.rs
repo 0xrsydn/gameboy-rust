@@ -156,7 +156,8 @@ impl Machine {
     /// generate FIQ. IRQ entry consumes a separate step and does not clear IF.
     /// CPU/DMA work uses nominal costs; HALT advances exactly to the next device event.
     /// CPU writes take effect before this bulk device update. Within-instruction
-    /// register timing, prefetch, and IRQ synchronization delays are not modeled.
+    /// register timing and IRQ synchronization delays are not modeled. Opcode
+    /// prefetch follows ordered nominal CPU/DMA costs, not per-cycle arbitration.
     /// CPU/DMA diagnostics leave CPU, devices, and the clock unchanged for this step.
     /// Row-capture diagnostics are deferred to Memory::present_frame instead.
     pub fn step(&mut self) -> Result<StepKind, MachineError> {
@@ -173,7 +174,7 @@ impl Machine {
                 idle_cycles: self.memory.next_event_cycles(),
                 ..StepTiming::default()
             };
-            self.memory.advance_cycles(timing.total());
+            self.memory.advance_halt_cycles(timing.total());
             self.last_timing = timing;
             return Ok(StepKind::HaltIdle);
         }

@@ -50,6 +50,7 @@ Update this file when a feature lands or a limit is removed.
 - IRQ entry samples its discarded incoming-state fetch before the ARM vector pair, with local IWRAM history updates.
 - Persistent fetch access kinds follow CPU data/internal work, compose with DMA resume, and reset after target refills.
 - Game Pak wait-state control (`WAITCNT`) for all three ROM windows.
+- Bit 14 enables a nominal eight-halfword opcode prefetch queue, with partial fetches, cancellation, and DMA/idle integration.
 - Sequential/non-sequential data accesses, branch refill costs, and variable multiply timing.
 - Optional caller-supplied 16 KiB BIOS mapping, with CPU read protection based on retained ARM PC+8 or aligned Thumb PC+4 words.
 - Optional original BIOS replacement: minimal boot, SoftReset, selective RegisterRamReset, IRQ dispatch, interrupt waits, memory copy/fill, integer/fixed-point arithmetic, affine matrices, bit unpacking, LZ77/run-length/Huffman decompression, and differential filters.
@@ -117,6 +118,8 @@ This diagnostic policy does not reproduce partial transfers during hardware data
 CPU instructions, including swaps, finish before a newly requested DMA unit runs. Sub-instruction bus arbitration is not modeled.
 CPU/bus costs are nominal estimates, not a cycle-accurate implementation.
 The instruction buffer retains the next fetch kind; cold startup costs and per-access device scheduling remain unmodeled.
+Game Pak prefetch uses source-backed queue rules, not hardware-verified timing.
+Live WAITCNT transitions, page-boundary behavior, and exact DMA/idle ordering still need independent timing validation.
 Graphics support includes Mode 0–5 debug snapshots and HBlank row capture with sprites, mosaic, windows, and color effects.
 Internal affine origins, vertical window flags, and vertical mosaic counters track line boundaries.
 Horizontal window comparators retain four-cycle event history.
@@ -167,9 +170,9 @@ Writes to cartridge addresses return errors instead of modeling cartridge hardwa
    Keep unknown history diagnostic until fetch ordering and latch ownership have independent coverage.
    Validate BIOS snapshots with independent hardware tests before claiming exact refill or data-access history.
    The desktop runner still uses only the original BIOS. Keep protected reads image-derived for all supplied images.
-2. Add Game Pak prefetch using the ordered CPU timing path; bit 14 still does not accelerate execution.
-   Verify queue startup, full-buffer restart, page boundaries, partial ARM fetches, and invalidation before enabling it.
-   See [prefetch research and prerequisites](research/gamepak-prefetch.md).
+2. Validate the active nominal Game Pak prefetch queue against independent timing tests.
+   Prioritize full-buffer restart, cancellation, page boundaries, and live WAITCNT transitions.
+   See [prefetch behavior and evidence](research/gamepak-prefetch.md).
    Validate cold-start costs, then extend per-access device updates, bus arbitration, and timer/IRQ delays.
 3. Validate keypad retrigger behavior with hardware tests and add remaining device registers; extend BIOS reset coverage as sound/serial support becomes available.
    Validate STOP entry/wake edges and add external wake sources and remaining DMA device modes.

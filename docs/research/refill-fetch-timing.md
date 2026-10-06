@@ -117,6 +117,7 @@ The stopped counter therefore increases by five even though the final machine-cy
 - Cold current/decode fills have no separate startup timing charge.
 - BIOS retained history is not a complete refill/data-access bus latch.
 - Missing instruction bytes remain diagnostics, not hardware prefetch aborts.
-- Game Pak prefetch, per-access device updates, display contention, configurable EWRAM timing, and sub-instruction DMA arbitration remain unimplemented.
+- Per-access device updates, display contention, configurable EWRAM timing, and sub-instruction DMA arbitration remain unimplemented.
+- The later [nominal prefetch queue](gamepak-prefetch.md) can change source and target costs when bit 14 is enabled.
 
-The next timing work is Game Pak prefetch with verified startup and invalidation rules.
+Game Pak prefetch followed this baseline; independent startup and invalidation timing validation remains necessary.
