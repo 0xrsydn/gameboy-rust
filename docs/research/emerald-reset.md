@@ -58,13 +58,19 @@ The serial model now handles that unshifted transition and clocks normal 8/32-bi
 It shifts disconnected high input, clears start at completion, and requests serial IRQs through the ordinary device transaction.
 No connected partner, fabricated peer data, or immediate completion was added.
 
-Both runs now reach multiplayer mode selection:
+Normal internal clocks then reached multiplayer selection (`SIOCNT=0x2000`, PC `0x082e4358`).
+The disconnected multiplayer model now accepts that configuration and reports idle child status.
+A child cannot start itself without a parent clock. No linked transfer, assigned player ID, or completion IRQ is fabricated.
+The send register supports 16-bit data; receive latches do not become invented peer data.
+See [the register model and evidence limits](../hardware/serial.md#disconnected-multiplayer-configuration).
+
+Both terminal and native runs now reach a Game Pak GPIO control write:
 
 ```text
-Steps: 955967; instructions: 953287; IRQ entries: 80; DMA units: 2600; HALT idle: 0
-Nominal cycles: 3514542
-PC=0x082e4358
-unsupported multiplayer/UART serial mode: write 0x20 at 0x04000129
+Steps: 956055; instructions: 953375; IRQ entries: 80; DMA units: 2600; HALT idle: 0
+Nominal cycles: 3514932
+PC=0x082e29f8
+read-only memory at 0x080000c8
 ```
 
 The native run captures twelve startup frames. These do not establish a working title screen or gameplay.
@@ -79,10 +85,10 @@ Workspace debug/release tests, strict Clippy, public ARM/Thumb/memory/BIOS check
 Native ROM-window tests and graphics smoke modes pass on Darwin arm64.
 The pinned Pong debug/release reports match.
 
-The next requirement is disconnected multiplayer-mode configuration and status, starting with SIOCNT mode value `0x2000`.
-Research mode selection, absent-partner input levels, ready/error flags, and start behavior before extending the model.
-Do not invent connected players or successful linked transfers to suppress the diagnostic.
-The normal-mode result does not establish linked gameplay or GPIO interrupt support.
+The next requirement is cartridge GPIO, starting with the control register at `0x080000c8`.
+Research the Game Pak data/direction/control registers and real-time clock protocol before implementing them.
+Keep ordinary ROM writes read-only. Do not hide the failure by ignoring every cartridge write.
+This serial result does not establish linked gameplay or serial GPIO interrupt support.
 
 Noise now has deterministic counter clocks and shares tested length/envelope logic with the independent pulse channels.
 Sweep applies only to channel 1. Direct Sound has FIFO clocks and nominal DMA requests.

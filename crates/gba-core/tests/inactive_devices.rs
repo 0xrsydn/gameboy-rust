@@ -80,7 +80,7 @@ fn idle_normal_serial_data_and_control_have_distinct_widths() {
 fn unsupported_operations_have_specific_retryable_diagnostics() {
     let mut bus = memory();
     for (address, value, description) in [
-        (SIOCNT + 1, 0x20, "multiplayer/UART"),
+        (SIOCNT + 1, 0x30, "UART serial mode"),
         (RCNT + 1, 0xc0, "Joybus serial mode"),
         (RCNT + 1, 0x81, "GPIO serial interrupt"),
         (JOYCNT, 0x40, "Joybus interrupt"),
@@ -95,7 +95,7 @@ fn unsupported_operations_have_specific_retryable_diagnostics() {
     assert!(bus.write16(RCNT, 0xc0aa).is_err());
     assert_eq!(bus.read16(RCNT).unwrap(), 0x805f); // Low byte was not committed.
     bus.write16(SIOCNT, 0x4008).unwrap();
-    assert!(bus.write32(SIOCNT, 0xaabb2080).is_err());
+    assert!(bus.write32(SIOCNT, 0xaabb3080).is_err());
     assert_eq!(bus.read16(SIOCNT).unwrap(), 0x400c);
     assert_eq!(bus.read16(SIODATA8).unwrap(), 0);
 }

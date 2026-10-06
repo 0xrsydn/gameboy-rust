@@ -7,7 +7,10 @@ mod serial;
 use crate::audio::Audio;
 pub use crate::audio::{FIFO_A, FIFO_B, SOUNDBIAS, SOUNDCNT_H, SOUNDCNT_X, SOUND_START, WAVE_RAM};
 pub(crate) use serial::Serial;
-pub use serial::{JOYCNT, JOY_RECV, JOY_TRANS, RCNT, SIOCNT, SIODATA32, SIODATA8};
+pub use serial::{
+    JOYCNT, JOY_RECV, JOY_TRANS, RCNT, SIOCNT, SIODATA32, SIODATA8, SIOMLT_SEND, SIOMULTI0,
+    SIOMULTI1, SIOMULTI2, SIOMULTI3,
+};
 mod timer_step;
 pub(crate) use timer_step::TimerStep;
 use timer_step::STAGED_IRQ_MASK;

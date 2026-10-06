@@ -146,7 +146,7 @@ fn arm_and_thumb_external_starts_complete_as_instructions_not_as_serial_transfer
                 assert_eq!(machine.memory().read16(IF).unwrap() & 0x80, 0);
             } else {
                 let error = machine.step().unwrap_err();
-                assert!(error.to_string().contains("multiplayer/UART serial mode"));
+                assert!(error.to_string().contains("UART serial mode"));
                 assert_eq!(machine.cpu(), &cpu);
                 assert_eq!(machine.cycles(), 0);
                 assert_eq!(machine.memory().read16(SIOCNT).unwrap(), 0x1007);
@@ -161,7 +161,7 @@ fn invalid_word_and_block_writes_do_not_leave_a_partial_external_start() {
     let mut bus = memory();
     bus.write16(SIOCNT, 0x5000).unwrap();
     bus.write16(SIODATA8, 0x12).unwrap();
-    assert!(bus.write32(SIOCNT, 0x00ab2080).is_err());
+    assert!(bus.write32(SIOCNT, 0x00ab3080).is_err());
     assert_eq!(bus.read16(SIOCNT).unwrap(), 0x5004);
     assert_eq!(bus.read16(SIODATA8).unwrap(), 0x12);
     bus.write32(SIOCNT, 0x00ab5080).unwrap();
@@ -188,7 +188,7 @@ fn dma_start_preserves_serial_wait_and_reports_only_dma_completion() {
     bus.write32(DMA_BASE + 8, 0xc4000001).unwrap();
     let mut machine = Machine::new(Cpu::new(ROM_START), bus);
     let error = machine.step().unwrap_err();
-    assert!(error.to_string().contains("multiplayer/UART serial mode"));
+    assert!(error.to_string().contains("UART serial mode"));
     assert_eq!(machine.step(), Err(error));
     assert_eq!(machine.cycles(), 0);
     assert_eq!(machine.memory().read16(SIOCNT).unwrap(), 4);

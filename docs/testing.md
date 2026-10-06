@@ -211,7 +211,7 @@ They check errors for unsupported features and out-of-range fetches without chan
 The CPU tile demo test verifies asset copies, every pixel, wrapping, opposite directions, reset, and VBlank synchronization.
 RegisterRamReset tests check full memory regions and all memory-flag combinations from ARM and Thumb.
 They verify forced blank, reserved flag bits, caller preservation, protected BIOS RAM, and selective serial/sound initialization.
-All-device reset returns from ARM and Thumb; active sound and serial operations remain separately tested diagnostics.
+All-device reset returns from ARM and Thumb; supported sound/serial activity and remaining diagnostics have separate regressions.
 Rendering tests check write-only display state, both identity matrices, and the effect of zeroed sprite attributes.
 Device tests check DMA address/count latches, stopped timer counters, cleared reloads, and IRQ acknowledgement.
 Other checks cover partial clears, preserved input/device state, and callers whose own RAM code is erased.
@@ -295,7 +295,10 @@ Timed and untimed execution are compared across all 65,536 Thumb encodings with 
 Normal serial tests cover both widths and internal rates, every bit edge, disconnected high input, batching, and completion IRQs.
 They check external-clock handoff, cancellation, phase retention, HALT bounds, STOP freeze/wake, and explicit live-write limits.
 Bus-phase tests cover start/load timing, IF acknowledgement order, CPU/DMA rollback, block preflight, and capture independence.
-These tests validate the documented nominal serial model, not physical link-pin timing or multiplayer compatibility.
+Disconnected multiplayer tests cover every control value in that format, all baud settings, send/receive lanes, and normal-mode aliases.
+They verify idle child status, ignored start, no completion IRQ or HALT wake, GPIO sampling, and ARM/Thumb/DMA stores.
+Staged tests check mode changes at normal completion, block loads/stores, rollback, and reads after leaving multiplayer format.
+These tests validate the documented bounded serial model, not physical pin timing, receive-write behavior, or linked-game compatibility.
 Timer/IRQ tests verify that changing WAITCNT changes when an interrupt is sampled.
 Timer tests cover all prescalers, reload changes, start/stop behavior, byte writes, large clock advances, and cascades.
 Ordered timer tests cover ARM/Thumb sampling, coherent byte lanes, block-transfer phases, reload/control ordering, and prescaler retention.

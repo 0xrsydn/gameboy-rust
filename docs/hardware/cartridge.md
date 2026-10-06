@@ -39,7 +39,8 @@ Both modes call `bios::boot` with the loaded bytes.
 The [original BIOS replacement](bios.md) executes its minimal boot before entering `0x08000000` in ARM System mode.
 There is no command-line option for external BIOS files.
 Unsupported services remain diagnostics. RegisterRamReset now accepts sound/serial reset flags, including `r0=0xff`, within the initialization subset.
-Active sound and serial transfers still fail with device-specific diagnostics; accepting reset does not establish game compatibility.
+Supported [sound](audio.md) and [serial](serial.md) behavior extends beyond reset, but remaining unsupported operations still produce diagnostics.
+Accepting reset does not establish game compatibility.
 
 ## Terminal execution limits and results
 
