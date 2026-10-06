@@ -1,7 +1,7 @@
 # Audio device subset
 
-The core models Direct Sound A/B, bounded sound DMA, and programmable sound generator (PSG) pulse channels 1–2 and noise channel 4.
-It does not produce desktop audio. PSG wave channel 3 remains unsupported.
+The core models Direct Sound A/B, bounded sound DMA, and programmable sound generator (PSG) channels 1–4.
+Wave channel 3 supports single-bank playback only. The core does not produce desktop audio.
 `Memory::audio_level()` exposes the current digital stereo level for deterministic inspection, not a continuous sample stream.
 
 ## Registers and PSG state
@@ -11,12 +11,12 @@ It does not produce desktop audio. PSG wave channel 3 remains unsupported.
 | `0x04000060..0x04000065` | Pulse channel 1 sweep, duty, length, envelope, frequency, and trigger |
 | `0x04000068..0x04000069` | Pulse channel 2 duty, length, and envelope |
 | `0x0400006c..0x0400006d` | Pulse channel 2 frequency and trigger; no sweep unit |
-| `0x04000070..0x04000075` | Idle wave channel 3 configuration |
+| `0x04000070..0x04000075` | Wave channel 3 gate, bank, length, volume, frequency, and trigger |
 | `0x04000078..0x04000079` | Noise channel 4 length and envelope |
 | `0x0400007c..0x0400007d` | Noise divider, counter width, shift, length enable, and trigger |
 | `0x04000080..0x04000081` | PSG stereo routing and volume |
 | `0x04000082` (`SOUNDCNT_H`) | Mixing, routing, timer selection, and FIFO reset strobes; readback mask `0x770f` |
-| `0x04000084` (`SOUNDCNT_X`) | Master enable in bit 7; channel 1/2/4 activity in read-only bits 0/1/3; channel 3 remains inactive |
+| `0x04000084` (`SOUNDCNT_X`) | Master enable in bit 7; channel 1–4 activity in read-only bits 0–3 |
 | `0x04000088` (`SOUNDBIAS`) | Bias/resolution configuration with mask `0xc3fe` |
 | `0x04000090..0x0400009f` | CPU wave RAM window, opposite the bank selected by `SOUND3CNT_L` bit 6 |
 | `0x040000a0..0x040000a7` | FIFO A/B writes with byte, halfword, and word access boundaries preserved |
@@ -31,10 +31,9 @@ The CPU then accesses wave bank 1. Idle bank selection can expose bank 0 after m
 The original BIOS reset clears bank 1 and both FIFO queues. It retains bank 0 and any separate in-flight playback word.
 This is a functional reset subset, not a claim of complete firmware ordering or sound-reset equivalence.
 
-An enabled wave channel 3 trigger returns `MemoryError::UnsupportedIo` with the exact address and value.
-This applies even when the configured channel would be inaudible. All PSG writes are ignored while master sound is disabled.
+Unsupported two-bank wave playback and active wave-bank changes return `MemoryError::UnsupportedIo` with the exact address and value.
+All PSG writes are ignored while master sound is disabled.
 Reserved PSG volume selection 3 is rejected while master sound is enabled, including enable after disabled configuration.
-Idle wave channel 3 writes do not imply playback support.
 
 ## Pulse channels 1 and 2
 
@@ -122,6 +121,56 @@ An independent bit-array reference checks these jump-ahead operations, including
 Both complete sequence periods and maximum clock batches have deterministic regressions.
 This is device-state advancement, not a sampled audio stream or hardware recording comparison.
 
+## Wave channel 3: single-bank playback
+
+The selected bank supplies 32 four-bit samples. The CPU reads and writes the opposite bank, including during playback.
+SOUND3CNT_L retains gate, bank, and dimension bits with mask `0xe0`.
+The volume register retains bits 13–15. Frequency, length-load, and trigger fields are write-only.
+The unused halfword at `0x04000076` reads zero and ignores writes.
+
+Each nominal sample period is `8 * (2048 - frequency)` system clocks.
+Playback consumes each byte's high nibble before its low nibble, then proceeds to the next byte.
+The selected bank rotates by one nibble per sample; it is not immutable storage addressed by a hidden pointer.
+Stopping playback and exposing that bank therefore shows rotated data.
+Complete 32-sample rotations restore the bank layout but still update the held output sample.
+Clock batches compute the final rotation and sample directly, without looping once per sample.
+
+A trigger reloads a full sample period and clears the held output to nominal silence until the first edge.
+It cannot restore data already rotated in wave RAM. Retrigger uses the bank's current layout.
+Frequency writes affect the next reload, not the remaining sample interval.
+Clearing the gate stops activity. Setting the gate again requires a trigger to resume.
+A trigger with the gate clear is accepted but cannot activate playback, including with an idle two-bank configuration.
+Mute volume and disabled routes do not stop playback or clear activity.
+Master disable resets channel configuration/state but preserves both wave RAM banks in their current layouts.
+
+The length counter loads `256 - length_field` and uses the shared 256 Hz length clocks.
+It follows the same nominal extra-clock/reload rule as other PSG channels, with maximum length 256 rather than 64.
+A nonempty counter survives retrigger. Enabled expiry clears SOUNDCNT_X bit 2.
+HALT continues sample and length clocks; STOP freezes them. No timer or IRQ enable is required.
+
+The centered full-volume amplitude is `2 * (sample - 8)`, from -16 through +14.
+Volume selects mute, 100%, 50%, or 25%. Force-volume overrides all selections with 75%.
+The mixer retains quarter-units until after combining PSG sources, stereo volume, and the overall PSG ratio.
+This avoids separately rounding fractional wave amplitudes. It follows the signed NanoBoyAdvance mixer comparison, not an analog recording.
+
+### Evidence limits
+
+Only dimension zero playback is implemented. Idle dimension-one configuration is writable, but triggering it with the gate enabled is diagnostic.
+Selecting dimension one or changing the selected bank during active playback also remains diagnostic; clear the gate first.
+These failures retain register lanes, RAM rotation, activity, and clocks through ordinary audio transactions.
+
+GBATEK describes rotating wave RAM and selected-bank-first two-bank playback.
+The pinned mGBA implementation rotates storage, while NanoBoyAdvance uses a sample pointer and changes bank at wrap.
+Their two-bank starts, observable bank state, and retrigger behavior differ.
+This increment does not choose an unverified two-bank model merely to accept more register writes.
+The single-bank order/rate follows GBATEK; trigger phase, held-sample startup, live frequency/volume edges, and length quirks remain nominal.
+There is no Game Boy wave-corruption model or physical GBA waveform validation.
+
+Original tests cover every frequency and both single-bank selections, independent nibble rotation, complete rotations, maximum batches, and volume settings.
+Integration checks cover masks, gating, status, stereo mixing/clipping, length, HALT/STOP, master reset, and BIOS reset.
+ARM/Thumb/DMA tests verify trigger bus phases, status at length expiry, rotated RAM readback, and failed-step/block-store isolation.
+Original terminal and native-window programs activate channel 3 without external game assets or host audio.
+
 ## FIFO and timer behavior
 
 Each channel has a seven-word queue, a separate four-byte playback word, and a held signed sample.
@@ -167,11 +216,12 @@ Sub-instruction DMA arbitration and exact refill latency are not modeled.
 
 Each routed Direct Sound sample contributes `sample * 2` at 50% volume or `sample * 4` at 100% volume.
 Each active pulse or noise channel contributes a centered signed amplitude, `+volume` or `-volume`.
-`SOUNDCNT_L` routes channel 1 through bits 8/12, channel 2 through bits 9/13, and noise through bits 11/15, for right/left respectively.
+`SOUNDCNT_L` routes channel 1 through bits 8/12, channel 2 through bits 9/13, wave through bits 10/14, and noise through bits 11/15.
+Each pair selects right/left respectively.
 The mixer sums routed PSG amplitudes on each side, then multiplies by that side's volume field plus one.
 `SOUNDCNT_H` applies the PSG ratio: 25%, 50%, or 100%, using one arithmetic right shift after summation.
 Rounding each PSG channel separately would produce different low-volume levels and is not used.
-At full volume, each supported PSG channel spans `-120..120` before mixing with Direct Sound.
+At full stereo volume, each pulse/noise channel spans `-120..120`; wave spans `-128..112`, before mixing with Direct Sound.
 This centered mixer follows GBATEK's signed range and the NanoBoyAdvance comparison; exact analog offset is not modeled.
 The mixer adds all supported channels and the ten-bit bias, clips each side to `0..1023`, and subtracts 512.
 `StereoLevel` therefore contains signed levels in `-512..511`. Master disable returns zero.
@@ -201,11 +251,15 @@ CPU/DMA tests include noise register writes at bus completion and failed-step ro
 BIOS reset tests verify that selected sound reset stops all supported PSG channels, while unselected sound state remains active.
 
 These tests validate the documented nominal model, not hardware audio fidelity.
-Remaining audio work: wave channel 3, a timestamped or fixed-rate output stream, PWM/mixer sampling, and a Darwin host backend.
-The local Emerald startup now passes the pulse and noise triggers, then stops at GPIO serial interrupt control.
+Remaining audio work: two-bank wave playback, verified live bank changes, a continuous output stream, PWM/mixer sampling, and a Darwin host backend.
+A local Emerald input probe exposed a wave trigger with the gate disabled. This is now accepted without activating playback.
+The same scheduled-input probe passes that point and completes its extended frame budget; audible output and gameplay remain unverified.
 See [the local runtime result](../research/emerald-reset.md).
 
 ## References
+
+- [GBATEK wave channel 3](https://problemkaputt.de/gbatek-gba-sound-channel-3-wave-output.htm): bank selection, nibble order, rotating RAM, sample rate, length, and force volume.
+- [NanoBoyAdvance wave at 55b5cf0a](https://github.com/nba-emu/NanoBoyAdvance/blob/55b5cf0ae3d929582ac5bfd486558173502b8354/src/nba/src/hw/apu/channel/wave_channel.cc) and [header](https://github.com/nba-emu/NanoBoyAdvance/blob/55b5cf0ae3d929582ac5bfd486558173502b8354/src/nba/src/hw/apu/channel/wave_channel.hh): signed gain and rate comparison; pointer-based RAM and two-bank/retrigger differences are not copied.
 
 - [GBATEK noise channel 4](https://mgba-emu.github.io/gbatek/): length/envelope registers, divider formula, Galois counter seeds, masks, and sequence periods.
 - [NanoBoyAdvance noise at 55b5cf0a](https://github.com/nba-emu/NanoBoyAdvance/blob/55b5cf0ae3d929582ac5bfd486558173502b8354/src/nba/src/hw/apu/channel/noise_channel.cc) and [noise header](https://github.com/nba-emu/NanoBoyAdvance/blob/55b5cf0ae3d929582ac5bfd486558173502b8354/src/nba/src/hw/apu/channel/noise_channel.hh): GBA divider scaling, counter feedback, trigger, and register behavior comparison.

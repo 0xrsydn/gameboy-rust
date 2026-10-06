@@ -31,12 +31,15 @@ fn sound_reset_disables_running_psg_channels_only_when_selected() {
             bus.write16(0x04000064, 0x87ff).unwrap();
             bus.write16(0x04000068, 0xf080).unwrap();
             bus.write16(0x0400006c, 0x87fe).unwrap();
+            bus.write16(0x04000070, 0x80).unwrap();
+            bus.write16(0x04000072, 0x2000).unwrap();
+            bus.write16(0x04000074, 0x87fd).unwrap();
             bus.write16(0x04000078, 0xf000).unwrap();
             bus.write16(0x0400007c, 0x8000).unwrap();
             complete(&mut machine, return_pc);
             assert_eq!(
                 machine.memory().read16(SOUNDCNT_X).unwrap(),
-                if flags == 0 { 0x8b } else { 0 }
+                if flags == 0 { 0x8f } else { 0 }
             );
         }
     }

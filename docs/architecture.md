@@ -64,9 +64,13 @@ The repository is a Cargo workspace with three crates:
 | `crates/gba-core/src/cpu/fetch_history_tests.rs` | Shared sample consumption, no execution-entry rereads, and failed-step retry |
 | `crates/gba-core/src/cpu/fetch_boundary_tests.rs` | Actual fetch-region snapshots, split refills, IWRAM lane requirements, ROM-window boundaries, and nominal timing |
 | `crates/gba-core/src/io.rs` | I/O registers, timers, HALT/STOP wake-up, next-event bounds, and IRQ latches |
-| `crates/gba-core/src/audio.rs` | Direct Sound state, PSG sequencer, idle channel/wave banks, and instantaneous stereo mixing |
+| `crates/gba-core/src/audio.rs` | Direct Sound state, PSG sequencer, wave banks, and instantaneous stereo mixing |
 | `crates/gba-core/src/audio/pulse.rs` | Shared pulse oscillator; sweep is mapped only for channel 1 |
 | `crates/gba-core/src/audio/modulation.rs` | Shared PSG length, envelope, logical DAC gate, and activity state |
+| `crates/gba-core/src/audio/wave.rs` | Single-bank wave samples, rotating RAM, length/gate state, and fractional gain |
+| `crates/gba-core/src/audio/wave/tests.rs` | Every sample rate/bank, nibble-order reference, full rotations, batches, volumes, and length edges |
+| `crates/gba-core/tests/wave_sound.rs` | Wave masks, bank access, stereo gain, status, HALT/STOP, reset, and explicit unsupported modes |
+| `crates/gba-core/src/memory/wave_step_tests.rs` | Wave trigger/status bus phases, rotated RAM transactions, ARM/Thumb/DMA, and rollback |
 | `crates/gba-core/src/audio/noise.rs` | Noise channel 4 divider, 7/15-bit counter, and bounded jump-ahead advancement |
 | `crates/gba-core/src/audio/noise/tests.rs` | Counter periods, independent bit-array reference, divider fields, and clock batching |
 | `crates/gba-core/tests/noise_sound.rs` | Noise registers, modulation, stereo mixing, independent status, HALT/STOP, and capture independence |

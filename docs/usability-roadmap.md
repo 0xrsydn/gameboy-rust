@@ -44,9 +44,12 @@ It also passes normal serial transfers and idle multiplayer configuration.
 With `--rtc --save-type flash128`, it passes Game Pak GPIO setup, RTC reads, and Flash identification.
 It also passes disconnected Joybus configuration and completes a bounded 600-frame native run without a diagnostic error.
 That run does not verify screen contents, button responses, or gameplay.
-The core has tested Direct Sound, both pulse channels, and noise channel 4.
-Wave channel 3, a continuous sample stream, and desktop audio output remain missing.
-See [the runtime result](research/emerald-reset.md). Next, verify visible menu progress and button responses rather than treating frame counts as playability.
+A [fixed-time input probe](research/emerald-wave.md) then exposed an unsupported wave trigger with its gate disabled.
+Single-bank wave support now passes that point and completes 1,320 frames with scheduled Start/A input.
+Captured output differs from a no-input control; readable menus and gameplay remain unverified.
+The core has tested Direct Sound, both pulse channels, single-bank wave channel 3, and noise channel 4.
+Two-bank wave playback, a continuous sample stream, and desktop audio output remain missing.
+See [the runtime result](research/emerald-reset.md). Next, verify visible menu progress rather than treating frame counts as playability.
 The separate save requirement includes Flash programming/erase and safe host persistence. Identification/read support is not successful saving.
 SRAM is byte-addressable battery-backed save memory. Flash and EEPROM remain separate protocols.
 

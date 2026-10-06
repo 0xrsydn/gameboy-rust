@@ -14,7 +14,7 @@ fn sound(memory: &mut Memory, period: u16) {
     memory.write16(0x04000068, 0xf080).unwrap();
     memory.write16(0x0400006c, 0x87ff).unwrap();
     memory.write16(0x04000078, 0xf000).unwrap();
-    memory.write16(0x0400007c, 0x8008).unwrap(); // All supported PSG channels run unrouted.
+    memory.write16(0x0400007c, 0x8008).unwrap(); // Pulse and noise channels run unrouted.
     memory
         .write32(
             TIMER_BASE,
@@ -160,6 +160,7 @@ fn failed_dma_source_and_destination_restore_audio_after_speculative_timer_edges
         let (cpu, mut memory) = prepared(false, &[0xe1a00000], &[]);
         sound(&mut memory, 1);
         memory.write32(FIFO_A, 0x04030201).unwrap();
+        memory.write16(0x04000070, 0xa0).unwrap();
         memory.write32(0x02000000, word).unwrap();
         memory.write32(DMA_BASE, source).unwrap();
         memory.write32(DMA_BASE + 4, destination).unwrap();
@@ -206,7 +207,7 @@ fn arm_block_store_rejects_later_wave_trigger_before_committing_channel2_trigger
             (0, 0x04000068),
             (1, 0xf080),
             (2, 0x87ff),
-            (3, 0),
+            (3, 0xa0),
             (4, 0x8000),
         ],
     ); // STMIA r0!,{r1-r4}: channel2 configuration/trigger, wave configuration/trigger.
@@ -219,7 +220,7 @@ fn arm_block_store_rejects_later_wave_trigger_before_committing_channel2_trigger
             .step()
             .unwrap_err()
             .to_string()
-            .contains("PSG channel trigger"));
+            .contains("64-sample wave playback"));
         assert_eq!(machine.memory().io.audio, audio);
         assert_eq!(machine.cpu(), &cpu);
         assert_eq!(machine.cycles(), 0);
@@ -236,6 +237,7 @@ fn batch_validation_simulates_sound_enable_and_disable_before_committing_any_wri
             (SOUNDCNT_X, 0x80),
             (0x04000068, 0xf080),
             (0x0400006c, 0x87ff),
+            (0x04000070, 0xa0),
             (0x04000074, 0x8000),
         ])
         .is_err());

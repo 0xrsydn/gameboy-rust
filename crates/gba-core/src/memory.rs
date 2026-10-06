@@ -26,6 +26,8 @@ mod serial_step_tests;
 mod timer_step_tests;
 #[cfg(test)]
 mod timing_event_tests;
+#[cfg(test)]
+mod wave_step_tests;
 pub(crate) use fetch::InstructionFetch;
 use iwram_bus::IwramBus;
 

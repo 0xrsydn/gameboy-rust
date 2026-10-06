@@ -79,7 +79,11 @@ ARM/Thumb probes verify RAM byte reads, ROM command writes, all save wait settin
 Wide accesses, DMA, instruction fetches, and CPU reads outside work RAM retain explicit diagnostics.
 An original desktop ROM installs its Flash byte reader in IWRAM; terminal/native tests check explicit selection and unchanged files.
 They verify explicit activation errors and atomic byte/word/block-store/DMA failure behavior.
-The optional [local Emerald startup check](research/emerald-reset.md) now reaches sound activation but still fails deliberately there.
+Wave tests cover every frequency and bank, independent nibble rotation, full rotations, bounded maximum batches, and fractional gains.
+They also check inactive triggers, gates, length, status, master/BIOS reset, HALT/STOP, live-write limits, and CPU/DMA rollback.
+Original terminal/native programs activate wave playback without external assets or host audio.
+The optional [local Emerald input probe](research/emerald-wave.md) now completes its scheduled Start/A frame budget.
+Frame completion and different pixels are not assertions about readable menus, correct graphics, or gameplay.
 [Jev evidence review](jev-debugging.md) is optional and never changes deterministic test verdicts.
 Its Python tests mock the provider and verify schemas, response validation, credential handling, non-overwriting logs, and failure behavior.
 Live classifier smoke probes are separate from offline tests and must not become mandatory CI checks.

@@ -114,9 +114,9 @@ Workspace debug/release tests, strict Clippy, public ARM/Thumb/memory/BIOS check
 Native ROM-window tests and graphics smoke modes pass on Darwin arm64.
 The pinned Pong debug/release reports match.
 
-Next, inspect visible startup/menu progress and exercise button presses and releases in a bounded run.
-Identify any waiting loop or new diagnostic before selecting another compatibility correction.
-Do not treat frame-limit success as a title-screen or gameplay pass.
+A subsequent [scheduled-input probe](emerald-wave.md) exposed a wave-channel trigger with its gate disabled.
+The general single-bank wave model now passes that point and completes an extended Start/A input schedule.
+Visible menu semantics and gameplay still require verification; frame-limit success alone cannot establish either.
 Flash programming, erase, busy behavior, and safe persistence remain required before claiming save compatibility.
 RTC persistence and cartridge IRQ behavior remain separate missing features.
 Ordinary ROM writes remain read-only. Without `--rtc`, the earlier GPIO diagnostic is still expected.
@@ -125,7 +125,7 @@ This result does not establish gameplay, linked transfers, or cartridge/serial G
 Noise now has deterministic counter clocks and shares tested length/envelope logic with the independent pulse channels.
 Sweep applies only to channel 1. Direct Sound has FIFO clocks and nominal DMA requests.
 All supported channels use the instantaneous digital-level inspection interface.
-Wave channel 3, a continuous sample stream, and desktop output are still missing.
+Wave channel 3 now supports single-bank playback. Two-bank playback, a continuous sample stream, and desktop output are still missing.
 Do not treat digital-level tests as audible-game validation or suppress remaining diagnostics without implementing their behavior.
 Cartridge saves remain a separate required feature. SRAM alone will not support Emerald's Flash save protocol.
 

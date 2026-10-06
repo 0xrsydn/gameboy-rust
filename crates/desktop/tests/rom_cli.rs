@@ -77,6 +77,39 @@ fn raw_original_program_runs_with_a_bounded_report_without_changing_the_file() {
     assert_eq!(fs::read(path).unwrap(), original);
 }
 
+fn wave_setup() -> Vec<u32> {
+    // Original ARM halfword stores and a status load; no external audio or assets.
+    let mut code = Vec::new();
+    for (address, value) in [
+        (0x04000084, 0x80),
+        (0x04000090, 0xf012), // CPU bank 1 before selecting playback bank 1.
+        (0x04000070, 0xc0),
+        (0x04000072, 0x2000),
+        (0x04000074, 0x87ff),
+    ] {
+        code.extend([0xe59f0000, 0xea000000, address]);
+        code.extend([0xe59f1000, 0xea000000, value]);
+        code.push(0xe1c010b0); // STRH r1,[r0]
+    }
+    code.extend([0xe59f0000, 0xea000000, 0x04000084, 0xe1d020b0, 0xeafffffe]);
+    code
+}
+
+#[test]
+fn original_wave_program_can_activate_channel3_without_host_audio() {
+    let fixture = Fixture::new();
+    let path = fixture.rom(&wave_setup());
+    let original = fs::read(&path).unwrap();
+    let output = run(&path, "1000");
+    assert!(output.status.success(), "{}", stderr(&output));
+    assert!(
+        stdout(&output).contains("r2=0x00000084"),
+        "{}",
+        stdout(&output)
+    );
+    assert_eq!(fs::read(path).unwrap(), original);
+}
+
 fn joybus_setup() -> Vec<u32> {
     // Original ARM: select Joybus, enable IRQ, supply a reply, inspect local status/data.
     vec![
@@ -458,6 +491,11 @@ fn native_rom_window_presents_file_bytes_and_reports_stop_cpu_and_video_errors()
     );
     assert!(stdout(&output).contains("Captured ROM frames: 3"));
     assert!(stdout(&output).contains("Result: window frame limit reached"));
+    let wave_path = fixture.rom(&wave_setup());
+    let wave_output = window(&wave_path, false, None);
+    assert!(wave_output.status.success(), "{}", stderr(&wave_output));
+    assert!(stdout(&wave_output).contains("Captured ROM frames: 3"));
+    assert!(stdout(&wave_output).contains("r2=0x00000084"));
     let joybus_path = fixture.rom(&joybus_setup());
     let joybus_output = window(&joybus_path, false, None);
     assert!(joybus_output.status.success(), "{}", stderr(&joybus_output));

@@ -89,7 +89,8 @@ Update this file when a feature lands or a limit is removed.
 - Direct Sound A/B support timer-driven FIFO playback, stereo digital levels, and DMA1/A or DMA2/B refill blocks.
 - PSG pulse channels 1 and 2 support independent nominal frequency/duty playback, length, envelope, status, and stereo mixing. Channel 1 also supports sweep.
 - Noise channel 4 supports nominal 7/15-bit generation, divider clocks, shared length/envelope behavior, status, and stereo mixing.
-- Wave channel 3 triggers and unsupported serial operations produce explicit address/value diagnostics with whole-access and block-store rollback.
+- Wave channel 3 supports single-bank nibble playback, rotating RAM, volume/force-volume, length, activity status, and digital mixing.
+- Two-bank wave playback, active bank changes, and unsupported serial operations remain diagnostic with whole-access and block-store rollback.
 - ROM windows with scanline capture, keyboard input, focus-loss release, bounded execution slices, and interactive keypad wake from STOP.
 - Optional ROM-window frame limits and an original input-test ROM generator.
 - Headless JSON ROM suites with PC or VBlank completion, register/CPSR/memory/pixel assertions, scheduled buttons, bounded budgets, and structured failure reports.
@@ -151,8 +152,8 @@ Flash programming, erase, busy polling, wider accesses, unverified aliases, and 
 The optional [cartridge GPIO/RTC subset](hardware/cartridge-gpio.md) supports calendar/control transfers and explicit clock updates, selected with `--rtc` in ROM modes.
 RTC persistence, interrupts, invalid-date correction, physical subsecond timing, GPIO aliases, and byte writes remain unsupported or unverified.
 The core uses deterministic caller time. Desktop RTC runs use host UTC/elapsed time and are not fully deterministic.
-The [audio subset](hardware/audio.md) supports Direct Sound, both PSG pulse channels, noise channel 4, idle wave channel 3 state, and instantaneous digital mixing.
-It does not yet provide a continuous sample stream. Wave channel 3 playback and unverified sound-DMA pairings remain diagnostic.
+The [audio subset](hardware/audio.md) supports Direct Sound, both PSG pulse channels, single-bank wave channel 3, noise channel 4, and instantaneous digital mixing.
+It does not yet provide a continuous sample stream. Two-bank wave playback, active wave-bank changes, and unverified sound-DMA pairings remain diagnostic.
 PSG timing and signed mixing are nominal; hardware startup edges and analog behavior remain unverified.
 The [serial subset](hardware/serial.md) supports disconnected normal 8/32-bit transfers, external-clock waiting, idle multiplayer configuration, and general-purpose pins.
 Internal clocks shift high input at nominal rates, clear busy, and request completion IRQs. External requests retain busy without clock edges.
@@ -177,7 +178,10 @@ It now also completes internally clocked normal transfers and selects idle multi
 With explicit `--rtc` selection, it also passes Game Pak GPIO configuration and RTC calendar reads.
 With `--save-type flash128`, it also passes Flash identification and reaches a later startup check.
 It now passes disconnected Joybus setup and completes a bounded 600-frame native run without a diagnostic error.
-This run uses no scripted input or pixel assertions; menu progress and gameplay remain unverified.
+That run used no scripted input or pixel assertions.
+A later [fixed-time input probe](research/emerald-wave.md) found a wave trigger with its gate disabled.
+Wave support now passes that point and reaches 1,320 frames with scheduled Start/A presses and releases.
+Output differs from a no-input control, but readable menus and gameplay remain unverified.
 Flash writing and persistence remain unimplemented.
 Without `--rtc`, cartridge GPIO writes still return read-only diagnostics.
 No title-screen, gameplay, or audible-game compatibility is established.

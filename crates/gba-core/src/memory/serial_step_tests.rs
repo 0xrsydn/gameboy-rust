@@ -137,6 +137,7 @@ fn dma_start_excludes_source_cycles_and_failed_destination_discards_serial_progr
         if fail {
             start(&mut memory, 60);
             memory.write16(SOUNDCNT_X, 0x80).unwrap();
+            memory.write16(0x04000070, 0xa0).unwrap(); // Unsupported two-bank wave playback.
         }
         memory
             .write32(0x02000000, if fail { 0x8000 } else { 0x4083 })
