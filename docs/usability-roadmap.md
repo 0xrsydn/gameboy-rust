@@ -39,7 +39,22 @@ The [pinned Pong homebrew](public-pong.md) passes scripted menus, ball movement,
 The native Darwin window also starts and presents frames without a diagnostic.
 This exposed and corrected missing firmware affine-scale initialization, without a game-specific patch.
 Frame-based scenarios and the preparation adapter now make the result repeatable.
-Next, select an independent game with different device requirements. Cartridge saves and audio remain unimplemented.
+The next selected requirement is cartridge SRAM, followed by safe host save persistence.
+SRAM is byte-addressable battery-backed save memory. Flash and EEPROM remain separate protocols.
+
+[Paperdomo101/2048-GBA at ae36800d](https://github.com/Paperdomo101/2048-GBA/tree/ae36800dfa1314f96c4c8785b5c2d077fb731aff) is the next independent candidate.
+Its CC0 source calls `load_state()` before audio initialization and reads/writes `sram_mem` one byte at a time.
+It also uses Maxmod audio, so SRAM alone will not establish compatibility.
+This candidate has not been run: the pinned tree has no ROM, GitHub has no release asset, and the linked download returned HTTP 522.
+A reproducible source build or an accessible upstream ROM is needed before recording a runtime result.
+
+Next implementation steps:
+
+1. Verify SRAM bus widths, mirroring, erased state, and wait-state behavior against independent references.
+2. Add explicit cartridge save-device selection and original core regressions. Keep absent-device accesses diagnostic.
+3. Add bounded save loading and safe persistence in the desktop crate. Do not put file operations in the core.
+4. Test a save/restart/load cycle across processes with original ROM instructions before external-game validation.
+5. Resume the second-game run and implement demonstrated audio requirements rather than accepting writes without behavior.
 
 ## Development loop
 
