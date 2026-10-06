@@ -104,7 +104,7 @@ fn unsupported_operations_have_specific_retryable_diagnostics() {
 #[test]
 fn block_store_rejects_later_activation_before_earlier_control_writes() {
     let code: [u32; 7] = [
-        0xe3a00301, 0xe2800060, 0xe59f1008, 0xe3a02902, 0xe8a00006, 0xeafffffe, 0x12345678,
+        0xe3a00301, 0xe2800068, 0xe59f1008, 0xe3a02902, 0xe8a00006, 0xeafffffe, 0x12345678,
     ];
     let mut bus = Memory::new(code.into_iter().flat_map(u32::to_le_bytes).collect()).unwrap();
     bus.write16(SOUNDCNT_X, 0x80).unwrap();
@@ -118,7 +118,7 @@ fn block_store_rejects_later_activation_before_earlier_control_writes() {
     assert!(error.to_string().contains("PSG channel trigger"));
     assert_eq!(machine.cpu(), &before);
     assert_eq!(machine.cycles(), cycles);
-    assert_eq!(machine.memory().read16(0x04000060).unwrap(), 0);
+    assert_eq!(machine.memory().read16(0x04000068).unwrap(), 0);
     assert_eq!(machine.step(), Err(error));
 }
 
@@ -128,7 +128,7 @@ fn dma_activation_error_preserves_channel_progress_and_clocks() {
     bus.write16(SOUNDCNT_X, 0x80).unwrap();
     bus.write32(0x02000000, 0x8000).unwrap();
     bus.write32(DMA_BASE, 0x02000000).unwrap();
-    bus.write32(DMA_BASE + 4, 0x04000064).unwrap();
+    bus.write32(DMA_BASE + 4, 0x0400006c).unwrap();
     bus.write32(DMA_BASE + 8, 0x84000001).unwrap();
     let mut machine = Machine::new(Cpu::new(ROM_START), bus);
     let before = machine.cpu().clone();

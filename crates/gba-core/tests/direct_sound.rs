@@ -159,7 +159,7 @@ fn full_queue_overflow_clears_queued_words() {
 }
 
 #[test]
-fn wave_banks_and_idle_psg_masks_work_without_claiming_psg_playback() {
+fn wave_banks_and_idle_channel_masks_preserve_explicit_limits() {
     let mut bus = bus();
     bus.write16(0x04000062, 0xffff).unwrap();
     assert_eq!(bus.read16(0x04000062).unwrap(), 0xffc0);
@@ -167,7 +167,7 @@ fn wave_banks_and_idle_psg_masks_work_without_claiming_psg_playback() {
     bus.write16(0x04000070, 0x40).unwrap();
     assert_eq!(bus.read32(WAVE_RAM).unwrap(), 0);
     bus.write32(WAVE_RAM, 0xaabbccdd).unwrap();
-    for address in [0x04000064, 0x0400006c, 0x04000074, 0x0400007c] {
+    for address in [0x0400006c, 0x04000074, 0x0400007c] {
         let previous = bus.read16(address).unwrap();
         assert!(bus
             .write16(address, 0xffff)

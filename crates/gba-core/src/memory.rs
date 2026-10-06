@@ -165,7 +165,7 @@ impl Memory {
         Ok(memory)
     }
 
-    /// Current committed Direct Sound mixer level. This is not a host sample stream.
+    /// Current committed audio mixer level. This is not a host sample stream.
     pub fn audio_level(&self) -> StereoLevel {
         self.io.audio.level()
     }

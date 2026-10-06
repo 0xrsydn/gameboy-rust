@@ -1,4 +1,9 @@
-//! Nominal Direct Sound device state. No host audio or PSG synthesis.
+//! Nominal Direct Sound and PSG pulse channel 1. No host audio output.
+
+mod pulse;
+use pulse::Pulse;
+
+const SEQUENCER_PERIOD: u32 = 32768; // 16,777,216 Hz / 512 Hz.
 
 pub const SOUND_START: u32 = 0x0400_0060;
 pub const SOUNDCNT_H: u32 = 0x0400_0082;
@@ -73,6 +78,9 @@ impl Fifo {
 pub(crate) struct Audio {
     enabled: bool,
     psg: [u16; 17],
+    pulse: Pulse,
+    sequencer_phase: u16,
+    next_step: u8,
     control: u16,
     bias: u16,
     wave: [[u8; 16]; 2],
@@ -86,11 +94,13 @@ impl Audio {
     }
 
     pub(crate) fn unsupported(&self, address: u32, value: u8) -> Option<&'static str> {
+        if (self.enabled && address == SOUNDCNT_H && value & 3 == 3)
+            || (address == SOUNDCNT_X && value & 0x80 != 0 && self.control & 3 == 3)
+        {
+            return Some("reserved PSG volume selection");
+        }
         if self.enabled
-            && matches!(
-                address,
-                0x0400_0065 | 0x0400_006d | 0x0400_0075 | 0x0400_007d
-            )
+            && matches!(address, 0x0400_006d | 0x0400_0075 | 0x0400_007d)
             && value & 0x80 != 0
         {
             Some("PSG channel trigger (synthesis not implemented)")
@@ -104,6 +114,9 @@ impl Audio {
     }
 
     pub(crate) fn read8(&self, address: u32) -> Option<u8> {
+        if (SOUND_START..=SOUND_START + 5).contains(&address) {
+            return Some(self.pulse.read(address - SOUND_START));
+        }
         if (WAVE_RAM..FIFO_A).contains(&address) {
             return Some(self.wave[self.wave_bank()][(address - WAVE_RAM) as usize]);
         }
@@ -123,7 +136,7 @@ impl Audio {
                 self.psg[((address - SOUND_START) / 2) as usize] & mask
             }
             SOUNDCNT_H => self.control,
-            SOUNDCNT_X => u16::from(self.enabled) << 7,
+            SOUNDCNT_X => (u16::from(self.enabled) << 7) | u16::from(self.pulse.active),
             SOUNDBIAS => self.bias,
             0x0400_0086 | 0x0400_008a => 0,
             _ => return None, // FIFO is write-only; open-bus readback is not modeled.
@@ -141,6 +154,11 @@ impl Audio {
             let address = address + offset as u32;
             if (WAVE_RAM..FIFO_A).contains(&address) {
                 self.wave[self.wave_bank()][(address - WAVE_RAM) as usize] = value;
+                continue;
+            }
+            if self.enabled && (SOUND_START..=SOUND_START + 5).contains(&address) {
+                self.pulse
+                    .write(address - SOUND_START, value, self.next_step);
                 continue;
             }
             let shift = (address & 1) * 8;
@@ -163,15 +181,42 @@ impl Audio {
                 SOUNDCNT_X if address & 1 == 0 => {
                     if self.enabled && value & 0x80 == 0 {
                         self.psg = [0; 17];
+                        self.pulse = Pulse::default();
                         for fifo in &mut self.fifo {
                             fifo.reset_queue();
                         }
+                    }
+                    if !self.enabled && value & 0x80 != 0 {
+                        self.next_step = 0;
                     }
                     self.enabled = value & 0x80 != 0;
                 }
                 SOUNDBIAS => self.bias = merge(self.bias) & 0xc3fe,
                 _ => {}
             }
+        }
+    }
+
+    /// Free-running 512 Hz divider; master enable resets the sequencer step,
+    /// not the divider phase. STOP is gated by the memory bus before this call.
+    pub(crate) fn advance(&mut self, mut cycles: u32) {
+        if !self.enabled {
+            self.sequencer_phase = ((u64::from(self.sequencer_phase) + u64::from(cycles))
+                % u64::from(SEQUENCER_PERIOD)) as u16;
+            return;
+        }
+        while cycles != 0 {
+            let count = cycles.min(SEQUENCER_PERIOD - u32::from(self.sequencer_phase));
+            self.pulse.advance(count);
+            let phase = u32::from(self.sequencer_phase) + count;
+            if phase == SEQUENCER_PERIOD {
+                self.sequencer_phase = 0;
+                self.pulse.clock(self.next_step);
+                self.next_step = (self.next_step + 1) & 7;
+            } else {
+                self.sequencer_phase = phase as u16;
+            }
+            cycles -= count;
         }
     }
 
@@ -208,7 +253,13 @@ impl Audio {
                 }
             }
         }
-        for level in &mut sides {
+        let psg_control = self.psg[16];
+        let ratio = [1, 2, 4, 0][usize::from(self.control & 3)];
+        for (side, level) in sides.iter_mut().enumerate() {
+            if psg_control & (1 << (8 + side * 4)) != 0 {
+                let volume = ((psg_control >> (side * 4)) & 7) as i16 + 1;
+                *level += (self.pulse.sample() * volume * ratio) >> 2;
+            }
             *level = (*level + (self.bias & 0x3ff) as i16).clamp(0, 1023) - 512;
         }
         StereoLevel {

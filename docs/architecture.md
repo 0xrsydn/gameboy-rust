@@ -53,7 +53,10 @@ The repository is a Cargo workspace with three crates:
 | `crates/gba-core/src/cpu/fetch_history_tests.rs` | Shared sample consumption, no execution-entry rereads, and failed-step retry |
 | `crates/gba-core/src/cpu/fetch_boundary_tests.rs` | Actual fetch-region snapshots, split refills, IWRAM lane requirements, ROM-window boundaries, and nominal timing |
 | `crates/gba-core/src/io.rs` | I/O registers, timers, HALT/STOP wake-up, next-event bounds, and IRQ latches |
-| `crates/gba-core/src/audio.rs` | Direct Sound FIFO/playback state, idle PSG/wave banks, and instantaneous stereo mixing |
+| `crates/gba-core/src/audio.rs` | Direct Sound state, PSG sequencer, idle channel/wave banks, and instantaneous stereo mixing |
+| `crates/gba-core/src/audio/pulse.rs` | Pulse channel 1 oscillator, length, envelope, sweep, and status |
+| `crates/gba-core/src/audio/pulse/tests.rs` | Exhaustive frequency/duty arithmetic and original modulation edge tests |
+| `crates/gba-core/tests/pulse_sound.rs` | Register masks, stereo mixing, sequencer clocks, idle modes, batching, and explicit limits |
 | `crates/gba-core/tests/direct_sound.rs` | FIFO lanes/reset, signed mixing, timer selection, DMA refill, and HALT/STOP |
 | `crates/gba-core/src/memory/audio_step_tests.rs` | Audio access phases, shadow validation, and CPU/DMA failure rollback |
 | `crates/gba-core/src/io/inactive.rs` | Disconnected serial initialization with explicit unsupported-activity validation |

@@ -1,4 +1,4 @@
-//! Staged timer and Direct Sound clocks for one instruction, IRQ entry, or DMA unit.
+//! Staged timer and audio clocks for one instruction, IRQ entry, or DMA unit.
 //! Other devices remain on the instruction-boundary scheduler.
 use super::{Io, Timer, IF, TIMER_BASE};
 

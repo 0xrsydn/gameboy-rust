@@ -7,7 +7,7 @@
 Otherwise it services one ready DMA data unit, keeping the CPU paused.
 If HALT is waiting and no DMA is ready, it advances device clocks to the next event without executing CPU code.
 Otherwise, it samples the IRQ line, including the CPU's interrupt mask, then enters IRQ mode or executes one instruction.
-Each successful step advances display, timer, and Direct Sound clocks by its nominal cost.
+Each successful step advances display, timer, and audio clocks by its nominal cost.
 `Machine::last_timing()` reports separate code, data, internal, and idle cycle totals for the last successful step.
 `StepTiming::idle_cycles` counts device-clock cycles during HALT; it does not count CPU work.
 IRQ entry is a separate step; the vector instruction runs on the following step.
@@ -34,11 +34,12 @@ The transaction also owns timer IF bits. Reads see overflows through the current
 A later internal cycle can raise an acknowledged timer request again. Non-timer IF bits retain their existing behavior.
 IRQ delivery still waits until the next machine step. A committed timer request can wake HALT, but not STOP.
 
-Successful steps commit timers, the shared divider phase, timer IF bits, and Direct Sound state.
+Successful steps commit timers, the shared divider phase, timer IF bits, and audio state.
 Failed steps discard staged counters, divider progress, timer/audio writes, FIFO consumption, and requests.
 Display and other device clocks then advance once, without advancing timers again.
 Display and remaining devices still use the bulk scheduler. Mid-instruction display events, general bus arbitration, and IRQ synchronization delays remain unmodeled.
 [Direct Sound](audio.md) consumes selected timer overflows in the timer transaction; sound DMA requests commit at step boundaries.
+The same transaction advances the PSG oscillator and 512 Hz sequencer independently of the general-purpose timers.
 Host clock advances and HALT idle batches retain ordinary bulk timer advancement; STOP idle does not advance timers.
 
 The unchanged [prefetch cancellation probe](../research/prefetch-cancellation.md) now matches both published interval totals and actual timer samples.

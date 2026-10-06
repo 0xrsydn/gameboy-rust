@@ -438,6 +438,7 @@ impl Io {
         audio: &mut Audio,
         cycles: u32,
     ) -> u16 {
+        audio.advance(cycles);
         let mut pending = 0;
         let mut overflows = 0;
         for (index, timer) in timers.iter_mut().enumerate() {
