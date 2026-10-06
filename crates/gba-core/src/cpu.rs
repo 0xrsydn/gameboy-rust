@@ -32,6 +32,8 @@ mod arm_pipeline_tests;
 #[cfg(test)]
 mod bios_access_tests;
 #[cfg(test)]
+mod bios_write_tests;
+#[cfg(test)]
 mod compare_psr_tests;
 #[cfg(test)]
 mod dma_resume_tests;

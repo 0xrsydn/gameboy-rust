@@ -22,6 +22,8 @@ mod arithmetic;
 mod bit_unpack;
 #[path = "bios/boot_video.rs"]
 mod boot_video;
+#[path = "bios/copy_bus.rs"]
+mod copy_bus;
 #[path = "bios/differential.rs"]
 mod differential;
 #[path = "bios/huffman.rs"]

@@ -86,6 +86,13 @@ fn vram_index(address: u32) -> usize {
     }
 }
 
+/// Host setup rejects read-only destinations; CPU and DMA use bus semantics.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum WriteAccess {
+    Host,
+    Emulated,
+}
+
 #[derive(Clone, Copy)]
 struct CpuAccess {
     pc: u32,
@@ -373,8 +380,10 @@ impl Memory {
         let map_error = |error| DmaError::Memory { channel, error };
         // Validate before reading or committing channel data. Failed units are atomic.
         match transfer.width {
-            AccessWidth::Halfword => self.write_index::<2>(transfer.destination),
-            AccessWidth::Word => self.write_index::<4>(transfer.destination),
+            AccessWidth::Halfword => {
+                self.write_index::<2>(transfer.destination, WriteAccess::Emulated)
+            }
+            AccessWidth::Word => self.write_index::<4>(transfer.destination, WriteAccess::Emulated),
             AccessWidth::Byte => unreachable!("DMA is never byte-wide"),
         }
         .map_err(map_error)?;
@@ -419,8 +428,16 @@ impl Memory {
             };
             self.advance_timer_step(timing.total());
             match transfer.width {
-                AccessWidth::Halfword => self.write16(transfer.destination, value as u16),
-                AccessWidth::Word => self.write32(transfer.destination, value),
+                AccessWidth::Halfword => self.write_aligned(
+                    transfer.destination,
+                    (value as u16).to_le_bytes(),
+                    WriteAccess::Emulated,
+                ),
+                AccessWidth::Word => self.write_aligned(
+                    transfer.destination,
+                    value.to_le_bytes(),
+                    WriteAccess::Emulated,
+                ),
                 AccessWidth::Byte => unreachable!("DMA is never byte-wide"),
             }?;
             Ok::<_, MemoryError>((data_latch, value))
@@ -722,15 +739,23 @@ impl Memory {
     }
 
     pub fn write8(&mut self, address: u32, value: u8) -> Result<(), MemoryError> {
-        self.write_aligned(address, [value])
+        self.write_aligned(address, [value], self.write_access())
     }
 
     pub fn write16(&mut self, address: u32, value: u16) -> Result<(), MemoryError> {
-        self.write_aligned(address, value.to_le_bytes())
+        self.write_aligned(address, value.to_le_bytes(), self.write_access())
     }
 
     pub fn write32(&mut self, address: u32, value: u32) -> Result<(), MemoryError> {
-        self.write_aligned(address, value.to_le_bytes())
+        self.write_aligned(address, value.to_le_bytes(), self.write_access())
+    }
+
+    fn write_access(&self) -> WriteAccess {
+        if self.cpu_access.is_some() {
+            WriteAccess::Emulated
+        } else {
+            WriteAccess::Host
+        }
     }
 
     // Validate the complete access before any RAM or I/O side effects.
@@ -739,8 +764,9 @@ impl Memory {
         &mut self,
         address: u32,
         bytes: [u8; N],
+        access: WriteAccess,
     ) -> Result<(), MemoryError> {
-        let index = self.write_index::<N>(address)?;
+        let index = self.write_index::<N>(address, access)?;
         Self::validate_io_values(&mut self.audio_state(), address, &bytes)?;
         self.record_access(
             address,
@@ -751,6 +777,11 @@ impl Memory {
                 _ => unreachable!("unsupported bus width"),
             },
         );
+        if address < BIOS_SIZE as u32 {
+            // Only validated CPU/DMA writes reach here. Pay the bus cost but
+            // never modify the mapped ROM image or drive BIOS read history.
+            return Ok(());
+        }
         if address >> 24 == 0x03 {
             let (width, value) = match N {
                 1 => (AccessWidth::Byte, u32::from(bytes[0])),
@@ -840,13 +871,21 @@ impl Memory {
         Ok(())
     }
 
-    fn write_index<const N: usize>(&self, address: u32) -> Result<usize, MemoryError> {
+    fn write_index<const N: usize>(
+        &self,
+        address: u32,
+        access: WriteAccess,
+    ) -> Result<usize, MemoryError> {
         if address & (N as u32 - 1) != 0 {
             return Err(MemoryError::Unaligned(address));
         }
         match address >> 24 {
             0x00 if self.bios.is_some() && address < BIOS_SIZE as u32 => {
-                Err(MemoryError::ReadOnly(address))
+                if access == WriteAccess::Emulated {
+                    Ok(0) // Mapped BIOS ignores emulated writes; host setup stays strict.
+                } else {
+                    Err(MemoryError::ReadOnly(address))
+                }
             }
             0x02 => Ok((address & 0x3ffff) as usize),
             0x03 => Ok((address & 0x7fff) as usize),
@@ -897,7 +936,7 @@ impl Memory {
     pub(crate) fn write_words(&mut self, writes: &[(u32, u32)]) -> Result<(), MemoryError> {
         let mut audio = self.audio_state();
         for &(address, value) in writes {
-            self.write_index::<4>(address)?;
+            self.write_index::<4>(address, self.write_access())?;
             Self::validate_io_values(&mut audio, address, &value.to_le_bytes())?;
         }
         for &(address, value) in writes {

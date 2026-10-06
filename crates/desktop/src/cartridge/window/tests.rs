@@ -266,7 +266,8 @@ fn dma_and_irq_consume_slice_budget_and_dma_failure_preserves_progress() {
         .unwrap();
     assert_eq!(session.stats.irq_entries, 1);
     let bus = session.machine.memory_mut();
-    bus.write32(DMA_BASE + 4, ROM_START).unwrap();
+    // DMA0 masks cartridge addresses to BIOS; use an actually unmapped destination.
+    bus.write32(DMA_BASE + 4, 0x0000_4000).unwrap();
     bus.write32(DMA_BASE + 8, 0x8000_0001).unwrap();
     let cycles = session.machine.cycles();
     assert!(session.update(Buttons::default()).is_err());

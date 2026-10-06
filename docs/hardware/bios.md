@@ -134,7 +134,8 @@ See the [root-cause research](../research/bios-readback.md) for evidence and the
 
 Host/debug reads and ROM-suite memory assertions still inspect raw mapped bytes and do not initialize or change the history.
 Instruction fetches remain strict mapped reads outside the CPU data-access context.
-BIOS writes remain read-only diagnostics. DMA BIOS sources never read image bytes.
+CPU and DMA writes to the mapped BIOS are ignored, as described below. Host writes remain read-only diagnostics.
+DMA BIOS sources never read image bytes.
 They reuse known [channel data](dma.md#retained-channel-data), or report an unsupported-source diagnostic when channel data is unknown.
 Missing BIOS images remain unmapped. The unused-memory ARM open-bus snapshot is separate from this retained BIOS value.
 
@@ -147,6 +148,38 @@ The boundary diagnostic policy and precise bus timing remain hardware-unverified
 Original regressions cover synthetic images, boot, exception returns, access widths, alignment, modes, and diagnostics.
 The [public BIOS ROM](../public-bios-tests.md) passes its unchanged protected-read assertions in debug and release builds.
 This result covers these firmware boundaries, not full BIOS service compatibility.
+
+## Writes to the mapped BIOS
+
+CPU stores to `0x00000000..0x00003fff` complete without changing the supplied BIOS image.
+This applies to ARM and Thumb stores, all processor modes, block stores, and the write phase of swaps.
+The rule depends on the destination, not the executing address or a particular BIOS service.
+A swap must still complete its protected read; unknown read history remains diagnostic.
+
+Ignored writes retain nominal data-access costs, instruction writeback, and normal machine clock advancement.
+The write value does not replace BIOS read history. Instructions executed inside BIOS still update history through their ordinary fetches.
+DMA writes follow the same discard rule, with source reads, channel data, address progression, completion IRQs, and nominal timing intact.
+Host/debug `Memory::write*` calls remain strict and report `ReadOnly` for the mapped BIOS.
+
+The bounded rule requires a supplied BIOS image and stops at `0x00003fff`.
+Missing BIOS images, unmapped destinations beyond that boundary, and cartridge writes retain their existing diagnostics.
+Whole-instruction validation still rejects a block store with a later unsupported destination before committing CPU state.
+DMA retains earlier completed units when a later unit fails.
+This is not a general model of ignored writes across unused address ranges.
+
+`CpuSet` and `CpuFastSet` need no service-specific change: their original ARM stores obey these bus rules.
+Tests use original programs and images to check immutable firmware, widths, lanes, modes, swaps, clocks, DMA, and failed-step retry.
+The local Emerald caller supplies destination zero itself; the copy routine does not corrupt that argument.
+See [the startup investigation](../research/emerald-reset.md).
+
+### Write-behavior references
+
+- [GBATEK memory map](https://mgba-emu.github.io/gbatek/): the 16 KiB BIOS system-ROM region and bus widths.
+- [GBATEK memory-copy services](https://problemkaputt.de/gbatek-bios-memory-copy.htm): CpuSet/CpuFastSet arguments and executed copy operations.
+- [mGBA memory implementation at 3a5e34be](https://github.com/mgba-emu/mgba/blob/3a5e34be33dc7f8f707e5bc9db69e8a430046f21/src/gba/memory.c): unsupported BIOS store cases log and continue without writing the image.
+- [ares BIOS implementation at 728105b2](https://github.com/ares-emulator/ares/blob/728105b28ed6f1429841d5b2f5a38794d01d5c39/ares/gba/system/bios.cpp): the BIOS write handler discards writes separately from protected reads.
+
+These are documentation and emulator comparisons, not new physical-hardware measurements. No reference implementation was copied.
 
 ## Stop
 

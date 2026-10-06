@@ -436,14 +436,14 @@ fn dma_reset_disables_channels_and_clears_write_only_address_and_count_latches()
         );
         m.memory_mut().write16(base + 10, 0).unwrap();
         m.memory_mut().write32(base, SOURCE).unwrap();
+        m.memory_mut().write32(SOURCE, MARKER).unwrap();
+        m.memory_mut().write32(DEST, !MARKER).unwrap();
+        let vector = m.memory().read32(0).unwrap();
         m.memory_mut().write16(base + 10, 0x8000).unwrap();
-        assert_eq!(
-            m.step(),
-            Err(MachineError::Dma(DmaError::Memory {
-                channel,
-                error: MemoryError::ReadOnly(0)
-            }))
-        );
+        assert_eq!(m.step().unwrap(), StepKind::Dma { channel });
+        // The reset destination is BIOS: discard the transfer, not into stale DEST.
+        assert_eq!(m.memory().read32(0).unwrap(), vector);
+        assert_eq!(m.memory().read32(DEST).unwrap(), !MARKER);
         m.memory_mut().write16(base + 10, 0).unwrap();
         m.memory_mut().write32(base + 4, DEST).unwrap();
         m.memory_mut().write32(SOURCE, MARKER).unwrap();

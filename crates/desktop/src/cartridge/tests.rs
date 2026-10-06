@@ -322,7 +322,8 @@ fn dma_errors_return_a_diagnostic_without_consuming_a_step() {
     let mut machine = boot(&[0xeaff_fffe]);
     let bus = machine.memory_mut();
     bus.write32(DMA_BASE, 0x0200_0000).unwrap();
-    bus.write32(DMA_BASE + 4, ROM_START).unwrap();
+    // DMA0 masks cartridge addresses to BIOS; use an actually unmapped destination.
+    bus.write32(DMA_BASE + 4, 0x0000_4000).unwrap();
     bus.write32(DMA_BASE + 8, 0x8000_0001).unwrap();
     let report = run_bounded(&mut machine, 100);
     assert!(matches!(

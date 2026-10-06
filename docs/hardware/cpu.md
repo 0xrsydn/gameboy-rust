@@ -146,7 +146,8 @@ Limits remain explicit:
 - Unused/write-only I/O reads, general DMA-to-CPU bus handoff, and disabled-RAM reads are not modeled here.
   [DMA channel data](dma.md#retained-channel-data) is separate and never overrides a CPU snapshot.
 - Missing BIOS, truncated ROM, unsupported I/O, and save-memory accesses retain their existing diagnostics.
-- Unused-memory writes remain diagnostics rather than ignored hardware writes. Swaps cannot silently discard their write.
+- Unused-memory writes remain diagnostics rather than ignored hardware writes. Swaps to those ranges still fail.
+- Writes to the mapped BIOS are a separate [ignored-write subset](bios.md#writes-to-the-mapped-bios), including swap write phases.
 - ARM/Thumb instruction buffering is persistent, but these data snapshots remain a separate bounded model.
   Thumb IWRAM bus-history samples do not share storage with retained instructions.
   DMA updates IWRAM lanes at instruction boundaries, not during CPU accesses.

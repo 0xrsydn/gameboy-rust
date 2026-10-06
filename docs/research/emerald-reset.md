@@ -38,13 +38,23 @@ RCNT bit 15 was clear, so bit 8 did not enable general-purpose input/output (GPI
 GBATEK documents bits 8 and 14 as writable but unused in normal mode.
 The serial model now retains these inactive bits. Effective GPIO interrupt enable and Joybus selection still return explicit errors.
 
-Both runs pass that write and now stop in the original BIOS replacement:
+That correction reached `read-only memory at 0x00000000` inside the original BIOS replacement, PC `0x00000378`.
+A bounded local trace found a Thumb `CpuSet` call with source `0x02022a74`, destination zero, and count `0x1c` halfwords.
+The caller supplied zero before entering the service. The failing original BIOS instruction was a halfword store.
+The copy routine did not corrupt the destination. Its stores encountered an overly strict memory-bus diagnostic.
+
+The [mapped-BIOS write correction](../hardware/bios.md#writes-to-the-mapped-bios) now discards CPU/DMA writes without modifying firmware.
+The original copy service still executes all its reads and writes. No ROM patch or service-specific bypass was added.
+Host writes remain strict. Reference-emulator comparisons and original tests support this bounded bus behavior.
+The trace stayed local; no game code or assets were added to the repository.
+
+Both runs pass the copy and now stop at an unsupported serial-transfer start:
 
 ```text
-Steps: 398019; instructions: 396289; IRQ entries: 2; DMA units: 1728; HALT idle: 0
-Nominal cycles: 1334271
-PC=0x00000378
-read-only memory at 0x00000000
+Steps: 426406; instructions: 424636; IRQ entries: 2; DMA units: 1768; HALT idle: 0
+Nominal cycles: 1416670
+PC=0x082e6e5c
+unsupported serial transfer start: write 0x84 at 0x04000128
 ```
 
 The native run captures five startup frames. These do not establish a working title screen or gameplay.
@@ -59,10 +69,10 @@ Workspace debug/release tests, strict Clippy, public ARM/Thumb/memory/BIOS check
 Native ROM-window tests and graphics smoke modes pass on Darwin arm64.
 The pinned Pong debug/release reports match.
 
-The next investigation is the BIOS replacement's attempted write to address zero at PC `0x00000378`.
-Trace the service arguments and original firmware routine before deciding whether the caller or service behavior is wrong.
-The diagnostic alone does not establish the root cause. Do not make BIOS memory writable to bypass it.
-The corrected RCNT write does not establish a need for active link transfers or GPIO interrupts.
+The next investigation is the serial-transfer start at SIOCNT (`0x04000128`).
+Check RCNT mode, clock selection, disconnected-input behavior, and completion/IRQ timing before implementing a transfer model.
+Do not invent a connected partner or immediate completion to suppress the diagnostic.
+The corrected inactive RCNT write does not establish a need for GPIO interrupts.
 
 Noise now has deterministic counter clocks and shares tested length/envelope logic with the independent pulse channels.
 Sweep applies only to channel 1. Direct Sound has FIFO clocks and nominal DMA requests.

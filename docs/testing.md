@@ -309,6 +309,10 @@ Status tests cover all modes, flag combinations, interrupt masks, field selectio
 Exception tests cover vectors, ARM/Thumb return addresses, nested interrupts, mask priority, and return-state restoration.
 User-bank transfers and failed returns are checked for unintended changes to active and hidden registers.
 Integration tests execute original vector handlers and check optional BIOS mapping boundaries and write protection.
+Mapped-BIOS write tests distinguish ignored CPU/DMA transfers from strict host writes without changing the supplied image.
+They cover ARM/Thumb widths, lanes, modes, block stores, swaps, timing, DMA completion, and failed boundary transfers.
+Original CpuSet/CpuFastSet callers verify ignored BIOS destinations without bypassing source reads or the service instructions.
+Desktop DMA-error fixtures use an unmapped destination because DMA0 masks cartridge destination addresses into the BIOS region.
 Original BIOS-access regressions check retained ARM PC+8 and aligned Thumb PC+4 words for ARM/Thumb callers.
 They cover all processor modes, load widths, lanes, rotation, both Thumb code alignments, and distinct halfwords.
 They verify direct reads while executing inside BIOS, re-entry, SWI/IRQ returns, host-inspection isolation, and original-boot provenance.

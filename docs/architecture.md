@@ -33,6 +33,7 @@ The repository is a Cargo workspace with three crates:
 | `crates/gba-core/src/cpu/exception.rs` | Reset state, exception entry, and interrupt sampling |
 | `crates/gba-core/src/cpu/load_alias_tests.rs` | Original single-load alias regressions for indexing, banks, widths, alignment, I/O, timing, and diagnostics |
 | `crates/gba-core/src/cpu/bios_access_tests.rs` | Original CPU BIOS protection regressions for retained history, modes, widths, exception returns, and diagnostics |
+| `crates/gba-core/src/cpu/bios_write_tests.rs` | Ignored CPU/DMA BIOS writes, immutable images, swaps, timing, completion, and strict unsupported boundaries |
 | `crates/gba-core/src/cpu/thumb_bios_access_tests.rs` | Thumb BIOS aligned-word snapshots, transitions, load lanes, boundaries, diagnostics, and nominal timing |
 | `crates/gba-core/src/cpu/thumb_open_bus_tests.rs` | Region-dependent Thumb open bus, mirrors, widths, transfers, source boundaries, isolation, and nominal timing |
 | `crates/gba-core/src/cpu/iwram_open_bus_tests.rs` | Persistent IWRAM lanes, cold fills, access widths, isolation, errors, refills, IRQ preservation, and nominal timing |
@@ -96,6 +97,7 @@ The repository is a Cargo workspace with three crates:
 | `crates/gba-demos/src/lib.rs` | Demo modules, original instruction/exception bytes, and raw input-test ROM |
 | `crates/gba-core/src/bios.rs` | Original ARM BIOS image builder, minimal boot, IRQ dispatch, waits, and memory services |
 | `crates/gba-core/tests/bios/boot_video.rs` | Firmware identity scales, bitmap/affine startup rendering, capture, and raw-memory isolation |
+| `crates/gba-core/tests/bios/copy_bus.rs` | Original copy/fill services with ignored BIOS destinations and retained source diagnostics |
 | `crates/gba-core/src/bios/reset.rs` | Emitted ARM SoftReset and selective RegisterRamReset; CPU banks, RAM clearing, and supported device-register resets |
 | `crates/gba-core/src/bios/arithmetic.rs` | Emitted ARM division and integer-square-root routines |
 | `crates/gba-core/src/bios/affine.rs` | Emitted ARM background/sprite matrix services, range checks, and generated sine table |

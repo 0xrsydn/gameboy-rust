@@ -56,6 +56,7 @@ Update this file when a feature lands or a limit is removed.
 - The unchanged original ARM cancellation probe matches both published read interval totals and its unadjusted timer samples.
 - Sequential/non-sequential data accesses, branch refill costs, and variable multiply timing.
 - Optional caller-supplied 16 KiB BIOS mapping, with CPU read protection based on retained ARM PC+8 or aligned Thumb PC+4 words.
+- CPU/DMA writes to the mapped BIOS complete without changing its image; host writes retain read-only diagnostics.
 - Optional original BIOS replacement: minimal boot, SoftReset, selective RegisterRamReset, IRQ dispatch, interrupt waits, memory copy/fill, integer/fixed-point arithmetic, affine matrices, bit unpacking, LZ77/run-length/Huffman decompression, and differential filters.
 - All 16 ARM data-processing operations, with immediate and shifted-register operands.
 - Logical operations: `AND`, `EOR`, `TST`, `TEQ`, `ORR`, `MOV`, `BIC`, and `MVN`.
@@ -153,8 +154,9 @@ ROM windows have no demo-specific startup checks. Input is sampled between bound
 Audio, saves, and external BIOS loading remain unavailable. ROM loading does not establish commercial-game compatibility.
 A local Emerald run now completes its all-device reset and master sound enable.
 It also passes the pulse/noise triggers and normal-mode RCNT configuration.
-It next stops on an attempted write to address zero in the BIOS replacement at PC `0x00000378`.
-The cause remains under investigation. No title-screen, gameplay, or audible-game compatibility is established.
+It also completes a CpuSet call to address zero through the corrected ignored BIOS-write behavior.
+It next stops at an unsupported serial-transfer start (`0x04000128`, PC `0x082e6e5c`).
+No title-screen, gameplay, or audible-game compatibility is established.
 See [the startup result](research/emerald-reset.md) for the bounded run and next investigation.
 See [cartridge loading](hardware/cartridge.md) for file limits, step budgets, and exit status.
 The [ROM suite runner](rom-tests.md) has original regressions and a [pinned public ARM baseline](public-arm-tests.md).

@@ -64,6 +64,9 @@ Timer-driven requests, repeat, and completion IRQs are described in [Direct Soun
 Other special-mode pairings, video capture, Game Pak DRQ, and prohibited source mode 3 return `DmaError::UnsupportedControl`.
 DMA reads below work RAM reuse known channel data as described below. They never expose BIOS bytes.
 DMA writes to DMA registers return `DmaError::RegisterDestination`; self-modifying transfers are not supported.
+Writes into the mapped 16 KiB BIOS [complete without changing its image](bios.md#writes-to-the-mapped-bios).
+Source reads, channel data, address progression, timing, and completion IRQs still apply to these ignored writes.
+DMA0–2 mask destination bit 27, so a programmed cartridge address can instead select the BIOS region.
 Other accesses use the existing memory map, alignment checks, mirrors, and I/O write rules.
 Other unmapped reads and cartridge writes remain diagnostics, not general DMA open-bus behavior.
 A failed unit changes no memory, device state, or clock. Earlier units remain committed; the failed unit remains pending.
