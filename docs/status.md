@@ -142,7 +142,8 @@ There is no host audio output or cartridge save support.
 The [audio subset](hardware/audio.md) supports Direct Sound, both PSG pulse channels, noise channel 4, idle wave channel 3 state, and instantaneous digital mixing.
 It does not yet provide a continuous sample stream. Wave channel 3 playback and unverified sound-DMA pairings remain diagnostic.
 PSG timing and signed mixing are nominal; hardware startup edges and analog behavior remain unverified.
-The [serial initialization subset](hardware/serial.md) supports idle normal data and disconnected general-purpose pins, not active transfers.
+The [serial subset](hardware/serial.md) supports normal data, disconnected external-clock waiting, and general-purpose pins.
+External requests retain start/busy without completion or IRQ. Internally clocked transfers and connected links remain unsupported.
 RCNT retains inactive bits 8/14 in normal mode. Effective GPIO interrupt enable and Joybus selection remain diagnostic.
 Mapped I/O covers DMA, timers, interrupts, WAITCNT, display control/status, background control/scroll/affine registers, window/effect registers, KEYINPUT/KEYCNT, POSTFLG, and HALTCNT.
 Keypad IRQs use a documented polling model; hardware retrigger edges and asynchronous input timing remain unverified.
@@ -155,7 +156,8 @@ Audio, saves, and external BIOS loading remain unavailable. ROM loading does not
 A local Emerald run now completes its all-device reset and master sound enable.
 It also passes the pulse/noise triggers and normal-mode RCNT configuration.
 It also completes a CpuSet call to address zero through the corrected ignored BIOS-write behavior.
-It next stops at an unsupported serial-transfer start (`0x04000128`, PC `0x082e6e5c`).
+It also accepts an external-clock serial request without inventing clock edges or completion.
+It next stops when software selects internal serial clock (`0x04000128`, PC `0x082e6eb8`).
 No title-screen, gameplay, or audible-game compatibility is established.
 See [the startup result](research/emerald-reset.md) for the bounded run and next investigation.
 See [cartridge loading](hardware/cartridge.md) for file limits, step budgets, and exit status.

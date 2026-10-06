@@ -1,5 +1,5 @@
 //! GBA I/O subset: DMA, timers, interrupts, WAITCNT, display, keypad input,
-//! Direct Sound, and disconnected serial initialization.
+//! Direct Sound, and disconnected serial state with external-clock waiting.
 //! Timers share a free-running prescaler phase. Hardware startup/write delays
 //! and interrupt delivery delays are not modeled.
 

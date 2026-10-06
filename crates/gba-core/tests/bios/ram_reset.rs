@@ -289,6 +289,28 @@ fn serial_sound_reset_flags_are_selective_and_all_devices_return() {
 }
 
 #[test]
+fn serial_reset_cancels_an_external_clock_request_only_when_selected() {
+    use gba_core::io::{RCNT, SIOCNT};
+    for thumb in [false, true] {
+        for flags in [0, 0x20, 0x40, 0x80, 0xff] {
+            let (mut m, pc) = prepare(flags, thumb, 0x1f);
+            m.memory_mut().write16(RCNT, 0).unwrap();
+            m.memory_mut().write16(SIOCNT, 0x5080).unwrap();
+            complete(&mut m, pc);
+            assert_eq!(
+                m.memory().read16(SIOCNT).unwrap(),
+                if flags & 0x20 != 0 { 4 } else { 0x5084 }
+            );
+            assert_eq!(
+                m.memory().read8(RCNT + 1).unwrap(),
+                if flags & 0x20 != 0 { 0x80 } else { 0 }
+            );
+            assert_eq!(m.memory().read16(IF).unwrap() & 0x80, 0);
+        }
+    }
+}
+
+#[test]
 fn caller_registers_flags_modes_and_interrupt_masks_are_preserved() {
     for thumb in [false, true] {
         for status in [0x10, 0x50, 0x90, 0xd0, 0x1f, 0x5f, 0x9f, 0xdf] {

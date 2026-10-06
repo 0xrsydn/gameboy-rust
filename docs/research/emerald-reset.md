@@ -48,13 +48,18 @@ The original copy service still executes all its reads and writes. No ROM patch 
 Host writes remain strict. Reference-emulator comparisons and original tests support this bounded bus behavior.
 The trace stayed local; no game code or assets were added to the repository.
 
-Both runs pass the copy and now stop at an unsupported serial-transfer start:
+The copy correction reached a serial-transfer start at PC `0x082e6e5c`.
+A local register trace found RCNT zero and a SIOCNT write of `0x5084`: 32-bit mode, IRQ enabled, external clock selected.
+With no connected clock source, this request must wait rather than complete on elapsed CPU cycles.
+The [serial subset](../hardware/serial.md#external-clock-waiting) now retains the request without shifting data or raising a serial IRQ.
+
+Both runs pass that request and next stop when software selects internal clock while start remains set:
 
 ```text
-Steps: 426406; instructions: 424636; IRQ entries: 2; DMA units: 1768; HALT idle: 0
-Nominal cycles: 1416670
-PC=0x082e6e5c
-unsupported serial transfer start: write 0x84 at 0x04000128
+Steps: 426523; instructions: 424753; IRQ entries: 2; DMA units: 1768; HALT idle: 0
+Nominal cycles: 1416980
+PC=0x082e6eb8
+unsupported internally clocked serial transfer: write 0x85 at 0x04000128
 ```
 
 The native run captures five startup frames. These do not establish a working title screen or gameplay.
@@ -69,10 +74,11 @@ Workspace debug/release tests, strict Clippy, public ARM/Thumb/memory/BIOS check
 Native ROM-window tests and graphics smoke modes pass on Darwin arm64.
 The pinned Pong debug/release reports match.
 
-The next investigation is the serial-transfer start at SIOCNT (`0x04000128`).
-Check RCNT mode, clock selection, disconnected-input behavior, and completion/IRQ timing before implementing a transfer model.
+The next requirement is internally clocked normal serial communication, including switching from a pending external-clock request.
+Implement nominal shift periods, disconnected input sampling, completion, and IRQ behavior with deterministic tests.
+Keep completion consistent with HALT, STOP, instruction timing, and diagnostic rollback.
 Do not invent a connected partner or immediate completion to suppress the diagnostic.
-The corrected inactive RCNT write does not establish a need for GPIO interrupts.
+The external-clock waiting result does not establish linked gameplay or GPIO interrupt support.
 
 Noise now has deterministic counter clocks and shares tested length/envelope logic with the independent pulse channels.
 Sweep applies only to channel 1. Direct Sound has FIFO clocks and nominal DMA requests.

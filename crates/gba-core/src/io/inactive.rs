@@ -1,4 +1,4 @@
-//! Disconnected serial initialization state. Active transfers remain diagnostic.
+//! Disconnected serial state, including external-clock requests that cannot progress.
 
 use super::replace_byte;
 
@@ -32,7 +32,9 @@ impl Inactive {
     /// supplies the complete selection, independent of the previous low byte.
     pub(super) fn unsupported(address: u32, value: u8) -> Option<&'static str> {
         match address {
-            SIOCNT if value & 0x80 != 0 => Some("serial transfer start"),
+            // Clock source and start share the low byte. With no external
+            // clock edges, an external-clock request only latches start/busy.
+            SIOCNT if value & 0x81 == 0x81 => Some("internally clocked serial transfer"),
             0x0400_0129 if value & 0x20 != 0 => Some("multiplayer/UART serial mode"),
             0x0400_0135 if value & 0xc0 == 0xc0 => Some("Joybus serial mode"),
             0x0400_0135 if value & 0x81 == 0x81 => Some("GPIO serial interrupt enable"),
@@ -82,7 +84,7 @@ impl Inactive {
         }
         match address & !1 {
             SIOCNT => {
-                self.serial_control = replace_byte(self.serial_control, address, value) & 0x500b
+                self.serial_control = replace_byte(self.serial_control, address, value) & 0x508b
             }
             SIODATA8 if address & 1 == 0 => self.serial_send = value,
             RCNT => self.rcnt = replace_byte(self.rcnt, address, value) & 0xc1ff,
