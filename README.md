@@ -7,6 +7,7 @@ The Game Boy Advance (GBA) is the first and currently only system.
 It is an emulator foundation: an ARM7TDMI interpreter, memory bus, timers, DMA, Mode 0–5 video, and an original BIOS replacement.
 The included demos run original ARM test programs through the emulated hardware.
 Raw ROM files can run in terminal sessions or a window with keyboard input. Audio and saves are not implemented.
+A [pinned Pong homebrew](docs/public-pong.md) passes scripted menu, ball-motion, and paddle-input checks.
 
 ## Layout
 
@@ -46,6 +47,7 @@ Use `--test-suite suite.json` for [repeatable headless ROM assertions](docs/rom-
 | [docs/public-thumb-tests.md](docs/public-thumb-tests.md) | Pinned public Thumb test, result protocol, and compatibility baseline |
 | [docs/public-memory-tests.md](docs/public-memory-tests.md) | Pinned public memory test, results, and video-byte coverage limits |
 | [docs/public-bios-tests.md](docs/public-bios-tests.md) | Pinned BIOS read-protection result and firmware limits |
+| [docs/public-pong.md](docs/public-pong.md) | Playable homebrew setup, scripted gameplay baseline, and limits |
 | [docs/architecture.md](docs/architecture.md) | Crate boundaries and a file-by-file map |
 | [docs/hardware/cpu.md](docs/hardware/cpu.md) | ARM/Thumb execution rules, modes, exceptions, and timing |
 | [docs/hardware/cartridge.md](docs/hardware/cartridge.md) | ROM loading, window/input controls, original ROM generator, and diagnostics |

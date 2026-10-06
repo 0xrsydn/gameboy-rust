@@ -16,6 +16,8 @@ The repository is a Cargo workspace with three crates:
 | `flake.nix`, `flake.lock` | Pinned Rust/Python development environment |
 | `tools/prepare_gba_tests.py`, `tools/gba-tests-{arm,thumb,memory,bios}.lock.json` | Hash-verified public test source/ROM preparation and suite generation |
 | `tools/test_prepare_gba_tests.py` | Offline adapter tests using original synthetic data |
+| `tools/prepare_homebrew_pong.py`, `tools/homebrew-pong.lock.json` | Hash-pinned homebrew preparation and source-derived gameplay scenarios |
+| `tools/test_prepare_homebrew_pong.py` | Offline homebrew preparation, provenance, bounds, and destination-safety tests |
 | `.envrc` | Automatic environment loading through direnv |
 | `AGENTS.md` | Short orientation for coding agents: crate map, commands, and where docs live |
 | `docs/` | Project documentation; `docs/hardware/` holds per-subsystem behavior notes |

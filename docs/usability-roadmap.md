@@ -33,6 +33,14 @@ SRAM, Flash, and EEPROM require different protocols. Supporting one does not est
 Audio needs device clocks, mixing, and buffering; accepting sound-register writes alone is not audio support.
 The detailed hardware limits remain in [status.md](status.md).
 
+## Current gameplay baseline
+
+The [pinned Pong homebrew](public-pong.md) passes scripted menus, ball movement, and paddle press/release checks.
+The native Darwin window also starts and presents frames without a diagnostic.
+This exposed and corrected missing firmware affine-scale initialization, without a game-specific patch.
+Frame-based scenarios and the preparation adapter now make the result repeatable.
+Next, select an independent game with different device requirements. Cartridge saves and audio remain unimplemented.
+
 ## Development loop
 
 For each feature, inspect the source and hardware evidence, then write original regression tests.

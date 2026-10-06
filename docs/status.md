@@ -82,6 +82,8 @@ Update this file when a feature lands or a limit is removed.
 - Headless JSON ROM suites with PC or VBlank completion, register/CPSR/memory/pixel assertions, scheduled buttons, bounded budgets, and structured failure reports.
 - Hash-pinned preparation of public `jsmolka/gba-tests` ARM, Thumb, memory, and BIOS ROMs, with verified result-register checkpoints.
 - These pinned ROMs pass their checkpoints on Darwin arm64 in debug and release builds; coverage limits remain documented.
+- A [pinned MIT Pong homebrew](public-pong.md) passes captured-pixel menu, ball-motion, and paddle press/release checks in both profiles.
+  A bounded native-window run also completes; scoring, full playthrough, audio, and saves are not validated by this ROM.
 - The original BIOS exposes documented boot, SoftReset, SWI, and IRQ protected-read words through its actual exit layout.
 - ARM test/compare Rd=15 status restoration, without a PC result write or nominal refill.
 - ARM unused-memory data reads return a PC+8 word snapshot, with normal byte lanes and load rotation.

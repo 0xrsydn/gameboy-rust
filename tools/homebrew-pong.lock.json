@@ -1,0 +1,36 @@
+{
+  "repository": "ZeroDayArcade/Pong-Homebrew-GBA",
+  "revision": "c784b6036a4f188c50932b411e98126bfcbd07d6",
+  "license": "MIT",
+  "rom": "Pong-Homebrew-GBA.gba",
+  "files": {
+    "LICENSE": {
+      "bytes": 1074,
+      "sha256": "8e466e1d75cd5e8c1deb5397de6275429d0046f62d5c59129e2e6872559b9b67"
+    },
+    "README.md": {
+      "bytes": 6838,
+      "sha256": "6ea1beefe845bacf9fa443a1dad3c952ad43fa02596c080617f68088c11ab66c"
+    },
+    "Makefile": {
+      "bytes": 6229,
+      "sha256": "f1185b69995f8a9e6be21457eea0ea5ca8dcfc5f132e77a2e49069e81c572d33"
+    },
+    "source/main.c": {
+      "bytes": 12987,
+      "sha256": "8f757309fa142b3d3a4b369a48c20a967958182c22a643456d790549a46bfce4"
+    },
+    "source/graphics.h": {
+      "bytes": 5305,
+      "sha256": "0ee9e111ea484e8e4062693e5e35c32117981968ee32eafc5f3bab1d3925bfea"
+    },
+    "source/characters.h": {
+      "bytes": 11247,
+      "sha256": "216a7457764b180eeeba239526646e0e658c8a5283b7025cc8e4da4ed62a9c1d"
+    },
+    "Pong-Homebrew-GBA.gba": {
+      "bytes": 8884,
+      "sha256": "3c850319ddef6d237756dd64b85ddf3b75bf7c096feb2408ed1b2dd0a05a0158"
+    }
+  }
+}

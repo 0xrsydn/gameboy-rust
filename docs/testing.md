@@ -62,6 +62,8 @@ direnv exec . python3 -B -m unittest discover -s tools -p 'test_*.py' -v
 ```
 
 They verify suite selection, pinned URLs, hashes, sizes, checkpoint validation, offline copies, destination safety, and non-overwriting output.
+The [Pong adapter](public-pong.md) has additional offline tests for its pinned downloads, retained license, and bounded gameplay scenarios.
+Run the external Pong suite separately; ordinary Cargo and Python tests require no public ROM or network access.
 Thumb cases also verify the return-to-ARM bridge. Command-line tests cover default ARM selection, explicit Thumb/memory/BIOS selection, and errors.
 Compare/status CPU regressions verify saved flags/masks, bank switching, sequential PC/timing, User/System fallback, and atomic diagnostics.
 Load-alias regressions cover widths, signed/unaligned values, immediate/register offsets, pre/post-indexing, every non-PC register bank, and address wrapping.

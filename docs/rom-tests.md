@@ -191,5 +191,6 @@ For further public ARM7TDMI/GBA tests, inspect their source, license, entry assu
 Pin source revisions and build instructions before comparing emulator changes.
 Adapt suites to verified completion addresses and result locations; do not guess them or treat timeouts as passes.
 Version 2 supports scheduled input and exact captured-pixel checks.
+The [pinned public Pong scenarios](public-pong.md) now exercise menus, ball movement, and paddle press/release behavior.
 Debug-port logging, external firmware selection, audio assertions, and whole-image comparisons remain unsupported.
 Keep external binaries local. Record consulted sources in [references.md](references.md).
