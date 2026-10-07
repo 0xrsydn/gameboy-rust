@@ -55,6 +55,7 @@ fn parse_args(args: &[OsString]) -> Result<RunMode, io::Error> {
             "--frames",
             "--rtc",
             "--audio",
+            "--speed",
             "--save-type",
             "--save-file",
         ]
@@ -89,7 +90,7 @@ fn parse_args(args: &[OsString]) -> Result<RunMode, io::Error> {
         [arg] if arg == "--help" || arg == "-h" => Ok(RunMode::Help),
         _ => Err(io::Error::new(
             io::ErrorKind::InvalidInput,
-            "usage: gameboy-rust [--cpu-demo | --timer-demo | --graphics-demo | --smoke-test | --graphics-smoke-test | --raster-demo | --raster-smoke-test | --mosaic-demo | --mosaic-smoke-test | --effects-demo | --effects-smoke-test | --tile-demo | --tile-smoke-test | --affine-demo | --affine-smoke-test | --affine-raster-demo | --affine-raster-smoke-test | --bitmap4-demo | --bitmap5-demo | --bitmap4-smoke-test | --bitmap5-smoke-test | --help]; or gameboy-rust --rom PATH [--rtc] [--save-type flash64|flash128] [--save-file PATH] (--steps COUNT | --window [--frames COUNT] [--audio]); or gameboy-rust --test-suite PATH.json",
+            "usage: gameboy-rust [--cpu-demo | --timer-demo | --graphics-demo | --smoke-test | --graphics-smoke-test | --raster-demo | --raster-smoke-test | --mosaic-demo | --mosaic-smoke-test | --effects-demo | --effects-smoke-test | --tile-demo | --tile-smoke-test | --affine-demo | --affine-smoke-test | --affine-raster-demo | --affine-raster-smoke-test | --bitmap4-demo | --bitmap5-demo | --bitmap4-smoke-test | --bitmap5-smoke-test | --help]; or gameboy-rust --rom PATH [--rtc] [--save-type flash64|flash128] [--save-file PATH] (--steps COUNT | --window [--frames COUNT] [--audio] [--speed MULTIPLIER]); or gameboy-rust --test-suite PATH.json",
         )),
     }
 }
@@ -135,7 +136,8 @@ fn run() -> Result<(), Box<dyn Error>> {
                 --rom PATH --steps COUNT  Run a raw ROM in the terminal (1..=100000000 steps)\n\
                 --rom PATH --window       Open a raw ROM with keyboard input\n\
                 --frames COUNT            Exit ROM window after 1..=100000 captured frames\n\
-                --audio                  Enable macOS output for ROM windows (default: muted)\n\
+                --speed MULTIPLIER       ROM-window speed: integer 1..=16 (default: 1); mutes audio above 1x\n\
+                --audio                  Enable macOS output at 1x (default: muted)\n\
                 --rtc                    Select cartridge RTC (UTC startup, host elapsed time)\n\
                 --save-type flash64|flash128  Select nominal Macronix Flash emulation\n\
                 --save-file PATH         Load raw Flash image; persist only on clean exit\n\

@@ -99,6 +99,18 @@ Original terminal/native programs activate wave playback without external assets
 Fixed-rate capture tests verify sample boundaries, timer/PSG ordering, rollback, queue limits, drop counts, and HALT/STOP.
 Host conversion tests require no device and cover rates, stereo/mono mapping, prefill, overflow, underflow, DC removal, and callback splitting.
 CLI tests keep output muted by default and reject `--audio` outside ROM-window mode.
+Speed tests validate integer multipliers 1–16, default 1, invalid/duplicate options, and window-only use.
+Pacing tests check scaled host periods and forced muting above 1×, even with `--audio`.
+A native test compares identical final CPU/cycle reports after fixed frame counts at 1×, 2×, and 16×.
+It records elapsed host time without imposing a load-sensitive timing assertion.
+The original native save/restart test also runs its saving window at 2× with `--audio` requested, but muted.
+
+```sh
+direnv exec . cargo test --locked --release -p gameboy-rust-desktop --test rom_cli native_rom_window_speed -- --ignored --nocapture --test-threads=1
+```
+
+A Darwin arm64 release run took approximately 1.27 seconds at 1× and 0.63 seconds at 2× for the same original program.
+Process/window startup is included. This verifies acceleration in that probe, not a speed guarantee for other games.
 
 The following ignored tests require a native audio device and play original test tones:
 

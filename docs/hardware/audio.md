@@ -264,8 +264,10 @@ Original tests cover exact sample boundaries, timer consumption, pulse phases, b
 
 ## Darwin output adapter
 
-Use `--audio` with `--rom ... --window` to enable CPAL 0.16/CoreAudio output on macOS.
+Use `--audio` with `--rom ... --window` at 1× speed to enable CPAL 0.16/CoreAudio output on macOS.
 Windows remain muted by default. Terminal runs, ROM suites, and demos do not open an audio device.
+ROM-window `--speed` values above 1 override `--audio`: no device is opened and sample capture stays disabled.
+Sound hardware still executes at the same emulated cycle rates. Accelerated audio conversion is not implemented.
 The flag is invalid in terminal mode and cannot be repeated. Other platforms currently report an explicit unsupported-platform error.
 
 The adapter opens the default output device at its default configuration.

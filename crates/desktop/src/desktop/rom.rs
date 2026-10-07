@@ -5,6 +5,24 @@ use std::io::Write;
 use super::*;
 use crate::cartridge::window::{Session, Update};
 
+/// Host-only playback policy. The CLI validates integer speeds from 1 through 16.
+pub struct Playback {
+    pub audio: bool,
+    pub speed: u32,
+}
+
+impl Playback {
+    fn audio_enabled(&self) -> bool {
+        self.audio && self.speed == 1
+    }
+
+    fn frame_period(&self) -> Duration {
+        Duration::from_secs_f64(
+            f64::from(CYCLES_PER_FRAME) / f64::from(CPU_HZ) / f64::from(self.speed),
+        )
+    }
+}
+
 fn next_frame_start(previous: Instant, now: Instant, period: Duration, audio: bool) -> Instant {
     let target = previous + period;
     if audio && now.saturating_duration_since(target) <= period {
@@ -19,10 +37,11 @@ pub fn run(
     frame_limit: Option<u64>,
     hardware: gba_core::cartridge::CartridgeHardware,
     save_device: gba_core::cartridge::SaveDevice,
-    audio_enabled: bool,
+    playback: Playback,
     save_file: Option<&mut crate::cartridge::save_file::SaveFile>,
     writer: &mut impl Write,
 ) -> Result<(), Box<dyn Error>> {
+    let audio_enabled = playback.audio_enabled();
     let mut session = Session::new(bytes)?;
     session.set_cartridge_hardware(hardware);
     session.memory_mut().set_save_device(save_device);
@@ -44,6 +63,11 @@ pub fn run(
         writer,
         "Input releases and audio mutes on focus loss. Save files require --save-file and clean exit. Startup frames are not suppressed."
     )?;
+    writeln!(
+        writer,
+        "Playback speed: {}x target; actual speed depends on host performance.",
+        playback.speed
+    )?;
     if let Some(limit) = frame_limit {
         writeln!(
             writer,
@@ -54,20 +78,31 @@ pub fn run(
     let mut audio = None;
     let mut samples = [gba_core::audio::StereoLevel::default(); 1024];
     let result = (|| -> Result<&str, Box<dyn Error>> {
-        let title = "GBA Rust | ROM | Esc: exit";
-        let mut window = create_window(title)?;
+        let title = format!("GBA Rust | ROM | {}x target | Esc: exit", playback.speed);
+        let mut window = create_window(&title)?;
         window.set_target_fps(0);
         if audio_enabled {
             let output = crate::audio::AudioOutput::new()?;
             writeln!(writer, "Audio enabled: {}", output.description())?;
             audio = Some(output);
             session.memory_mut().set_audio_capture(true);
+        } else if playback.speed > 1 {
+            writeln!(
+                writer,
+                "Audio muted for accelerated playback (--audio ignored above 1x)."
+            )?;
         } else {
             writeln!(writer, "Audio muted; use --audio for macOS output.")?;
         }
         writer.flush()?;
         let mut was_audio_active = false;
-        let period = Duration::from_secs_f64(f64::from(CYCLES_PER_FRAME) / f64::from(CPU_HZ));
+        let period = playback.frame_period();
+        // STOP has no emulation work to accelerate. Keep host input polling at normal speed.
+        let stopped_period = Playback {
+            audio: false,
+            speed: 1,
+        }
+        .frame_period();
         let mut frame_started = Instant::now();
         let mut was_stopped = false;
         // Show a black buffer and pump initial events before boot starts.
@@ -104,7 +139,7 @@ pub fn run(
                 window.set_title(if stopped {
                     "GBA Rust | ROM STOP: waiting for enabled keypad input | Esc: exit"
                 } else {
-                    title
+                    &title
                 });
                 was_stopped = stopped;
             }
@@ -131,7 +166,7 @@ pub fn run(
                     }
                     // Retain the last image. Host polling and sleep do not advance GBA clocks.
                     window.update();
-                    thread::sleep(period);
+                    thread::sleep(stopped_period);
                     frame_started = Instant::now();
                 }
             }
@@ -159,6 +194,29 @@ pub fn run(
 #[cfg(test)]
 mod pacing_tests {
     use super::*;
+    #[test]
+    fn speed_scales_only_host_period_and_disables_audio_above_one() {
+        let normal = Playback {
+            audio: true,
+            speed: 1,
+        };
+        assert!(normal.audio_enabled());
+        assert!(!Playback {
+            audio: false,
+            speed: 1
+        }
+        .audio_enabled());
+        for speed in 1..=16 {
+            for audio in [false, true] {
+                let playback = Playback { audio, speed };
+                assert_eq!(playback.audio_enabled(), audio && speed == 1);
+                let total = playback.frame_period().as_secs_f64() * f64::from(speed);
+                assert!((total - normal.frame_period().as_secs_f64()).abs() < 0.00000002);
+                assert!(!playback.frame_period().is_zero());
+            }
+        }
+    }
+
     #[test]
     fn audio_deadlines_absorb_sleep_overshoot_but_bound_catch_up() {
         let start = Instant::now();

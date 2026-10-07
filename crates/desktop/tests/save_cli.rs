@@ -189,7 +189,7 @@ fn native_rom_window_save_reloads_in_another_process() {
     let f = Fixture::new();
     let write = f.rom("writer.gba", &writer(0xa5, false));
     let output = command(&write, &f.save(), "flash128")
-        .args(["--window", "--frames", "3"])
+        .args(["--window", "--frames", "3", "--speed", "2", "--audio"])
         .output()
         .unwrap();
     assert!(output.status.success(), "{}", text(&output));

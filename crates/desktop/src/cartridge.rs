@@ -22,7 +22,7 @@ use gba_core::{
 
 const MAX_STEPS: u64 = 100_000_000;
 const MAX_FRAMES: u64 = 100_000;
-const USAGE: &str = "usage: gameboy-rust --rom PATH [--rtc] [--save-type flash64|flash128] [--save-file PATH] (--steps COUNT | --window [--frames COUNT] [--audio]); steps: 1..=100000000, frames: 1..=100000; do not combine with demo or help options";
+const USAGE: &str = "usage: gameboy-rust --rom PATH [--rtc] [--save-type flash64|flash128] [--save-file PATH] (--steps COUNT | --window [--frames COUNT] [--audio] [--speed MULTIPLIER]); speed: integer 1..=16 (default 1, audio muted above 1); steps: 1..=100000000, frames: 1..=100000; do not combine with demo or help options";
 
 #[derive(Debug, PartialEq, Eq)]
 enum Mode {
@@ -37,6 +37,7 @@ pub struct Options {
     hardware: CartridgeHardware,
     save_device: SaveDevice,
     audio: bool,
+    speed: u32,
     save_file: Option<PathBuf>,
 }
 
@@ -47,6 +48,7 @@ pub fn parse_args(args: &[OsString]) -> io::Result<Options> {
     let mut frames = None;
     let mut window = false;
     let mut audio = false;
+    let mut speed = None;
     let mut hardware = CartridgeHardware::None;
     let mut save_device = SaveDevice::None;
     let mut save_file = None;
@@ -70,6 +72,19 @@ pub fn parse_args(args: &[OsString]) -> io::Result<Options> {
             save_file = Some(PathBuf::from(
                 args.next().filter(|v| !v.is_empty()).ok_or_else(invalid)?,
             ));
+        } else if arg == "--speed" && speed.is_none() {
+            let value = args
+                .next()
+                .and_then(|value| value.to_str())
+                .ok_or_else(invalid)?;
+            if value.is_empty() || !value.bytes().all(|byte| byte.is_ascii_digit()) {
+                return Err(invalid());
+            }
+            let multiplier = value.parse::<u32>().map_err(|_| invalid())?;
+            if !(1..=16).contains(&multiplier) {
+                return Err(invalid());
+            }
+            speed = Some(multiplier);
         } else if arg == "--audio" && !audio {
             audio = true;
         } else if arg == "--window" && !window {
@@ -103,7 +118,7 @@ pub fn parse_args(args: &[OsString]) -> io::Result<Options> {
     if save_file.is_some() && save_device == SaveDevice::None {
         return Err(invalid());
     }
-    if audio && !window {
+    if (audio || speed.is_some()) && !window {
         return Err(invalid());
     }
     let mode = match (window, steps, frames) {
@@ -118,6 +133,7 @@ pub fn parse_args(args: &[OsString]) -> io::Result<Options> {
         save_device,
         save_file,
         audio,
+        speed: speed.unwrap_or(1),
     })
 }
 
@@ -320,7 +336,10 @@ pub fn execute(options: Options, writer: &mut impl Write) -> Result<(), Box<dyn 
                 frames,
                 options.hardware,
                 options.save_device,
-                options.audio,
+                crate::desktop::RomPlayback {
+                    audio: options.audio,
+                    speed: options.speed,
+                },
                 save_file.as_mut(),
                 writer,
             )

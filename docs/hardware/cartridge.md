@@ -108,6 +108,27 @@ HALT continues device clocks and frame publication.
 Normal presentation targets approximately 59.73 frames per second, without frame skipping or accumulated catch-up work.
 Slow hosts can run slower than real time. Host sleeping never advances emulated clocks.
 
+### Playback speed
+
+Use `--speed 2` with `--window` to target twice normal speed.
+The option accepts integer multipliers from 1 through 16; the default is 1.
+Missing values, duplicate options, fractions, and values outside this range are rejected before ROM loading.
+The option is not available for terminal runs, test suites, or demos.
+
+```sh
+direnv exec . cargo run --locked --release -- --rom roms/pokemon-emerald.gba --rtc --save-type flash128 --save-file roms/pokemon-emerald.sav --window --speed 2
+```
+
+Speed changes only the host frame period. CPU/device cycle ratios, captured frames, execution budgets, and save operations remain unchanged.
+Every emulated frame is still presented. Actual speed depends on CPU, rendering, window-system, and display costs.
+Input remains sampled between bounded execution slices. Interactive STOP retains normal-speed host polling instead of busy waiting.
+RTC still follows host elapsed time; the speed multiplier does not accelerate the cartridge clock.
+
+Above 1×, audio output and capture are disabled, even when `--audio` is present.
+No host audio device is opened. Sound hardware still executes normally, including diagnostics for unsupported behavior.
+At 1×, `--audio` retains its existing meaning. The window title and terminal report show the requested speed.
+Finish the in-game save before exiting normally; speed does not change clean-exit persistence rules.
+
 In interactive mode, STOP retains the last image and changes the window title.
 The host continues polling input and window-close events while GBA clocks remain frozen.
 Only keypad conditions configured by the ROM through KEYCNT and IE can wake STOP.
@@ -138,7 +159,8 @@ Right takes priority over Z. Other buttons have no visible effect in this small 
 No game or firmware content is included.
 
 ROM windows can enable Darwin output with `--audio`; they are muted by default.
-The option requires a usable default audio device. Device/configuration errors fail explicitly; omit the flag to run muted.
+At 1×, the option requires a usable default audio device. Device/configuration errors fail explicitly; omit the flag to run muted.
+Above 1×, `--speed` overrides `--audio` and keeps output muted.
 Focus loss and STOP clear queued audio. See [audio output and its limits](audio.md#darwin-output-adapter).
 Terminal mode has no audio. Both modes support explicit save files but lack per-step tracing.
 Commercial-game compatibility remains unverified and unsupported.

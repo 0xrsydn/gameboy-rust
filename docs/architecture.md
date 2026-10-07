@@ -176,7 +176,7 @@ The repository is a Cargo workspace with three crates:
 | `crates/desktop/src/cartridge/rtc_clock.rs` | Host-only UTC seed and monotonic elapsed-time adapter, with injected epoch/duration tests |
 | `crates/desktop/src/cartridge/window.rs` | ROM-window session, bounded slices, capture, STOP/input handling, and progress limits |
 | `crates/desktop/src/cartridge/window/tests.rs` | Original ROM pixels, keyboard mapping, STOP wake, HALT, frame budgets, and diagnostics |
-| `crates/desktop/src/desktop/rom.rs` | Main-thread ROM window, input polling, optional audio draining/muting, bounded pacing, and frame-limited exit |
+| `crates/desktop/src/desktop/rom.rs` | Main-thread ROM window, input polling, optional audio draining/muting, speed-scaled host pacing, and frame-limited exit |
 | `crates/desktop/examples/write_rom_demo.rs` | Non-overwriting export of the original input-test ROM |
 | `crates/desktop/src/cartridge/tests.rs` | ROM options, bounded readers, instruction/DMA/IRQ budgets, HALT/STOP, and diagnostic reports |
 | `crates/desktop/tests/rom_cli.rs` | File loading and exit-status checks; opt-in native ROM-window integration test |

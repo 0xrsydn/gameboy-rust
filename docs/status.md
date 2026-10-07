@@ -95,6 +95,7 @@ Update this file when a feature lands or a limit is removed.
 - Two-bank wave playback, active bank changes, and unsupported serial operations remain diagnostic with whole-access and block-store rollback.
 - ROM windows with scanline capture, keyboard input, focus-loss release, bounded execution slices, and interactive keypad wake from STOP.
 - Opt-in macOS CoreAudio output, with tested original tones and wave-ROM playback; focus loss and STOP mute queued audio.
+- ROM-window `--speed 1..16` targets accelerated playback through host pacing only; audio is muted above 1×.
 - Optional ROM-window frame limits and an original input-test ROM generator.
 - Headless JSON ROM suites with PC or VBlank completion, register/CPSR/memory/pixel assertions, scheduled buttons, bounded budgets, and structured failure reports.
 - Hash-pinned preparation of public `jsmolka/gba-tests` ARM, Thumb, memory, and BIOS ROMs, with verified result-register checkpoints.

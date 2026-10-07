@@ -99,6 +99,78 @@ fn wave_setup() -> Vec<u32> {
 }
 
 #[test]
+fn speed_options_fail_before_file_access_when_invalid() {
+    for tail in [
+        vec!["--speed"],
+        vec!["--speed", "0"],
+        vec!["--speed", "17"],
+        vec!["--speed", "NaN"],
+        vec!["--speed", "2.5"],
+        vec!["--speed", "2", "--speed", "2"],
+        vec!["--steps", "1", "--speed", "1"],
+    ] {
+        let output = command()
+            .args(["--rom", "missing.gba", "--window"])
+            .args(tail)
+            .output()
+            .unwrap();
+        assert!(!output.status.success());
+        assert!(stderr(&output).contains("usage:"));
+        assert!(!stderr(&output).contains("cannot load ROM"));
+    }
+    let output = command()
+        .args(["--rom", "missing.gba", "--steps", "1", "--speed", "2"])
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    assert!(stderr(&output).contains("usage:"));
+    for tail in [vec!["--speed", "2"], vec!["--speed", "2", "--audio"]] {
+        let output = command()
+            .args(["--rom", "missing.gba", "--window"])
+            .args(tail)
+            .output()
+            .unwrap();
+        assert!(stderr(&output).contains("cannot load ROM"));
+    }
+    let output = command().arg("--help").output().unwrap();
+    assert!(stdout(&output).contains("--speed MULTIPLIER"));
+}
+
+#[test]
+#[ignore = "requires a logged-in desktop session; accelerated audio stays muted"]
+fn native_rom_window_speed_preserves_state_and_mutes_requested_audio() {
+    let fixture = Fixture::new();
+    let path = fixture.rom(&wave_setup());
+    let mut baseline = None;
+    for speed in ["1", "2", "16"] {
+        let mut cmd = command();
+        cmd.arg("--rom")
+            .arg(&path)
+            .args(["--window", "--frames", "60", "--speed", speed]);
+        if speed != "1" {
+            cmd.arg("--audio");
+        }
+        let started = std::time::Instant::now();
+        let output = cmd.output().unwrap();
+        eprintln!("speed {speed}x: {:?}", started.elapsed());
+        assert!(output.status.success(), "{}", stderr(&output));
+        let report = stdout(&output);
+        assert!(report.contains(&format!("Playback speed: {speed}x target")));
+        assert!(report.contains("Captured ROM frames: 60"));
+        assert!(!report.contains("Audio enabled:"));
+        if speed != "1" {
+            assert!(report.contains("Audio muted for accelerated playback"));
+        }
+        let state = report.split("Steps: ").nth(1).unwrap().to_owned();
+        if let Some(expected) = &baseline {
+            assert_eq!(&state, expected);
+        } else {
+            baseline = Some(state);
+        }
+    }
+}
+
+#[test]
 fn audio_options_fail_before_file_access_unless_a_window_is_selected() {
     for tail in [
         vec!["--audio", "--steps", "1"],

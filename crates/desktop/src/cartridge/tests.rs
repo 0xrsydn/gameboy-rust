@@ -31,6 +31,7 @@ fn options_require_both_flags_in_either_order() {
                     save_device: SaveDevice::None,
                     save_file: None,
                     audio: false,
+                    speed: 1,
                 }
             );
         }
@@ -68,6 +69,71 @@ fn save_file_requires_explicit_device_and_one_nonempty_path() {
         parse_args(&arguments).unwrap().save_file,
         Some("test.sav".into())
     );
+}
+
+#[test]
+fn speed_defaults_to_one_and_accepts_bounded_integers_in_any_order() {
+    assert_eq!(
+        parse_args(&args(&["--rom", "test.gba", "--window"]))
+            .unwrap()
+            .speed,
+        1
+    );
+    for multiplier in 1..=16 {
+        let value = multiplier.to_string();
+        for arguments in [
+            args(&["--rom", "test.gba", "--window", "--speed", &value]),
+            args(&[
+                "--speed", &value, "--audio", "--frames", "3", "--rom", "test.gba", "--window",
+            ]),
+        ] {
+            assert_eq!(parse_args(&arguments).unwrap().speed, multiplier);
+        }
+    }
+}
+
+#[test]
+fn speed_rejects_invalid_values_duplicate_flags_and_nonwindow_modes() {
+    for value in [
+        "",
+        "0",
+        "17",
+        "-1",
+        "+2",
+        "2.0",
+        "1.5",
+        "NaN",
+        "inf",
+        " 2",
+        "2 ",
+        "２",
+        "0x2",
+        "4294967296",
+    ] {
+        assert!(
+            parse_args(&args(&["--rom", "test.gba", "--window", "--speed", value])).is_err(),
+            "{value:?}"
+        );
+    }
+    for arguments in [
+        vec!["--rom", "test.gba", "--window", "--speed"],
+        vec![
+            "--rom", "test.gba", "--window", "--speed", "2", "--speed", "2",
+        ],
+        vec!["--rom", "test.gba", "--steps", "100", "--speed", "1"],
+        vec!["--rom", "test.gba", "--speed", "2"],
+        vec!["--speed", "2", "--cpu-demo"],
+        vec!["--speed", "2", "--help"],
+    ] {
+        assert!(parse_args(&args(&arguments)).is_err(), "{arguments:?}");
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::ffi::OsStringExt;
+        let mut arguments = args(&["--rom", "test.gba", "--window", "--speed"]);
+        arguments.push(OsString::from_vec(vec![255]));
+        assert!(parse_args(&arguments).is_err());
+    }
 }
 
 #[test]
