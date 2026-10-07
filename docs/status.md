@@ -198,7 +198,7 @@ An [isolated reproduction](research/emerald-empty-lz.md) identified a zero-lengt
 The replacement BIOS now returns for that empty stream. Full starter-selection progress after this correction needs user retesting.
 A later [visible-progress probe](research/emerald-visible-progress.md) renders the title screen, logo, NEW GAME/OPTION menu, Prof. Birch scene, and legible dialogue in attract mode.
 Sparse A/Start taps reach the gender prompt by 4,000 frames and the in-game start menu over the overworld by 12,000 frames without a diagnostic.
-A 40,000-frame tapped run is checking the reported 37,101-frame starter-selection trap point; blind taps may take a different menu path.
+A 40,000-frame tapped run passed the reported 37,101-frame trap point without a diagnostic; blind taps take a different menu path, so the identical scene is not confirmed visited.
 A local second-game ROM faults in boot init on a halfword store to ROM mirror `0x09fe2ffe` past its 16 MiB EOF; without save hardware it faults earlier on a Flash unlock write. Both are recorded, not fixed.
 See [the startup result](research/emerald-reset.md) for the bounded run and next investigation.
 See [cartridge loading](hardware/cartridge.md) for file limits, step budgets, and exit status.

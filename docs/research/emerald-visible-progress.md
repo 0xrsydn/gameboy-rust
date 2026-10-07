@@ -36,21 +36,22 @@ the `0x080008c6–0x080008cc` wait loop and game code (`0x082e6dcc`,
 The `sweep` schedule changes captured output per input (input-dependent
 execution) but its denser presses stall the intro on a blue field; raw
 button rotation is worse than sparse taps for menu progress.
+A 40,000-frame `advance` run completed with exit status zero: no diagnostic
+through frame 39,999, so the reported `INVALID_ARGUMENT_TRAP` at 37,101
+captured frames did not reappear on this input path. Blind taps take a
+different menu path than manual play, so the identical starter-selection
+scene is not confirmed visited — this validates forward progress and no
+regression, not the exact user scenario.
+From about frame 9,000 onward the captures cycle among three checksums
+(`0x24bdf6c568`, `0x2503d09807`, `0x7983c73704`) with periodic black fade
+frames, consistent with Start taps toggling the overworld start menu; the
+scene past frame 12,000 was not visually confirmed. The final frame is
+black mid-fade (checksum zero).
 
-A 40,000-frame `advance` run is in progress to check the user's reported
-starter-selection trap point (37,101 captured frames in their manual run)
-against the empty-LZ77 correction. Blind taps take a different menu path
-than manual play, so reaching the identical scene is not guaranteed; a
-diagnostic-free run still validates forward progress, while any trap gets
-recorded with full CPU state.
-
-## Result status
-
-Execution is diagnostic-free through 12,000 tapped frames (about 1.18
+Execution is diagnostic-free through 40,000 tapped frames (about 3.9
 billion machine steps). This establishes visible menus, sprite/dialogue
 composition, and input-driven progress — not correct gameplay, audio, or
-saving. The old `INVALID_ARGUMENT_TRAP` at starter selection has not yet
-been re-encountered because the probe has not reached that scene.
+saving.
 
 ## Second-game data point
 
