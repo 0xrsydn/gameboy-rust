@@ -189,15 +189,17 @@ With explicit `--rtc` selection, it also passes Game Pak GPIO configuration and 
 With `--save-type flash128`, it also passes Flash identification and reaches a later startup check.
 It now passes disconnected Joybus setup and completes a bounded 600-frame native run without a diagnostic error.
 That run used no scripted input or pixel assertions.
-A later [fixed-time input probe](research/emerald-wave.md) found a wave trigger with its gate disabled.
+A [fixed-time input probe](research/emerald-wave.md) found a wave trigger with its gate disabled.
 Wave support now passes that point and reaches 1,320 frames with scheduled Start/A presses and releases.
 Output differs from a no-input control, but readable menus and gameplay remain unverified.
 Flash writing and host persistence now pass original save/restart/load tests. Emerald saving and reloading remain unverified.
 A user reached starter selection, then reported a BIOS invalid-argument trap.
 An [isolated reproduction](research/emerald-empty-lz.md) identified a zero-length LZ77 header rejected before the length check.
 The replacement BIOS now returns for that empty stream. Full starter-selection progress after this correction needs user retesting.
-Without `--rtc`, cartridge GPIO writes still return read-only diagnostics.
-No title-screen, gameplay, or audible-game compatibility is established.
+A later [visible-progress probe](research/emerald-visible-progress.md) renders the title screen, logo, NEW GAME/OPTION menu, Prof. Birch scene, and legible dialogue in attract mode.
+Sparse A/Start taps reach the gender prompt by 4,000 frames and the in-game start menu over the overworld by 12,000 frames without a diagnostic.
+A 40,000-frame tapped run is checking the reported 37,101-frame starter-selection trap point; blind taps may take a different menu path.
+A local second-game ROM faults in boot init on a halfword store to ROM mirror `0x09fe2ffe` past its 16 MiB EOF; without save hardware it faults earlier on a Flash unlock write. Both are recorded, not fixed.
 See [the startup result](research/emerald-reset.md) for the bounded run and next investigation.
 See [cartridge loading](hardware/cartridge.md) for file limits, step budgets, and exit status.
 The [ROM suite runner](rom-tests.md) has original regressions and a [pinned public ARM baseline](public-arm-tests.md).

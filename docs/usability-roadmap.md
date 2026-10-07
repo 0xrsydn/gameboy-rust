@@ -64,7 +64,8 @@ A reproducible source build or an accessible upstream ROM is needed before recor
 
 Next implementation steps:
 
-1. Inspect visible startup/menu progress and exercise input in the bounded local game run. Record the first demonstrated failure.
+1. Visible startup/menu progress is established: attract mode reaches the start menu and Birch dialogue, and sparse taps reach the in-game start menu by 12,000 frames ([probe](research/emerald-visible-progress.md)).
+   The first demonstrated second-game failure is a boot-init halfword store to ROM mirror `0x09fe2ffe` (recorded, not fixed).
    Use original regressions for any hardware correction; do not invent connected serial devices.
 2. Validate an external game's completed save/restart/load cycle using a disposable `--save-file` path.
    Refine nominal Flash timing and polling only with independent evidence and original regressions.
