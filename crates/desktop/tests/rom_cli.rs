@@ -278,7 +278,7 @@ fn explicit_flash_selection_runs_ram_byte_reader_and_leaves_files_unchanged() {
             .unwrap();
         assert!(output.status.success(), "{}", stderr(&output));
         let text = stdout(&output);
-        assert!(text.contains("identification/bank reads only"));
+        assert!(text.contains("nominal program/erase timing and DQ7 polling"));
         assert!(text.contains("r5=0x000000c2"), "{text}");
         assert!(text.contains(id), "{text}");
         assert_eq!(fs::read(&path).unwrap(), bytes);
@@ -427,7 +427,9 @@ fn help_describes_terminal_rom_mode_and_existing_cpu_demo_still_runs() {
     assert!(output.status.success());
     assert!(stdout(&output).contains("--rom PATH --steps COUNT"));
     assert!(stdout(&output).contains("--rom PATH --window"));
-    assert!(stdout(&output).contains("ROM windows offer --audio on macOS. No saves."));
+    assert!(stdout(&output).contains(
+        "ROM windows offer --audio on macOS. Saves require --save-type and --save-file."
+    ));
     let output = command().arg("--cpu-demo").output().unwrap();
     assert!(output.status.success());
     assert!(stdout(&output).contains("Exception demo"));

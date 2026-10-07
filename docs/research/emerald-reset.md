@@ -73,8 +73,8 @@ Core tests inject deterministic time. Desktop `--rtc` uses UTC startup and monot
 Select it explicitly; ordinary ROM bytes and other ROMs' default hardware remain unchanged.
 
 RTC support then reached a Flash unlock write (`0xaa` at `0x0e005555`, PC `0x082e1892`).
-The explicit [Flash read subset](../hardware/saves.md) now handles identification, array reads, and bank selection.
-Select `--save-type flash128` for this bounded run; the device begins erased and no save file is opened.
+The initial [Flash subset](../hardware/saves.md) added identification, array reads, and bank selection.
+This bounded run selected `--save-type flash128` without a save file; the device began erased.
 A later redundant `0xf0` write occurred after returning to idle array mode.
 The subset accepts that no-op without claiming direct Flash128 ID exit or busy-command cancellation.
 
@@ -117,7 +117,8 @@ The pinned Pong debug/release reports match.
 A subsequent [scheduled-input probe](emerald-wave.md) exposed a wave-channel trigger with its gate disabled.
 The general single-bank wave model now passes that point and completes an extended Start/A input schedule.
 Visible menu semantics and gameplay still require verification; frame-limit success alone cannot establish either.
-Flash programming, erase, busy behavior, and safe persistence remain required before claiming save compatibility.
+Nominal Flash programming, erase, DQ7 polling, and explicit host persistence were added after these game probes.
+Original ROM save/restart/load tests pass, but Emerald's completed save and reload still need separate validation.
 RTC persistence and cartridge IRQ behavior remain separate missing features.
 Ordinary ROM writes remain read-only. Without `--rtc`, the earlier GPIO diagnostic is still expected.
 This result does not establish gameplay, linked transfers, or cartridge/serial GPIO interrupt support.
@@ -128,7 +129,7 @@ All supported channels use the instantaneous digital-level inspection interface.
 Wave channel 3 now supports single-bank playback. Two-bank playback remains missing.
 Fixed-rate capture and optional Darwin `--audio` output were added later; their counters do not establish correct game music.
 Do not treat digital-level tests as audible-game validation or suppress remaining diagnostics without implementing their behavior.
-Cartridge saves remain a separate required feature. SRAM alone will not support Emerald's Flash save protocol.
+External-game save compatibility remains unverified. SRAM alone will not support Emerald's Flash save protocol.
 
 Hardware and emulator references are recorded in the linked subsystem documents.
 [GBATEK backup Flash](https://problemkaputt.de/gbatek-gba-cart-backup-flash-rom.htm) identifies the `0xaa`/`0x5555` unlock and chip-identification sequence.

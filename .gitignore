@@ -5,5 +5,8 @@
 *.gba
 *.nds
 *.sav
+*.sav.lock
+*.sav.tmp.*
+*.sav.bak.*
 __pycache__/
 *.pyc

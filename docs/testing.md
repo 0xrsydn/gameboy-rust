@@ -74,10 +74,24 @@ Desktop tests execute original ARM calendar commands in terminal and native-wind
 Host-adapter tests inject UTC epoch values and elapsed durations without sleeping. Guest time changes survive subsequent elapsed updates.
 Physical pin timing, invalid-date hardware correction, GPIO aliases, and battery persistence remain unverified or unimplemented.
 Flash regressions use original command sequences and exact-size generated arrays, not game saves.
-They check device IDs, every byte in both 128 KiB banks, erased state, image validation, reset limits, and unsupported program/erase commands.
+They check device IDs, bank addressing, erased state, image validation, and bounded reset behavior.
+Program/erase tests cover all data bytes, sector/chip scope, nominal delays, DQ7 polling, bit transitions, HALT, and STOP.
+Ordered ARM/Thumb probes verify completion reads, store-phase start, speculative timing, and array/modification rollback.
 ARM/Thumb probes verify RAM byte reads, ROM command writes, all save wait settings, staged ID state, and failed-step rollback.
 Wide accesses, DMA, instruction fetches, and CPU reads outside work RAM retain explicit diagnostics.
-An original desktop ROM installs its Flash byte reader in IWRAM; terminal/native tests check explicit selection and unchanged files.
+An original desktop ROM installs its Flash byte reader in IWRAM; terminal/native tests check explicit selection and unchanged ROMs.
+Separate processes program, persist, restart, and read the image through that reader.
+Host tests reject incomplete operations, diagnostic exits, wrong sizes, aliases, read-only paths, lock conflicts, and external changes.
+They also verify unique retained backups, unchanged-image no-ops, and cleanup. All images are generated in temporary directories.
+
+The save-window check requires a logged-in desktop session, but no physical input or audio device:
+
+```sh
+direnv exec . cargo test --locked --release -p gameboy-rust-desktop --test save_cli native_rom_window_save -- --ignored --test-threads=1
+```
+
+That check validates frame-limit persistence and a separate terminal reload on Darwin arm64.
+It does not validate external-game saves or crash/power-loss durability.
 They verify explicit activation errors and atomic byte/word/block-store/DMA failure behavior.
 Wave tests cover every frequency and bank, independent nibble rotation, full rotations, bounded maximum batches, and fractional gains.
 They also check inactive triggers, gates, length, status, master/BIOS reset, HALT/STOP, live-write limits, and CPU/DMA rollback.

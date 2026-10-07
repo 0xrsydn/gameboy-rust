@@ -20,11 +20,15 @@ pub fn run(
     hardware: gba_core::cartridge::CartridgeHardware,
     save_device: gba_core::cartridge::SaveDevice,
     audio_enabled: bool,
+    save_file: Option<&mut crate::cartridge::save_file::SaveFile>,
     writer: &mut impl Write,
 ) -> Result<(), Box<dyn Error>> {
     let mut session = Session::new(bytes)?;
     session.set_cartridge_hardware(hardware);
     session.memory_mut().set_save_device(save_device);
+    if let Some(save) = save_file.as_ref() {
+        save.initialize(session.memory_mut())?;
+    }
     let mut rtc_clock = if hardware == gba_core::cartridge::CartridgeHardware::Rtc {
         Some(crate::cartridge::rtc_clock::RtcHostClock::new(
             session.memory_mut(),
@@ -38,7 +42,7 @@ pub fn run(
     )?;
     writeln!(
         writer,
-        "Input releases and audio mutes on focus loss. No saves. Startup frames are not suppressed."
+        "Input releases and audio mutes on focus loss. Save files require --save-file and clean exit. Startup frames are not suppressed."
     )?;
     if let Some(limit) = frame_limit {
         writeln!(
@@ -50,7 +54,7 @@ pub fn run(
     let mut audio = None;
     let mut samples = [gba_core::audio::StereoLevel::default(); 1024];
     let result = (|| -> Result<&str, Box<dyn Error>> {
-        let title = "GBA Rust | ROM | Esc: exit | No saves";
+        let title = "GBA Rust | ROM | Esc: exit";
         let mut window = create_window(title)?;
         window.set_target_fps(0);
         if audio_enabled {
@@ -144,7 +148,12 @@ pub fn run(
     if let Some(output) = audio.as_ref() {
         output.report(writer)?;
     }
-    result.map(|_| ())
+    result?;
+    writer.flush()?;
+    if let Some(save) = save_file {
+        crate::cartridge::persist_save(save, session.memory_mut(), writer)?;
+    }
+    Ok(())
 }
 
 #[cfg(test)]

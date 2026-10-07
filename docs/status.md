@@ -80,8 +80,10 @@ Update this file when a feature lands or a limit is removed.
 - Validated RTC date/time, BCD transfers, read snapshots, complete writes/reset, and caller-supplied battery-clock advancement.
 - Desktop `--rtc` seeds UTC once and supplies host elapsed seconds independently of CPU cycles and STOP.
 - Cartridge GPIO and Flash controller changes participate in CPU/DMA rollback and block-store preflight without modifying ROM bytes.
-- Explicit Macronix Flash64/Flash128 identification, read-only arrays, and 128 KiB bank selection.
-- Exact-size core save-image initialization and inspection; desktop save selection starts erased and performs no save-file access.
+- Explicit Macronix Flash64/Flash128 identification, bank selection, delayed byte programming, sector/chip erase, and nominal DQ7 polling.
+- Transactional Flash completion and modification tracking, with exact-size core image loading and inspection.
+- Optional desktop `--save-file` loading and clean-exit persistence, with exclusive locks, atomic installation, and unique previous-image backups.
+- Original ROM save/restart/load checks across processes, including native-window persistence on Darwin arm64.
 - Raw ROM-file loading with original BIOS boot, terminal diagnostics, and final CPU/step reports.
 - Firmware boot initializes BG2/BG3 identity scales for bitmap and affine programs that do not program their own matrices.
 - RegisterRamReset supports disabled sound and disconnected serial initialization, including the common `r0=0xff` request.
@@ -147,9 +149,11 @@ Internal affine origins, vertical window flags, and vertical mosaic counters tra
 Horizontal window comparators retain four-cycle event history.
 Sprite rows prepare one line ahead with a whole-row cycle40 sample and nominal per-row work limits.
 Individual fetch timing, hardware-accurate work cutoffs, video-bus contention, and per-pixel color composition remain unimplemented.
-ROM windows offer opt-in Darwin audio output with `--audio`. Save writing/persistence remains unavailable.
-The [Flash subset](hardware/saves.md) supports explicit device selection, identification, array reads, and banking.
-Flash programming, erase, busy polling, wider accesses, unverified aliases, and other save-device protocols remain diagnostic or unimplemented.
+ROM windows offer opt-in Darwin audio output with `--audio` and explicit save persistence with `--save-file`.
+The [Flash subset](hardware/saves.md) supports programming and erase with nominal delays and bounded DQ7 polling.
+Flash timing, STOP clocking, and cancellation are not hardware-verified. Wider accesses and unverified busy addresses remain diagnostic.
+SRAM, EEPROM, other manufacturers, autosave, crash recovery, and game-level save transactions remain unsupported.
+Persistence is tested on Darwin arm64 with original programs, not yet with external-game saves.
 The optional [cartridge GPIO/RTC subset](hardware/cartridge-gpio.md) supports calendar/control transfers and explicit clock updates, selected with `--rtc` in ROM modes.
 RTC persistence, interrupts, invalid-date correction, physical subsecond timing, GPIO aliases, and byte writes remain unsupported or unverified.
 The core uses deterministic caller time. Desktop RTC runs use host UTC/elapsed time and are not fully deterministic.
@@ -171,7 +175,7 @@ The presentation framebuffer is separate from emulated video RAM.
 All named graphics demos connect desktop input and rendering to the emulated CPU. The default display test remains host-generated.
 ROM files can run in bounded terminal mode or a window with the original BIOS replacement.
 ROM windows have no demo-specific startup checks. Input is sampled between bounded execution slices.
-Audio is muted by default; `--audio` opens the macOS output device for ROM windows only. Saves and external BIOS loading remain unavailable.
+Audio is muted by default; `--audio` opens the macOS output device for ROM windows only. Save files require explicit selection; external BIOS loading remains unavailable.
 The host output has bounded buffers, linear rate conversion, DC removal, and underrun/drop counters. Slow hosts can stutter.
 ROM loading and nonzero audio callbacks do not establish commercial-game compatibility or correct music.
 A local Emerald run now completes its all-device reset and master sound enable.
@@ -186,7 +190,7 @@ That run used no scripted input or pixel assertions.
 A later [fixed-time input probe](research/emerald-wave.md) found a wave trigger with its gate disabled.
 Wave support now passes that point and reaches 1,320 frames with scheduled Start/A presses and releases.
 Output differs from a no-input control, but readable menus and gameplay remain unverified.
-Flash writing and persistence remain unimplemented.
+Flash writing and host persistence now pass original save/restart/load tests. Emerald saving and reloading remain unverified.
 Without `--rtc`, cartridge GPIO writes still return read-only diagnostics.
 No title-screen, gameplay, or audible-game compatibility is established.
 See [the startup result](research/emerald-reset.md) for the bounded run and next investigation.

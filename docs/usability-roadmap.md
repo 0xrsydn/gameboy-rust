@@ -52,7 +52,8 @@ Fixed-rate stereo capture and opt-in Darwin `--audio` output now work with origi
 A local Emerald run submits nonzero device frames but records underruns; listening quality and correct music remain unverified.
 Two-bank wave playback, hardware PWM sampling, and improved reconstruction/pacing remain missing.
 See [the runtime result](research/emerald-reset.md). Next, verify visible menu progress rather than treating frame counts as playability.
-The separate save requirement includes Flash programming/erase and safe host persistence. Identification/read support is not successful saving.
+Nominal Flash programming/erase and explicit clean-exit persistence now pass original save/restart/load tests across processes.
+A native-window save also reloads through a separate process on Darwin arm64. External-game saving remains unverified.
 SRAM is byte-addressable battery-backed save memory. Flash and EEPROM remain separate protocols.
 
 [Paperdomo101/2048-GBA at ae36800d](https://github.com/Paperdomo101/2048-GBA/tree/ae36800dfa1314f96c4c8785b5c2d077fb731aff) is the next independent candidate.
@@ -65,11 +66,10 @@ Next implementation steps:
 
 1. Inspect visible startup/menu progress and exercise input in the bounded local game run. Record the first demonstrated failure.
    Use original regressions for any hardware correction; do not invent connected serial devices.
-2. Extend explicit Flash selection with verified programming, erase, and busy behavior. Keep absent devices and unsupported commands diagnostic.
-   Add SRAM separately when the independent candidate requires it; verify its widths, mirroring, and wait behavior first.
-3. Add bounded save loading and safe persistence in the desktop crate. Do not put file operations in the core.
-4. Test a save/restart/load cycle across processes with original ROM instructions before external-game validation.
-5. Resume the second-game run and implement demonstrated audio requirements rather than accepting writes without behavior.
+2. Validate an external game's completed save/restart/load cycle using a disposable `--save-file` path.
+   Refine nominal Flash timing and polling only with independent evidence and original regressions.
+3. Add SRAM separately when the independent candidate requires it; verify widths, mirroring, and waits first.
+4. Resume the second-game run and implement demonstrated audio requirements rather than accepting writes without behavior.
 
 ## Development loop
 

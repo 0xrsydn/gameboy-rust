@@ -1,6 +1,7 @@
 //! Host-only raw ROM loading, execution modes, and diagnostics.
 
 pub(crate) mod rtc_clock;
+pub(crate) mod save_file;
 pub mod suite;
 pub mod window;
 
@@ -21,7 +22,7 @@ use gba_core::{
 
 const MAX_STEPS: u64 = 100_000_000;
 const MAX_FRAMES: u64 = 100_000;
-const USAGE: &str = "usage: gameboy-rust --rom PATH [--rtc] [--save-type flash64|flash128] (--steps COUNT | --window [--frames COUNT] [--audio]); steps: 1..=100000000, frames: 1..=100000; do not combine with demo or help options";
+const USAGE: &str = "usage: gameboy-rust --rom PATH [--rtc] [--save-type flash64|flash128] [--save-file PATH] (--steps COUNT | --window [--frames COUNT] [--audio]); steps: 1..=100000000, frames: 1..=100000; do not combine with demo or help options";
 
 #[derive(Debug, PartialEq, Eq)]
 enum Mode {
@@ -36,6 +37,7 @@ pub struct Options {
     hardware: CartridgeHardware,
     save_device: SaveDevice,
     audio: bool,
+    save_file: Option<PathBuf>,
 }
 
 pub fn parse_args(args: &[OsString]) -> io::Result<Options> {
@@ -47,6 +49,7 @@ pub fn parse_args(args: &[OsString]) -> io::Result<Options> {
     let mut audio = false;
     let mut hardware = CartridgeHardware::None;
     let mut save_device = SaveDevice::None;
+    let mut save_file = None;
     let mut args = args.iter();
     while let Some(arg) = args.next() {
         if arg == "--rom" && path.is_none() {
@@ -63,6 +66,10 @@ pub fn parse_args(args: &[OsString]) -> io::Result<Options> {
                 Some("flash128") => SaveDevice::Flash128,
                 _ => return Err(invalid()),
             };
+        } else if arg == "--save-file" && save_file.is_none() {
+            save_file = Some(PathBuf::from(
+                args.next().filter(|v| !v.is_empty()).ok_or_else(invalid)?,
+            ));
         } else if arg == "--audio" && !audio {
             audio = true;
         } else if arg == "--window" && !window {
@@ -93,6 +100,9 @@ pub fn parse_args(args: &[OsString]) -> io::Result<Options> {
             return Err(invalid());
         }
     }
+    if save_file.is_some() && save_device == SaveDevice::None {
+        return Err(invalid());
+    }
     if audio && !window {
         return Err(invalid());
     }
@@ -106,6 +116,7 @@ pub fn parse_args(args: &[OsString]) -> io::Result<Options> {
         mode,
         hardware,
         save_device,
+        save_file,
         audio,
     })
 }
@@ -282,7 +293,24 @@ pub fn execute(options: Options, writer: &mut impl Write) -> Result<(), Box<dyn 
         writeln!(writer, "RTC selected: UTC at startup, then host elapsed time; no persistence or RTC interrupts.")?;
     }
     if options.save_device != SaveDevice::None {
-        writeln!(writer, "Flash selected: {} KiB Macronix, erased array; identification/bank reads only. No programming, erase, or save files.", options.save_device.capacity() / 1024)?;
+        writeln!(
+            writer,
+            "Flash selected: {} KiB Macronix; nominal program/erase timing and DQ7 polling.",
+            options.save_device.capacity() / 1024
+        )?;
+    }
+    let mut save_file = options
+        .save_file
+        .as_ref()
+        .map(|path| save_file::SaveFile::open(path, &options.path, options.save_device))
+        .transpose()?;
+    if let Some(save) = save_file.as_ref() {
+        writeln!(writer, "Save file: {}; writes only on clean exit, with unique backups when replacing existing data.", if save.loaded() { "loaded" } else { "new erased image" })?;
+    } else if options.save_device != SaveDevice::None {
+        writeln!(
+            writer,
+            "Save storage is volatile; use --save-file PATH for persistence."
+        )?;
     }
     let steps = match options.mode {
         Mode::Terminal { steps } => steps,
@@ -293,6 +321,7 @@ pub fn execute(options: Options, writer: &mut impl Write) -> Result<(), Box<dyn 
                 options.hardware,
                 options.save_device,
                 options.audio,
+                save_file.as_mut(),
                 writer,
             )
         }
@@ -303,6 +332,9 @@ pub fn execute(options: Options, writer: &mut impl Write) -> Result<(), Box<dyn 
         .memory_mut()
         .set_cartridge_hardware(options.hardware);
     machine.memory_mut().set_save_device(options.save_device);
+    if let Some(save) = save_file.as_ref() {
+        save.initialize(machine.memory_mut())?;
+    }
     let mut clock = if options.hardware == CartridgeHardware::Rtc {
         Some(rtc_clock::RtcHostClock::new(machine.memory_mut())?)
     } else {
@@ -313,6 +345,25 @@ pub fn execute(options: Options, writer: &mut impl Write) -> Result<(), Box<dyn 
     writer.flush()?;
     if let Reason::Diagnostic(error) = report.reason {
         return Err(Box::new(error));
+    }
+    if let Some(save) = save_file.as_mut() {
+        persist_save(save, machine.memory(), writer)?;
+    }
+    Ok(())
+}
+
+pub(crate) fn persist_save(
+    save: &mut save_file::SaveFile,
+    memory: &gba_core::memory::Memory,
+    writer: &mut impl Write,
+) -> io::Result<()> {
+    if let Some(saved) = save.persist(memory)? {
+        writeln!(writer, "Save persisted on clean exit.")?;
+        if let Some(backup) = saved.backup {
+            writeln!(writer, "Previous save backup: {backup:?}")?;
+        }
+    } else {
+        writeln!(writer, "Save unchanged; no file written.")?;
     }
     Ok(())
 }

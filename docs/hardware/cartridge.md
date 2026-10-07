@@ -34,8 +34,10 @@ Headerless original programs are accepted.
 Reads past supplied cartridge bytes remain explicit memory errors, not open-bus values.
 All three Game Pak ROM windows use the same supplied bytes and existing wait-state rules.
 Ordinary cartridge bytes remain read-only.
-Optional `--save-type flash64` or `--save-type flash128` enables [Flash identification and array reads](saves.md).
-The desktop starts an erased device and does not load or write save files. Programming and erase remain diagnostic.
+Optional `--save-type flash64` or `--save-type flash128` enables [nominal Flash programming, erase, and reads](saves.md).
+Without `--save-file PATH`, changes remain volatile. With it, the frontend loads an exact-size image and persists changes on clean exit.
+Missing images start erased. Existing images receive unique backups before replacement; incomplete Flash operations refuse persistence.
+Read the [storage safeguards and limits](saves.md#desktop-persistence) before using a valuable save.
 Optional `--rtc` selection enables the bounded [Game Pak GPIO and RTC calendar interface](cartridge-gpio.md).
 It supports date/time reads, complete writes, reset, and explicit elapsed-time updates. RTC interrupts and persistence remain unsupported.
 The desktop seeds UTC once, then supplies monotonic host elapsed seconds independently of GBA cycles and STOP.
@@ -70,7 +72,7 @@ The report includes:
 
 Exit status zero means the step limit was reached or STOP was entered.
 It does not mean the program completed or passed a hardware test.
-Invalid arguments, loading failures, output failures, and emulation diagnostics produce a nonzero exit status.
+Invalid arguments, loading failures, output failures, save-persistence failures, and emulation diagnostics produce a nonzero exit status.
 For emulation diagnostics, stdout contains the final machine state and stderr contains the core error.
 
 Terminal mode has no window, keyboard input, or real-time pacing.
@@ -138,6 +140,6 @@ No game or firmware content is included.
 ROM windows can enable Darwin output with `--audio`; they are muted by default.
 The option requires a usable default audio device. Device/configuration errors fail explicitly; omit the flag to run muted.
 Focus loss and STOP clear queued audio. See [audio output and its limits](audio.md#darwin-output-adapter).
-Terminal mode has no audio. Both modes lack save writing/persistence and per-step tracing.
+Terminal mode has no audio. Both modes support explicit save files but lack per-step tracing.
 Commercial-game compatibility remains unverified and unsupported.
 Only load files that you may lawfully use. Do not commit game ROMs or firmware.

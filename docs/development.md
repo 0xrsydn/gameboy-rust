@@ -75,6 +75,24 @@ The window runs on the main thread, as required by macOS AppKit.
 The dependency is pinned to that exact version. Review this workaround before upgrading minifb.
 Intel macOS and Linux desktop builds are not verified.
 
+## Portability boundary
+
+The Rust `gba-core` owns CPU, memory, video, audio generation, input state, and cartridge protocols.
+It has no external dependencies or filesystem, window, host-clock, or audio-device code.
+The same core can serve another frontend; porting does not require rewriting emulated hardware.
+This separation is a design boundary, not a completed Linux or WebAssembly port.
+
+- Linux can reuse the desktop structure and Unix raw-save adapter. Build dependencies and native behavior still need validation.
+  Host audio currently returns an explicit unsupported-platform error outside macOS; add and test a Linux backend separately.
+- A browser needs WebAssembly bindings, canvas presentation, browser input, Web Audio, and browser scheduling.
+  Its frontend must load ROM/image bytes and persist save images through browser storage or explicit import/export.
+  It cannot reuse desktop `.sav` filesystem operations or CoreAudio.
+- Core save loading/inspection is byte-based. Flash commands never access host files.
+  Desktop [save persistence](hardware/saves.md#desktop-persistence) is tested on Darwin arm64 only.
+
+Cross-compilation, performance, lifecycle handling, and save durability need tests on each target.
+The core currently uses Rust's standard library; it is dependency-free, not a `no_std` crate.
+
 Without direnv, use:
 
 ```sh

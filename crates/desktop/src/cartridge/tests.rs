@@ -29,11 +29,45 @@ fn options_require_both_flags_in_either_order() {
                     mode: Mode::Terminal { steps: count },
                     hardware: CartridgeHardware::None,
                     save_device: SaveDevice::None,
+                    save_file: None,
                     audio: false,
                 }
             );
         }
     }
+}
+
+#[test]
+fn save_file_requires_explicit_device_and_one_nonempty_path() {
+    let base = args(&["--rom", "test.gba", "--steps", "100"]);
+    for tail in [
+        vec!["--save-file", "test.sav"],
+        vec!["--save-type", "flash128", "--save-file", ""],
+        vec!["--save-type", "flash128", "--save-file"],
+        vec![
+            "--save-type",
+            "flash128",
+            "--save-file",
+            "a",
+            "--save-file",
+            "b",
+        ],
+    ] {
+        let mut arguments = base.clone();
+        arguments.extend(args(&tail));
+        assert!(parse_args(&arguments).is_err());
+    }
+    let mut arguments = base;
+    arguments.extend(args(&[
+        "--save-file",
+        "test.sav",
+        "--save-type",
+        "flash128",
+    ]));
+    assert_eq!(
+        parse_args(&arguments).unwrap().save_file,
+        Some("test.sav".into())
+    );
 }
 
 #[test]
