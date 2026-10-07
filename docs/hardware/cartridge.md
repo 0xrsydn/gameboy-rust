@@ -135,5 +135,9 @@ The CPU writes the palette: blue at rest, red while Z is held, and green while R
 Right takes priority over Z. Other buttons have no visible effect in this small program.
 No game or firmware content is included.
 
-Both ROM modes lack audio, saves, and per-step tracing. Commercial-game compatibility remains unverified and unsupported.
+ROM windows can enable Darwin output with `--audio`; they are muted by default.
+The option requires a usable default audio device. Device/configuration errors fail explicitly; omit the flag to run muted.
+Focus loss and STOP clear queued audio. See [audio output and its limits](audio.md#darwin-output-adapter).
+Terminal mode has no audio. Both modes lack save writing/persistence and per-step tracing.
+Commercial-game compatibility remains unverified and unsupported.
 Only load files that you may lawfully use. Do not commit game ROMs or firmware.

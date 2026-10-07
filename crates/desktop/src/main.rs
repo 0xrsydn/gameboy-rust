@@ -1,3 +1,4 @@
+mod audio;
 mod cartridge;
 mod desktop;
 
@@ -53,6 +54,7 @@ fn parse_args(args: &[OsString]) -> Result<RunMode, io::Error> {
             "--window",
             "--frames",
             "--rtc",
+            "--audio",
             "--save-type",
         ]
         .iter()
@@ -86,7 +88,7 @@ fn parse_args(args: &[OsString]) -> Result<RunMode, io::Error> {
         [arg] if arg == "--help" || arg == "-h" => Ok(RunMode::Help),
         _ => Err(io::Error::new(
             io::ErrorKind::InvalidInput,
-            "usage: gameboy-rust [--cpu-demo | --timer-demo | --graphics-demo | --smoke-test | --graphics-smoke-test | --raster-demo | --raster-smoke-test | --mosaic-demo | --mosaic-smoke-test | --effects-demo | --effects-smoke-test | --tile-demo | --tile-smoke-test | --affine-demo | --affine-smoke-test | --affine-raster-demo | --affine-raster-smoke-test | --bitmap4-demo | --bitmap5-demo | --bitmap4-smoke-test | --bitmap5-smoke-test | --help]; or gameboy-rust --rom PATH [--rtc] [--save-type flash64|flash128] (--steps COUNT | --window [--frames COUNT]); or gameboy-rust --test-suite PATH.json",
+            "usage: gameboy-rust [--cpu-demo | --timer-demo | --graphics-demo | --smoke-test | --graphics-smoke-test | --raster-demo | --raster-smoke-test | --mosaic-demo | --mosaic-smoke-test | --effects-demo | --effects-smoke-test | --tile-demo | --tile-smoke-test | --affine-demo | --affine-smoke-test | --affine-raster-demo | --affine-raster-smoke-test | --bitmap4-demo | --bitmap5-demo | --bitmap4-smoke-test | --bitmap5-smoke-test | --help]; or gameboy-rust --rom PATH [--rtc] [--save-type flash64|flash128] (--steps COUNT | --window [--frames COUNT] [--audio]); or gameboy-rust --test-suite PATH.json",
         )),
     }
 }
@@ -132,6 +134,7 @@ fn run() -> Result<(), Box<dyn Error>> {
                 --rom PATH --steps COUNT  Run a raw ROM in the terminal (1..=100000000 steps)\n\
                 --rom PATH --window       Open a raw ROM with keyboard input\n\
                 --frames COUNT            Exit ROM window after 1..=100000 captured frames\n\
+                --audio                  Enable macOS output for ROM windows (default: muted)\n\
                 --rtc                    Select cartridge RTC (UTC startup, host elapsed time)\n\
                 --save-type flash64|flash128  Select Flash identification/read subset (no saving yet)\n\
                 --test-suite PATH.json    Run bounded ROM assertions; write a JSON report\n\
@@ -167,7 +170,7 @@ fn run() -> Result<(), Box<dyn Error>> {
                 Affine backgrounds: Arrows pan; Q rotates; W zooms; Z disables wrapping; Enter resets; Escape exits.\n\
                 Bitmap pages: Arrows pan; Q rotates; W zooms; Z forces page1; Enter resets; Escape exits.\n\
                 All demos use original test content. ROM mode uses our limited BIOS replacement.\n\
-                Terminal ROM mode has no window or input. ROM modes have no audio or saves.\n\
+                Terminal ROM mode has no window, input, or audio. ROM windows offer --audio on macOS. No saves.\n\
                 ROM window: Arrows=D-pad; Z/X=A/B; Q/W=L/R; Enter=Start; Backspace=Select; Escape exits.\n\
                 Commercial games are not supported."
             );

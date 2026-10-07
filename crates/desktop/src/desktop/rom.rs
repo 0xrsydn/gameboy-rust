@@ -1,15 +1,25 @@
-//! Main-thread ROM presentation and physical keyboard input.
+//! Main-thread ROM presentation, physical keyboard input, and optional host audio.
 
 use std::io::Write;
 
 use super::*;
 use crate::cartridge::window::{Session, Update};
 
+fn next_frame_start(previous: Instant, now: Instant, period: Duration, audio: bool) -> Instant {
+    let target = previous + period;
+    if audio && now.saturating_duration_since(target) <= period {
+        target
+    } else {
+        now
+    }
+}
+
 pub fn run(
     bytes: Vec<u8>,
     frame_limit: Option<u64>,
     hardware: gba_core::cartridge::CartridgeHardware,
     save_device: gba_core::cartridge::SaveDevice,
+    audio_enabled: bool,
     writer: &mut impl Write,
 ) -> Result<(), Box<dyn Error>> {
     let mut session = Session::new(bytes)?;
@@ -28,7 +38,7 @@ pub fn run(
     )?;
     writeln!(
         writer,
-        "Input releases on focus loss. No audio or saves. Startup frames are not suppressed."
+        "Input releases and audio mutes on focus loss. No saves. Startup frames are not suppressed."
     )?;
     if let Some(limit) = frame_limit {
         writeln!(
@@ -37,10 +47,22 @@ pub fn run(
         )?;
     }
     writer.flush()?;
+    let mut audio = None;
+    let mut samples = [gba_core::audio::StereoLevel::default(); 1024];
     let result = (|| -> Result<&str, Box<dyn Error>> {
-        let title = "GBA Rust | ROM | Esc: exit | No audio or saves";
+        let title = "GBA Rust | ROM | Esc: exit | No saves";
         let mut window = create_window(title)?;
         window.set_target_fps(0);
+        if audio_enabled {
+            let output = crate::audio::AudioOutput::new()?;
+            writeln!(writer, "Audio enabled: {}", output.description())?;
+            audio = Some(output);
+            session.memory_mut().set_audio_capture(true);
+        } else {
+            writeln!(writer, "Audio muted; use --audio for macOS output.")?;
+        }
+        writer.flush()?;
+        let mut was_audio_active = false;
         let period = Duration::from_secs_f64(f64::from(CYCLES_PER_FRAME) / f64::from(CPU_HZ));
         let mut frame_started = Instant::now();
         let mut was_stopped = false;
@@ -50,9 +72,30 @@ pub fn run(
             if let Some(clock) = rtc_clock.as_mut() {
                 clock.sync(session.memory_mut())?;
             }
-            let buttons = read_buttons(window.is_active(), |key| window.is_key_down(key));
+            let reported_active = window.is_active();
+            let focused = is_focused(reported_active);
+            let buttons = read_buttons(reported_active, |key| window.is_key_down(key));
             let update = session.update(buttons)?;
             let stopped = update == Update::Stopped;
+            if let Some(output) = audio.as_ref() {
+                let active = focused && !stopped;
+                if !active && was_audio_active {
+                    output.clear()?;
+                }
+                was_audio_active = active;
+                loop {
+                    let count = session.memory_mut().drain_audio_samples(&mut samples);
+                    output.submit(if active { &samples[..count] } else { &[] })?;
+                    if count < samples.len() {
+                        break;
+                    }
+                }
+                if session.memory_mut().audio_dropped_samples() != 0 {
+                    return Err(
+                        io::Error::other("core audio capture overflow; reduce host load").into(),
+                    );
+                }
+            }
             if stopped != was_stopped {
                 window.set_title(if stopped {
                     "GBA Rust | ROM STOP: waiting for enabled keypad input | Esc: exit"
@@ -71,9 +114,12 @@ pub fn run(
                     if frame_limit.is_some_and(|limit| session.frames() >= limit) {
                         return Ok("window frame limit reached");
                     }
-                    // Slow hosts do not skip emulated frames or accumulate catch-up work.
                     thread::sleep(period.saturating_sub(frame_started.elapsed()));
-                    frame_started = Instant::now();
+                    // With audio, retain an absolute frame deadline so sleep overshoot
+                    // does not steadily starve the output device. Catch up at most one
+                    // frame; a slow host never accumulates unbounded work or skips emulation.
+                    frame_started =
+                        next_frame_start(frame_started, Instant::now(), period, audio_enabled);
                 }
                 Update::Stopped => {
                     if frame_limit.is_some() {
@@ -95,5 +141,26 @@ pub fn run(
         writer,
         result.as_ref().copied().unwrap_or("ROM window diagnostic"),
     )?;
+    if let Some(output) = audio.as_ref() {
+        output.report(writer)?;
+    }
     result.map(|_| ())
+}
+
+#[cfg(test)]
+mod pacing_tests {
+    use super::*;
+    #[test]
+    fn audio_deadlines_absorb_sleep_overshoot_but_bound_catch_up() {
+        let start = Instant::now();
+        let period = Duration::from_millis(16);
+        assert_eq!(
+            next_frame_start(start, start + Duration::from_millis(17), period, true),
+            start + period
+        );
+        let late = start + Duration::from_millis(50);
+        assert_eq!(next_frame_start(start, late, period, true), late);
+        let now = start + Duration::from_millis(17);
+        assert_eq!(next_frame_start(start, now, period, false), now);
+    }
 }

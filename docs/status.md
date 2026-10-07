@@ -92,6 +92,7 @@ Update this file when a feature lands or a limit is removed.
 - Wave channel 3 supports single-bank nibble playback, rotating RAM, volume/force-volume, length, activity status, and digital mixing.
 - Two-bank wave playback, active bank changes, and unsupported serial operations remain diagnostic with whole-access and block-store rollback.
 - ROM windows with scanline capture, keyboard input, focus-loss release, bounded execution slices, and interactive keypad wake from STOP.
+- Opt-in macOS CoreAudio output, with tested original tones and wave-ROM playback; focus loss and STOP mute queued audio.
 - Optional ROM-window frame limits and an original input-test ROM generator.
 - Headless JSON ROM suites with PC or VBlank completion, register/CPSR/memory/pixel assertions, scheduled buttons, bounded budgets, and structured failure reports.
 - Hash-pinned preparation of public `jsmolka/gba-tests` ARM, Thumb, memory, and BIOS ROMs, with verified result-register checkpoints.
@@ -146,7 +147,7 @@ Internal affine origins, vertical window flags, and vertical mosaic counters tra
 Horizontal window comparators retain four-cycle event history.
 Sprite rows prepare one line ahead with a whole-row cycle40 sample and nominal per-row work limits.
 Individual fetch timing, hardware-accurate work cutoffs, video-bus contention, and per-pixel color composition remain unimplemented.
-There is no host audio output or save writing/persistence.
+ROM windows offer opt-in Darwin audio output with `--audio`. Save writing/persistence remains unavailable.
 The [Flash subset](hardware/saves.md) supports explicit device selection, identification, array reads, and banking.
 Flash programming, erase, busy polling, wider accesses, unverified aliases, and other save-device protocols remain diagnostic or unimplemented.
 The optional [cartridge GPIO/RTC subset](hardware/cartridge-gpio.md) supports calendar/control transfers and explicit clock updates, selected with `--rtc` in ROM modes.
@@ -170,7 +171,9 @@ The presentation framebuffer is separate from emulated video RAM.
 All named graphics demos connect desktop input and rendering to the emulated CPU. The default display test remains host-generated.
 ROM files can run in bounded terminal mode or a window with the original BIOS replacement.
 ROM windows have no demo-specific startup checks. Input is sampled between bounded execution slices.
-Audio, saves, and external BIOS loading remain unavailable. ROM loading does not establish commercial-game compatibility.
+Audio is muted by default; `--audio` opens the macOS output device for ROM windows only. Saves and external BIOS loading remain unavailable.
+The host output has bounded buffers, linear rate conversion, DC removal, and underrun/drop counters. Slow hosts can stutter.
+ROM loading and nonzero audio callbacks do not establish commercial-game compatibility or correct music.
 A local Emerald run now completes its all-device reset and master sound enable.
 It also passes the pulse/noise triggers and normal-mode RCNT configuration.
 It also completes a CpuSet call to address zero through the corrected ignored BIOS-write behavior.

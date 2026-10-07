@@ -48,7 +48,9 @@ A [fixed-time input probe](research/emerald-wave.md) then exposed an unsupported
 Single-bank wave support now passes that point and completes 1,320 frames with scheduled Start/A input.
 Captured output differs from a no-input control; readable menus and gameplay remain unverified.
 The core has tested Direct Sound, both pulse channels, single-bank wave channel 3, and noise channel 4.
-Two-bank wave playback, a continuous sample stream, and desktop audio output remain missing.
+Fixed-rate stereo capture and opt-in Darwin `--audio` output now work with original native probes.
+A local Emerald run submits nonzero device frames but records underruns; listening quality and correct music remain unverified.
+Two-bank wave playback, hardware PWM sampling, and improved reconstruction/pacing remain missing.
 See [the runtime result](research/emerald-reset.md). Next, verify visible menu progress rather than treating frame counts as playability.
 The separate save requirement includes Flash programming/erase and safe host persistence. Identification/read support is not successful saving.
 SRAM is byte-addressable battery-backed save memory. Flash and EEPROM remain separate protocols.

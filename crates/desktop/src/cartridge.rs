@@ -21,7 +21,7 @@ use gba_core::{
 
 const MAX_STEPS: u64 = 100_000_000;
 const MAX_FRAMES: u64 = 100_000;
-const USAGE: &str = "usage: gameboy-rust --rom PATH [--rtc] [--save-type flash64|flash128] (--steps COUNT | --window [--frames COUNT]); steps: 1..=100000000, frames: 1..=100000; do not combine with demo or help options";
+const USAGE: &str = "usage: gameboy-rust --rom PATH [--rtc] [--save-type flash64|flash128] (--steps COUNT | --window [--frames COUNT] [--audio]); steps: 1..=100000000, frames: 1..=100000; do not combine with demo or help options";
 
 #[derive(Debug, PartialEq, Eq)]
 enum Mode {
@@ -35,6 +35,7 @@ pub struct Options {
     mode: Mode,
     hardware: CartridgeHardware,
     save_device: SaveDevice,
+    audio: bool,
 }
 
 pub fn parse_args(args: &[OsString]) -> io::Result<Options> {
@@ -43,6 +44,7 @@ pub fn parse_args(args: &[OsString]) -> io::Result<Options> {
     let mut steps = None;
     let mut frames = None;
     let mut window = false;
+    let mut audio = false;
     let mut hardware = CartridgeHardware::None;
     let mut save_device = SaveDevice::None;
     let mut args = args.iter();
@@ -61,6 +63,8 @@ pub fn parse_args(args: &[OsString]) -> io::Result<Options> {
                 Some("flash128") => SaveDevice::Flash128,
                 _ => return Err(invalid()),
             };
+        } else if arg == "--audio" && !audio {
+            audio = true;
         } else if arg == "--window" && !window {
             window = true;
         } else if (arg == "--steps" && steps.is_none()) || (arg == "--frames" && frames.is_none()) {
@@ -89,6 +93,9 @@ pub fn parse_args(args: &[OsString]) -> io::Result<Options> {
             return Err(invalid());
         }
     }
+    if audio && !window {
+        return Err(invalid());
+    }
     let mode = match (window, steps, frames) {
         (false, Some(steps), None) => Mode::Terminal { steps },
         (true, None, frames) => Mode::Window { frames },
@@ -99,6 +106,7 @@ pub fn parse_args(args: &[OsString]) -> io::Result<Options> {
         mode,
         hardware,
         save_device,
+        audio,
     })
 }
 
@@ -284,6 +292,7 @@ pub fn execute(options: Options, writer: &mut impl Write) -> Result<(), Box<dyn 
                 frames,
                 options.hardware,
                 options.save_device,
+                options.audio,
                 writer,
             )
         }

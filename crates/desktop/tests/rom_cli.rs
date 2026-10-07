@@ -82,10 +82,13 @@ fn wave_setup() -> Vec<u32> {
     let mut code = Vec::new();
     for (address, value) in [
         (0x04000084, 0x80),
+        (0x04000088, 0x200),
+        (0x04000080, 0x4477),
+        (0x04000082, 2),
         (0x04000090, 0xf012), // CPU bank 1 before selecting playback bank 1.
         (0x04000070, 0xc0),
         (0x04000072, 0x2000),
-        (0x04000074, 0x87ff),
+        (0x04000074, 0x87e0),
     ] {
         code.extend([0xe59f0000, 0xea000000, address]);
         code.extend([0xe59f1000, 0xea000000, value]);
@@ -93,6 +96,29 @@ fn wave_setup() -> Vec<u32> {
     }
     code.extend([0xe59f0000, 0xea000000, 0x04000084, 0xe1d020b0, 0xeafffffe]);
     code
+}
+
+#[test]
+fn audio_options_fail_before_file_access_unless_a_window_is_selected() {
+    for tail in [
+        vec!["--audio", "--steps", "1"],
+        vec!["--audio", "--window", "--audio"],
+    ] {
+        let output = command()
+            .args(["--rom", "missing-original.gba"])
+            .args(tail)
+            .output()
+            .unwrap();
+        assert!(!output.status.success());
+        assert!(stderr(&output).contains("usage:"));
+        assert!(!stderr(&output).contains("cannot load ROM"));
+    }
+    let output = command()
+        .args(["--audio", "--window", "--rom", "missing-original.gba"])
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    assert!(stderr(&output).contains("cannot load ROM"));
 }
 
 #[test]
@@ -401,7 +427,7 @@ fn help_describes_terminal_rom_mode_and_existing_cpu_demo_still_runs() {
     assert!(output.status.success());
     assert!(stdout(&output).contains("--rom PATH --steps COUNT"));
     assert!(stdout(&output).contains("--rom PATH --window"));
-    assert!(stdout(&output).contains("ROM modes have no audio or saves"));
+    assert!(stdout(&output).contains("ROM windows offer --audio on macOS. No saves."));
     let output = command().arg("--cpu-demo").output().unwrap();
     assert!(output.status.success());
     assert!(stdout(&output).contains("Exception demo"));
@@ -438,6 +464,56 @@ fn window_options_and_bad_files_fail_without_opening_a_window() {
     assert_eq!(output.status.code(), Some(1));
     assert!(stderr(&output).contains("cannot load ROM"));
     assert!(output.stdout.is_empty());
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+#[ignore = "requires a focused native window and audio device; plays an original wave tone"]
+fn native_rom_audio_window_routes_core_samples_to_output() {
+    let fixture = Fixture::new();
+    let path = fixture.rom(&wave_setup());
+    let mut child = command()
+        .arg("--rom")
+        .arg(&path)
+        .args(["--window", "--audio", "--frames", "120"])
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    let start = std::time::Instant::now();
+    while child.try_wait().unwrap().is_none() {
+        if start.elapsed() > std::time::Duration::from_secs(30) {
+            child.kill().unwrap();
+            let output = child.wait_with_output().unwrap();
+            panic!(
+                "audio window timed out: {} {}",
+                stdout(&output),
+                stderr(&output)
+            );
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    let output = child.wait_with_output().unwrap();
+    assert!(
+        output.status.success(),
+        "{} {}",
+        stdout(&output),
+        stderr(&output)
+    );
+    let text = stdout(&output);
+    assert!(text.contains("Audio enabled: CoreAudio:"), "{text}");
+    assert!(text.contains("Captured ROM frames: 120"), "{text}");
+    let nonzero: u64 = text
+        .split("nonzero output frames: ")
+        .nth(1)
+        .unwrap()
+        .split(';')
+        .next()
+        .unwrap()
+        .parse()
+        .unwrap();
+    assert!(nonzero > 0, "{text}");
+    assert!(text.contains("dropped input frames: 0"), "{text}");
 }
 
 #[test]

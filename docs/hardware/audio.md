@@ -1,7 +1,7 @@
 # Audio device subset
 
 The core models Direct Sound A/B, bounded sound DMA, and programmable sound generator (PSG) channels 1–4.
-Wave channel 3 supports single-bank playback only. The core does not produce desktop audio.
+Wave channel 3 supports single-bank playback only. Optional fixed-rate capture supplies samples to the separate Darwin output adapter.
 `Memory::audio_level()` exposes the current digital stereo level for deterministic inspection, not a continuous sample stream.
 
 ## Registers and PSG state
@@ -262,6 +262,43 @@ Capture is disabled by default. Changing enable state clears queued frames, phas
 Repeating the current enable state preserves capture state. Configure capture between machine steps.
 Original tests cover exact sample boundaries, timer consumption, pulse phases, batching, queue overflow, HALT/STOP, and transactional rollback.
 
+## Darwin output adapter
+
+Use `--audio` with `--rom ... --window` to enable CPAL 0.16/CoreAudio output on macOS.
+Windows remain muted by default. Terminal runs, ROM suites, and demos do not open an audio device.
+The flag is invalid in terminal mode and cannot be repeated. Other platforms currently report an explicit unsupported-platform error.
+
+The adapter opens the default output device at its default configuration.
+Supported formats are float32, signed16, and unsigned16, with 8–192 kHz rates and 1–32 channels.
+Stereo maps to the first two channels. Mono averages left/right; additional channels receive silence.
+Device initialization, unsupported formats, and stream errors fail the audio-enabled run rather than silently switching to muted execution.
+Omit `--audio` to run without an audio device.
+
+The core's 32,768 Hz frames enter a bounded 8,192-frame host queue.
+Playback waits for 1,024 frames before starting or resuming after an underrun.
+Linear interpolation converts to the device rate. A 20 Hz high-pass filter removes DC, followed by conservative 25% host gain and clipping.
+These are presentation choices, not a measured GBA analog model or band-limited reconstruction.
+High-frequency aliases, startup transients, and channel-model inaccuracies remain possible.
+
+The data callback performs no allocation, blocking lock, emulation step, or log write.
+It tries the queue lock once; contention produces silence and increments a counter.
+An underrun produces silence and returns to the prefill state. Overflow discards new input frames and records the loss.
+The final report includes submitted/nonzero-input frames, callbacks, nonzero-output frames, underruns, dropped input, and lock misses.
+Zero submitted frames can indicate an unfocused window, not a failed output device.
+The window treats a core capture overflow as an error; it drains samples between bounded CPU slices.
+The callback cannot advance emulator clocks or request extra emulation work.
+
+Focus loss and STOP clear queued host audio and conversion state. Muted frames are drained without being submitted.
+The device may still finish its already-submitted buffer. Resume waits for fresh prefill instead of replaying stale samples.
+Audio-enabled windows use absolute frame deadlines with at most one frame of catch-up.
+This reduces sleep drift without skipping emulated frames or accumulating unbounded catch-up work.
+Slow hosts can still underrun. Sample delivery is not a claim of uninterrupted or hardware-faithful sound.
+
+Native checks on Darwin arm64 exercised a quiet original tone and an original wave-ROM window through CoreAudio.
+A 900-frame local Emerald run reached its limit with 554,484 nonzero device-output frames, zero dropped input frames, and 13 underruns.
+Those counters demonstrate output submission, not human listening, correct music, or game compatibility.
+Audio quality and physical speaker/headphone output still require a manual listening check.
+
 ## Validation and remaining work
 
 Original tests cover signed samples, byte order, queue capacity, partial writes, resets, underflow, stereo routing, and clipping.
@@ -278,12 +315,15 @@ CPU/DMA tests include noise register writes at bus completion and failed-step ro
 BIOS reset tests verify that selected sound reset stops all supported PSG channels, while unselected sound state remains active.
 
 These tests validate the documented nominal model, not hardware audio fidelity.
-Remaining audio work: two-bank wave playback, verified live bank changes, hardware PWM sampling, filtering/resampling, and a Darwin host backend.
+Remaining audio work: two-bank wave playback, verified live bank changes, hardware PWM sampling, improved reconstruction, and lower-underrun pacing.
 A local Emerald input probe exposed a wave trigger with the gate disabled. This is now accepted without activating playback.
-The same scheduled-input probe passes that point and completes its extended frame budget; audible output and gameplay remain unverified.
+The same scheduled-input probe passes that point and completes its extended frame budget; gameplay remains unverified.
+Later native output checks exercise the host audio path separately; they do not establish game-audio accuracy.
 See [the local runtime result](../research/emerald-reset.md).
 
 ## References
+
+- [CPAL 0.16.0](https://docs.rs/cpal/0.16.0/cpal/): default device/configuration, typed output callbacks, sample formats, CoreAudio backend, and stream lifecycle. CPAL is a macOS-only desktop dependency here.
 
 - [GBATEK wave channel 3](https://problemkaputt.de/gbatek-gba-sound-channel-3-wave-output.htm): bank selection, nibble order, rotating RAM, sample rate, length, and force volume.
 - [NanoBoyAdvance wave at 55b5cf0a](https://github.com/nba-emu/NanoBoyAdvance/blob/55b5cf0ae3d929582ac5bfd486558173502b8354/src/nba/src/hw/apu/channel/wave_channel.cc) and [header](https://github.com/nba-emu/NanoBoyAdvance/blob/55b5cf0ae3d929582ac5bfd486558173502b8354/src/nba/src/hw/apu/channel/wave_channel.hh): signed gain and rate comparison; pointer-based RAM and two-bank/retrigger differences are not copied.

@@ -22,7 +22,11 @@ Verified locally on macOS 15.7.3:
 - The headless suite runner passes generated ARM/Thumb/BIOS cases, produces repeatable JSON, and rejects deliberate assertion mismatches.
 
 These results cover the CPU core, memory, Mode 0–5 snapshots and row capture, input mapping, and desktop windows.
-They do not verify a complete GBA display controller or audio.
+They do not verify a complete GBA display controller or hardware audio fidelity.
+CPAL 0.16 is a macOS-only dependency of the desktop crate. The existing Nix Darwin shell builds its CoreAudio backend without extra shell packages.
+Native tests submit an original tone and original ROM-generated samples to the default output device.
+Use `--audio` with a ROM window to opt in. Ordinary tests and muted windows do not require an audio device.
+Other host audio platforms are not implemented. Underruns remain possible; device callbacks do not prove listening quality.
 Arrow-key movement in the original host display test was confirmed manually on this Mac.
 CPU demos and ROM windows have automated input-mapping tests; their physical keyboard behavior still needs manual confirmation.
 

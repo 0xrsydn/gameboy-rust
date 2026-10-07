@@ -125,7 +125,8 @@ This result does not establish gameplay, linked transfers, or cartridge/serial G
 Noise now has deterministic counter clocks and shares tested length/envelope logic with the independent pulse channels.
 Sweep applies only to channel 1. Direct Sound has FIFO clocks and nominal DMA requests.
 All supported channels use the instantaneous digital-level inspection interface.
-Wave channel 3 now supports single-bank playback. Two-bank playback, a continuous sample stream, and desktop output are still missing.
+Wave channel 3 now supports single-bank playback. Two-bank playback remains missing.
+Fixed-rate capture and optional Darwin `--audio` output were added later; their counters do not establish correct game music.
 Do not treat digital-level tests as audible-game validation or suppress remaining diagnostics without implementing their behavior.
 Cartridge saves remain a separate required feature. SRAM alone will not support Emerald's Flash save protocol.
 

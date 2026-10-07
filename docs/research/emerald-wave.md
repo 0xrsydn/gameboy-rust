@@ -83,7 +83,7 @@ A separate 600-frame Emerald native run still reaches its frame limit without in
 ## Remaining requirements
 
 - Verify visible menu text and gameplay through direct window testing or explicit independently justified assertions.
-- Implement continuous sample production and a Darwin output backend before claiming audible sound.
+- Fixed-rate capture and opt-in Darwin `--audio` output were added later. Verify listening quality and reduce observed underruns.
 - Research two-bank wave playback and live bank changes separately. Both remain diagnostic during active playback.
 - Implement Flash programming/erase and safe persistence before claiming saving.
 
@@ -93,5 +93,6 @@ For a manual native check, use:
 direnv exec . cargo run --locked --release -- --rom roms/pokemon-emerald.gba --rtc --save-type flash128 --window
 ```
 
-Enter maps to Start. Z maps to A. Escape exits. This command does not supply the deterministic probe schedule or fixed RTC.
+Enter maps to Start. Z maps to A. Escape exits. Add `--audio` for optional Darwin output.
+This command does not supply the deterministic probe schedule or fixed RTC.
 Hardware sources and implementation comparisons are recorded in [audio references](../hardware/audio.md#references).

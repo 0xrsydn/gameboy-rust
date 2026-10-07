@@ -81,7 +81,25 @@ An original desktop ROM installs its Flash byte reader in IWRAM; terminal/native
 They verify explicit activation errors and atomic byte/word/block-store/DMA failure behavior.
 Wave tests cover every frequency and bank, independent nibble rotation, full rotations, bounded maximum batches, and fractional gains.
 They also check inactive triggers, gates, length, status, master/BIOS reset, HALT/STOP, live-write limits, and CPU/DMA rollback.
-Original terminal/native programs activate wave playback without external assets or host audio.
+Original terminal/native programs activate wave playback without external assets.
+Fixed-rate capture tests verify sample boundaries, timer/PSG ordering, rollback, queue limits, drop counts, and HALT/STOP.
+Host conversion tests require no device and cover rates, stereo/mono mapping, prefill, overflow, underflow, DC removal, and callback splitting.
+CLI tests keep output muted by default and reject `--audio` outside ROM-window mode.
+
+The following ignored tests require a native audio device and play original test tones:
+
+```sh
+direnv exec . cargo test --locked --release -p gameboy-rust-desktop native_audio_output -- --ignored --nocapture --test-threads=1
+direnv exec . cargo test --locked --release -p gameboy-rust-desktop --test rom_cli native_rom_audio_window -- --ignored --test-threads=1
+```
+
+The device test generates samples with the actual core and does not require window focus.
+The window test requires focus. It checks that ROM-generated samples reach a nonzero CoreAudio callback.
+An unfocused window correctly submits no samples, so that test fails rather than claiming playback success.
+The focused window check passed locally; a later unattended run remained unfocused and did not validate playback.
+Use the reported submitted-frame count to distinguish this condition from an output-device failure.
+These checks do not prove physical speaker output, correct game music, or hardware audio fidelity.
+Normal Cargo/Python tests do not open an audio device. Underruns are reported and can occur on slow hosts.
 The optional [local Emerald input probe](research/emerald-wave.md) now completes its scheduled Start/A frame budget.
 Frame completion and different pixels are not assertions about readable menus, correct graphics, or gameplay.
 [Jev evidence review](jev-debugging.md) is optional and never changes deterministic test verdicts.

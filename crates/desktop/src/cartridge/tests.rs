@@ -28,10 +28,33 @@ fn options_require_both_flags_in_either_order() {
                     path: "original program.gba".into(),
                     mode: Mode::Terminal { steps: count },
                     hardware: CartridgeHardware::None,
-                    save_device: SaveDevice::None
+                    save_device: SaveDevice::None,
+                    audio: false,
                 }
             );
         }
+    }
+}
+
+#[test]
+fn audio_is_opt_in_window_only_and_cannot_be_duplicated() {
+    assert!(
+        parse_args(&args(&["--audio", "--rom", "test.gba", "--window"]))
+            .unwrap()
+            .audio
+    );
+    assert!(
+        !parse_args(&args(&["--rom", "test.gba", "--window"]))
+            .unwrap()
+            .audio
+    );
+    for tail in [
+        vec!["--audio", "--steps", "10"],
+        vec!["--audio", "--window", "--audio"],
+    ] {
+        let mut arguments = args(&["--rom", "test.gba"]);
+        arguments.extend(args(&tail));
+        assert!(parse_args(&arguments).is_err());
     }
 }
 

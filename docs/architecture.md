@@ -152,6 +152,9 @@ The repository is a Cargo workspace with three crates:
 | `crates/gba-demos/src/mosaic_demo.rs` | CPU-driven background/sprite mosaic demo runner |
 | `crates/gba-demos/src/raster_demo.rs` | Original ARM HBlank DMA raster program and color table |
 | `crates/gba-core/src/video/effects.rs` | Region masks and RGB555 alpha/brightness arithmetic |
+| `crates/desktop/src/audio.rs` | Host-audio platform boundary and explicit non-Darwin diagnostic |
+| `crates/desktop/src/audio/device.rs` | CPAL/CoreAudio lifecycle, nonblocking output callback, runtime errors, and counters |
+| `crates/desktop/src/audio/playback.rs` | Bounded host queue, prefill, stereo mapping, linear rate conversion, gain, and DC removal |
 | `crates/desktop/src/desktop.rs` | Native window, display test, and keyboard controls |
 | `crates/desktop/src/desktop/affine.rs` | Affine background window and smoke-test pixel checks |
 | `crates/desktop/src/desktop/affine_raster.rs` | Affine raster window and every-pixel smoke checks |
@@ -169,7 +172,7 @@ The repository is a Cargo workspace with three crates:
 | `crates/desktop/src/cartridge/rtc_clock.rs` | Host-only UTC seed and monotonic elapsed-time adapter, with injected epoch/duration tests |
 | `crates/desktop/src/cartridge/window.rs` | ROM-window session, bounded slices, capture, STOP/input handling, and progress limits |
 | `crates/desktop/src/cartridge/window/tests.rs` | Original ROM pixels, keyboard mapping, STOP wake, HALT, frame budgets, and diagnostics |
-| `crates/desktop/src/desktop/rom.rs` | Main-thread ROM window, input polling, presentation pacing, and frame-limited exit |
+| `crates/desktop/src/desktop/rom.rs` | Main-thread ROM window, input polling, optional audio draining/muting, bounded pacing, and frame-limited exit |
 | `crates/desktop/examples/write_rom_demo.rs` | Non-overwriting export of the original input-test ROM |
 | `crates/desktop/src/cartridge/tests.rs` | ROM options, bounded readers, instruction/DMA/IRQ budgets, HALT/STOP, and diagnostic reports |
 | `crates/desktop/tests/rom_cli.rs` | File loading and exit-status checks; opt-in native ROM-window integration test |
