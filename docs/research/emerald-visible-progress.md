@@ -53,6 +53,20 @@ billion machine steps). This establishes visible menus, sprite/dialogue
 composition, and input-driven progress — not correct gameplay, audio, or
 saving.
 
+## Save-navigation attempt (negative result)
+
+A `save-run` schedule replayed the deterministic `advance` path to the
+12,000-frame start-menu state, then pressed Down, Down, A (SAVE), A (YES),
+and A again with settling gaps, running to 13,200 frames with Flash image
+dumps at exit. The run completed without a diagnostic, but the dumped
+131,072-byte image shows no save: bank 0 sectors 0–13 erased, bank 1
+sectors 0–11 programmed with structured non-`0xff` data that does not match
+an Emerald save layout, and the final captured frame is the overworld with
+no save dialog. The pressed menu item was not SAVE (blind taps cannot aim),
+or the dialog timing missed. `save_modified` was not observed true.
+External-game save/restart/load therefore remains unverified and waits on
+manual play with `--save-file`, not on more blind schedules.
+
 ## Second-game data point
 
 A local FireRed ROM (16 MiB) faults during boot init, after about 1.19
