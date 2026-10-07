@@ -199,7 +199,7 @@ The replacement BIOS now returns for that empty stream. Full starter-selection p
 A later [visible-progress probe](research/emerald-visible-progress.md) renders the title screen, logo, NEW GAME/OPTION menu, Prof. Birch scene, and legible dialogue in attract mode.
 Sparse A/Start taps reach the gender prompt by 4,000 frames and the in-game start menu over the overworld by 12,000 frames without a diagnostic.
 A 40,000-frame tapped run passed the reported 37,101-frame trap point without a diagnostic; blind taps take a different menu path, so the identical scene is not confirmed visited.
-A local second-game ROM faults in boot init on a halfword store to ROM mirror `0x09fe2ffe` past its 16 MiB EOF; without save hardware it faults earlier on a Flash unlock write. Both are recorded, not fixed.
+Text/affine background map and tile fetches now follow the 128 KiB VRAM mirror window instead of faulting past 64 KiB; this fixes a user-reported window diagnostic at map address `0x10d00` after 23,024 captured frames.
 See [the startup result](research/emerald-reset.md) for the bounded run and next investigation.
 See [cartridge loading](hardware/cartridge.md) for file limits, step budgets, and exit status.
 The [ROM suite runner](rom-tests.md) has original regressions and a [pinned public ARM baseline](public-arm-tests.md).

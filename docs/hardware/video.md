@@ -66,7 +66,8 @@ Mode 0 supports all four text backgrounds, with these features:
 - Uncovered pixels use palette entry zero. Green swap runs after composition.
 
 Mode 0 supports mosaic independently on each background. Rendering errors leave the output buffer unchanged.
-Background tile or map fetches outside the first 64 KiB return diagnostics.
+Background tile or map fetches use the 128 KiB VRAM window; offsets `0x18000..0x1ffff`
+mirror `0x10000..0x17fff`. Addresses at or beyond `0x20000` return diagnostics.
 This is not a complete picture processing unit (PPU).
 
 Affine background snapshots support these configurations:
@@ -94,7 +95,7 @@ Map sizes are 128×128, 256×256, 512×512, or 1024×1024 pixels.
 BGCNT bit 13 selects wrapping or transparent edges in Modes 1 and 2. All bitmap modes ignore this bit.
 Palette index zero is transparent in tiled backgrounds and Mode 4. Mode 3/5 black bitmap pixels remain opaque.
 Background priorities, sprite composition, and green swap apply after sampling.
-Map fetches beyond the supported 64 KiB background area still return diagnostics.
+Map fetches use the same 128 KiB VRAM mirror. Addresses at or beyond `0x20000` return diagnostics.
 
 **Timing limit:** debug snapshots use one set of programmed registers for the whole image.
 Row capture instead samples from separate internal X/Y origins.

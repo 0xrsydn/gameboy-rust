@@ -252,7 +252,7 @@ fn transformed_backgrounds_composite_with_regular_and_affine_sprites() {
 }
 
 #[test]
-fn diagnostics_leave_output_unchanged_and_disabled_layers_skip_validation() {
+fn unsupported_layers_leave_output_unchanged_and_disabled_layers_skip_validation() {
     let mut m = setup(2, 3, false);
     let mut f = Framebuffer::default();
     f.clear(0x001f);
@@ -262,21 +262,25 @@ fn diagnostics_leave_output_unchanged_and_disabled_layers_skip_validation() {
             m.render_frame(&mut f),
             Err(VideoError::UnsupportedLayers(control))
         );
+        assert!(f.pixels().iter().all(|&p| p == 0xff0000));
     }
-    m.write16(DISPCNT, 0x402).unwrap();
-    m.write16(BG2CNT, 0xdf00).unwrap(); // Map31, 1024 pixels.
-    m.write32(BG2Y, 128 * 256).unwrap(); // Flat row starts outside first64K.
-    assert_eq!(
-        m.render_frame(&mut f),
-        Err(VideoError::UnsupportedMapAddress(0x10000))
-    );
-    assert!(f.pixels().iter().all(|&p| p == 0xff0000));
     m.write16(DISPCNT, 2).unwrap();
     m.render_frame(&mut f).unwrap();
     assert!(f.pixels().iter().all(|&p| p == rgb555_to_rgb888(0x4000)));
     m.write16(DISPCNT, 0xffff).unwrap();
     m.render_frame(&mut f).unwrap();
     assert!(f.pixels().iter().all(|&p| p == 0xffffff));
+}
+
+#[test]
+fn affine_map_at_map_base_31_reads_high_vram_through_the_bus_mirror() {
+    let mut m = setup(2, 3, false);
+    m.write16(BG2CNT, 0xdf00).unwrap(); // Map31, 1024 pixels.
+    m.write32(BG2Y, 128 * 256).unwrap(); // Map row16 starts at offset0x10000.
+    m.write16(VRAM + 0x18000, 1).unwrap(); // Halfword bus mirror of the selected map byte.
+    let mut f = Framebuffer::default();
+    m.render_frame(&mut f).unwrap();
+    assert_eq!(f.pixels()[0], rgb555_to_rgb888(31));
 }
 
 #[test]

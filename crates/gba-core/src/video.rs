@@ -43,11 +43,11 @@ impl fmt::Display for VideoError {
             ),
             Self::UnsupportedTileAddress(address) => write!(
                 f,
-                "text background tile address {address:#x} exceeds the supported 64 KiB BG area"
+                "background tile address {address:#x} exceeds the supported 128 KiB BG VRAM window"
             ),
             Self::UnsupportedMapAddress(address) => write!(
                 f,
-                "background map address {address:#x} exceeds the supported 64 KiB BG area"
+                "background map address {address:#x} exceeds the supported 128 KiB BG VRAM window"
             ),
             Self::UnsupportedObject { index, reason } => write!(f, "OBJ{index}: {reason}"),
             Self::UnsupportedLayers(control) => {
@@ -250,6 +250,16 @@ fn halfword(bytes: &[u8], offset: usize) -> u16 {
     u16::from_le_bytes([bytes[offset], bytes[offset + 1]])
 }
 
+/// Translate a BG VRAM offset through the bus's 128 KiB mirror window.
+fn vram_index(offset: usize) -> usize {
+    let offset = offset & 0x1ffff;
+    if offset >= 0x18000 {
+        offset - 0x8000
+    } else {
+        offset
+    }
+}
+
 fn text_pixel(
     bg: Background,
     vram: &[u8],
@@ -265,10 +275,10 @@ fn text_pixel(
     let y = (y + usize::from(bg.y)) % height;
     let block = x / 256 + (y / 256) * (width / 256);
     let map = ((control >> 8) & 31) * 0x800 + block * 0x800 + ((y / 8 % 32) * 32 + x / 8 % 32) * 2;
-    if map >= 0x10000 {
+    if map >= 0x20000 {
         return Err(VideoError::UnsupportedMapAddress(map));
     }
-    let entry = usize::from(halfword(vram, map));
+    let entry = usize::from(halfword(vram, vram_index(map)));
     let tx = (x & 7) ^ if entry & 0x400 != 0 { 7 } else { 0 };
     let ty = (y & 7) ^ if entry & 0x800 != 0 { 7 } else { 0 };
     let eight_bit = control & 0x80 != 0;
@@ -276,11 +286,10 @@ fn text_pixel(
     let address = ((control >> 2) & 3) * 0x4000
         + (entry & 0x3ff) * if eight_bit { 64 } else { 32 }
         + if eight_bit { pixel } else { pixel / 2 };
-    // The real PPU has special behavior outside BG VRAM. Do not read OBJ tiles
-    // as ordinary BG data or silently wrap this unsupported case.
-    if address >= 0x10000 {
+    if address >= 0x20000 {
         return Err(VideoError::UnsupportedTileAddress(address));
     }
+    let address = vram_index(address);
     let index = if eight_bit {
         usize::from(vram[address])
     } else {

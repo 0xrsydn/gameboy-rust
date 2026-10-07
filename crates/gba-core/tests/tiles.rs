@@ -184,48 +184,40 @@ fn priorities_ties_transparency_and_opaque_black_composite_all_four_layers() {
 fn character_base_and_high_tile_numbers_cross_character_blocks() {
     for eight in [false, true] {
         let mut m = setup();
-        m.write16(BG0CNT, 0x1004 | if eight { 0x80 } else { 0 })
+        m.write16(BG0CNT, 0x100c | if eight { 0x80 } else { 0 })
             .unwrap();
         m.write16(VRAM + 0x8000, 1023).unwrap();
-        let address = 0x4000 + 1023 * if eight { 64 } else { 32 };
-        if eight {
-            assert!(matches!(
-                m.render_frame(&mut Framebuffer::default()),
-                Err(VideoError::UnsupportedTileAddress(_))
-            ));
-        } else {
-            tile(&mut m, address, 0x1111, 32);
-            assert_eq!(pixel(&m, 0, 0), 0xff0000);
-        }
+        let address = 0xc000 + 1023 * if eight { 64 } else { 32 };
+        tile(
+            &mut m,
+            address,
+            if eight { 0x0101 } else { 0x1111 },
+            if eight { 64 } else { 32 },
+        );
+        assert_eq!(pixel(&m, 0, 0), 0xff0000);
     }
 }
 
 #[test]
-fn screen_map_outside_supported_bg_area_reports_error_without_wrapping() {
+fn wide_screen_block_at_map_base_31_reads_beyond_64k() {
     let mut m = setup();
     m.write16(BG0CNT, 0x5f04).unwrap(); // Map block31, wide; tile base1.
-    m.write16(BG0HOFS, 256).unwrap(); // Second block lies outside the BG area.
-    let mut frame = Framebuffer::default();
-    frame.clear(0x001f);
-    assert_eq!(
-        m.render_frame(&mut frame),
-        Err(VideoError::UnsupportedMapAddress(0x10000))
-    );
-    assert!(frame.pixels().iter().all(|&p| p == 0xff0000));
+    m.write16(BG0HOFS, 256).unwrap(); // First pixel selects screen block1 at 0x10000.
+    m.write16(VRAM + 0x18000, 1).unwrap(); // Bus mirror of the selected map entry.
+    tile(&mut m, 0x4020, 0x1111, 32);
+    assert_eq!(pixel(&m, 0, 0), 0xff0000);
 }
 
 #[test]
-fn unsupported_features_leave_output_unchanged_and_forced_blank_bypasses_them() {
+fn unsupported_modes_leave_output_unchanged_and_forced_blank_bypasses_them() {
     let mut m = setup();
     let mut frame = Framebuffer::default();
     frame.clear(0x001f);
-    m.write16(DISPCNT, 0x100).unwrap();
-    m.write16(BG0CNT, 0x100c).unwrap();
-    m.write16(VRAM + 0x8002, 1023).unwrap(); // Error after some valid pixels.
-    assert!(matches!(
+    m.write16(DISPCNT, 0x106).unwrap();
+    assert_eq!(
         m.render_frame(&mut frame),
-        Err(VideoError::UnsupportedTileAddress(_))
-    ));
+        Err(VideoError::UnsupportedMode(6))
+    );
     assert!(frame.pixels().iter().all(|&p| p == 0xff0000));
     m.write16(DISPCNT, 0xf180).unwrap();
     m.render_frame(&mut frame).unwrap();

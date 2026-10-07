@@ -2,7 +2,7 @@
 //! Internal origins advance at line boundaries. Pixel-fetch and per-access timing
 //! remain outside this row-level model.
 
-use super::{halfword, Background, VideoError, HEIGHT, WIDTH};
+use super::{halfword, vram_index, Background, VideoError, HEIGHT, WIDTH};
 #[cfg(test)]
 use crate::display::{CYCLES_PER_FRAME, CYCLES_PER_LINE};
 
@@ -136,14 +136,18 @@ pub(super) fn pixel(
     }
     let (tx, ty) = (tx as usize, ty as usize);
     let map = ((control >> 8) & 31) * 0x800 + (ty / 8) * (size as usize / 8) + tx / 8;
-    if map >= 0x10000 {
+    if map >= 0x20000 {
         return Err(VideoError::UnsupportedMapAddress(map));
     }
     // Affine maps have byte-sized indices and no flip/palette-bank attributes.
     // Every tile is 8bpp, regardless of BGCNT bit 7.
+    let address = vram_index(map);
     let address =
-        ((control >> 2) & 3) * 0x4000 + usize::from(vram[map]) * 64 + (ty % 8) * 8 + tx % 8;
-    let index = usize::from(vram[address]); // Maximum address is 0xffff.
+        ((control >> 2) & 3) * 0x4000 + usize::from(vram[address]) * 64 + (ty % 8) * 8 + tx % 8;
+    if address >= 0x20000 {
+        return Err(VideoError::UnsupportedTileAddress(address));
+    }
+    let index = usize::from(vram[vram_index(address)]);
     Ok(if index == 0 {
         None
     } else {
