@@ -12,6 +12,8 @@ mod fetch_tests;
 #[cfg(test)]
 mod flash_step_tests;
 #[cfg(test)]
+mod flash_write_tests;
+#[cfg(test)]
 mod irq_fetch_tests;
 mod iwram_bus;
 #[cfg(test)]
@@ -138,6 +140,8 @@ pub struct Memory {
     oam: Vec<u8>,
     rom: Vec<u8>,
     save_image: Vec<u8>,
+    save_modified: bool,
+    cartridge_elapsed: Cell<u32>,
     cartridge: Cartridge,
     cartridge_step: Cell<Option<Cartridge>>,
     bios: Option<Vec<u8>>,
@@ -170,6 +174,8 @@ impl Memory {
             oam: vec![0; 1024],
             rom,
             save_image: Vec::new(),
+            save_modified: false,
+            cartridge_elapsed: Cell::new(0),
             cartridge: Cartridge::default(),
             cartridge_step: Cell::new(None),
             bios: None,
@@ -218,6 +224,7 @@ impl Memory {
             "active cartridge transaction"
         );
         self.save_image = vec![0xff; device.capacity()];
+        self.save_modified = false;
         self.cartridge.set_save_device(device);
     }
 
@@ -244,6 +251,7 @@ impl Memory {
             });
         }
         self.save_image.copy_from_slice(bytes);
+        self.save_modified = false;
         self.cartridge.set_save_device(device);
         Ok(())
     }
@@ -270,6 +278,24 @@ impl Memory {
             "active cartridge transaction"
         );
         self.cartridge.advance_rtc_seconds(seconds)
+    }
+
+    /// True after a completed Flash operation changed stored bytes since setup/load.
+    pub fn save_modified(&self) -> bool {
+        self.save_modified
+    }
+
+    /// A command or operation is incomplete. Hosts should not persist on exit in this state.
+    pub fn save_write_pending(&self) -> bool {
+        self.cartridge.save_unfinished()
+    }
+
+    fn commit_save_mutation(&mut self) {
+        if let Some(effect) = self.cartridge.take_save_mutation() {
+            let target = &mut self.save_image[effect.start..effect.end];
+            self.save_modified |= target.iter().any(|&b| b != effect.value);
+            target.fill(effect.value);
+        }
     }
 
     fn cartridge_state(&self) -> Cartridge {
@@ -345,14 +371,21 @@ impl Memory {
         debug_assert!(self.timer_step.get().is_none());
         self.timer_step.set(Some(self.io.timer_step()));
         self.cartridge_step.set(Some(self.cartridge));
+        self.cartridge_elapsed.set(0);
     }
 
     pub(crate) fn discard_timer_step(&self) {
         self.timer_step.set(None);
         self.cartridge_step.set(None);
+        self.cartridge_elapsed.set(0);
     }
 
     fn advance_timer_step(&self, cycles: u32) {
+        if let Some(mut cartridge) = self.cartridge_step.get() {
+            cartridge.advance(cycles - self.cartridge_elapsed.get());
+            self.cartridge_elapsed.set(cycles);
+            self.cartridge_step.set(Some(cartridge));
+        }
         if let Some(mut step) = self.timer_step.get() {
             step.advance_to(cycles);
             self.timer_step.set(Some(step));
@@ -370,11 +403,15 @@ impl Memory {
             .cartridge_step
             .take()
             .expect("active cartridge transaction");
+        self.commit_save_mutation();
+        self.cartridge_elapsed.set(0);
         // Staged devices already reached this boundary. Advance remaining devices exactly once.
         self.advance_running_cycles_with_timers(cycles, false);
     }
 
     fn advance_running_cycles(&mut self, cycles: u32) {
+        self.cartridge.advance(cycles);
+        self.commit_save_mutation();
         self.advance_running_cycles_with_timers(cycles, true);
     }
 
@@ -930,8 +967,6 @@ impl Memory {
     ) -> Result<(), MemoryError> {
         let index = self.write_index::<N>(address, access)?;
         Self::validate_io_values(&mut self.audio_state(), address, &bytes)?;
-        let mut cartridge = self.cartridge_state();
-        cartridge.write(address, &bytes)?;
         self.record_access(
             address,
             match N {
@@ -941,6 +976,8 @@ impl Memory {
                 _ => unreachable!("unsupported bus width"),
             },
         );
+        let mut cartridge = self.cartridge_state();
+        cartridge.write(address, &bytes, &self.save_image)?;
         if cartridge.mapped(address) {
             if self.cartridge_step.get().is_some() {
                 self.cartridge_step.set(Some(cartridge));
@@ -1150,6 +1187,8 @@ impl Memory {
         let mut cartridge = self.cartridge_state();
         let timing = self.cpu_timing.get();
         let devices = self.timer_step.get();
+        let cartridge_step = self.cartridge_step.get();
+        let cartridge_elapsed = self.cartridge_elapsed.get();
         // Preflight ordered data phases on temporary device/timing copies.
         // A serial request can finish before a later control write reaches the bus.
         let validation = (|| {
@@ -1157,7 +1196,7 @@ impl Memory {
                 self.write_index::<4>(address, self.write_access())?;
                 let bytes = value.to_le_bytes();
                 Self::validate_io_values(&mut audio, address, &bytes)?;
-                cartridge.write(address, &bytes)?;
+                cartridge.write(address, &bytes, &self.save_image)?;
                 self.record_access(address, AccessWidth::Word);
                 if Serial::mapped(address) {
                     if let Some(mut step) = self.timer_step.get() {
@@ -1174,6 +1213,8 @@ impl Memory {
         })();
         self.cpu_timing.set(timing);
         self.timer_step.set(devices);
+        self.cartridge_step.set(cartridge_step);
+        self.cartridge_elapsed.set(cartridge_elapsed);
         validation?;
         for &(address, value) in writes {
             // The map cannot change between validation and these writes.

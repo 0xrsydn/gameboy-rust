@@ -7,7 +7,10 @@ mod flash;
 mod rtc;
 pub use calendar::{RtcDateTime, RtcError};
 use flash::Flash;
-pub use flash::{SaveDevice, SaveError, SAVE_END, SAVE_START};
+pub(crate) use flash::SaveMutation;
+pub use flash::{
+    SaveDevice, SaveError, FLASH_ERASE_CYCLES, FLASH_PROGRAM_CYCLES, SAVE_END, SAVE_START,
+};
 use rtc::Rtc;
 
 pub const GPIO_DATA: u32 = 0x0800_00c4;
@@ -44,6 +47,20 @@ impl Cartridge {
 
     pub(crate) fn save_mapped(&self, address: u32) -> bool {
         self.flash.is_some() && (SAVE_START..=SAVE_END).contains(&address)
+    }
+
+    pub(crate) fn advance(&mut self, cycles: u32) {
+        if let Some(flash) = self.flash.as_mut() {
+            flash.advance(cycles);
+        }
+    }
+
+    pub(crate) fn save_unfinished(&self) -> bool {
+        self.flash.is_some_and(Flash::unfinished)
+    }
+
+    pub(crate) fn take_save_mutation(&mut self) -> Option<SaveMutation> {
+        self.flash.as_mut().and_then(Flash::take_mutation)
     }
 
     pub(crate) fn read_save8(&self, address: u32, image: &[u8]) -> Result<u8, MemoryError> {
@@ -94,7 +111,12 @@ impl Cartridge {
     }
 
     /// Apply one access to a copy first. A rejected second halfword changes nothing.
-    pub(crate) fn write(&mut self, address: u32, bytes: &[u8]) -> Result<(), MemoryError> {
+    pub(crate) fn write(
+        &mut self,
+        address: u32,
+        bytes: &[u8],
+        image: &[u8],
+    ) -> Result<(), MemoryError> {
         if !self.mapped(address) {
             return Ok(()); // Non-cartridge accesses are validated by the bus.
         }
@@ -105,7 +127,7 @@ impl Cartridge {
                     operation: "Flash non-byte write",
                 });
             }
-            return self.flash.as_mut().unwrap().write(address, bytes[0]);
+            return self.flash.as_mut().unwrap().write(address, bytes[0], image);
         }
         let fail = |at, value, operation| MemoryError::UnsupportedIo {
             address: at,

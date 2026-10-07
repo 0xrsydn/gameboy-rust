@@ -1,18 +1,20 @@
-//! Bounded Macronix Flash identification, array reads, and 128 KiB banking.
-//! Program/erase commands remain diagnostic: this module cannot claim a completed save.
+//! Bounded Macronix Flash commands with nominal delayed program/erase completion.
 use crate::memory::MemoryError;
 use std::{error::Error, fmt};
 
 pub const SAVE_START: u32 = 0x0e00_0000;
 pub const SAVE_END: u32 = 0x0e00_ffff;
+/// Nominal simulation delays, not measured Macronix operation times.
+pub const FLASH_PROGRAM_CYCLES: u32 = 650;
+pub const FLASH_ERASE_CYCLES: u32 = 30000;
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum SaveDevice {
     #[default]
     None,
-    /// Macronix ID 1CC2h. Array reads and identification only.
+    /// Macronix ID 1CC2h, 64 KiB array.
     Flash64,
-    /// Macronix ID 09C2h. Adds two 64 KiB banks; no programming or erase yet.
+    /// Macronix ID 09C2h, two 64 KiB banks.
     Flash128,
 }
 
@@ -50,6 +52,21 @@ pub(super) struct Flash {
     phase: Phase,
     identify: bool,
     bank: u8,
+    pending: Option<Pending>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct SaveMutation {
+    pub(crate) start: usize,
+    pub(crate) end: usize,
+    pub(crate) value: u8,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Pending {
+    mutation: SaveMutation,
+    remaining: u32,
+    poll: u32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -58,6 +75,10 @@ enum Phase {
     Unlock,
     Command,
     Bank,
+    Program,
+    EraseUnlock,
+    EraseCommand,
+    EraseConfirm,
 }
 
 impl Flash {
@@ -67,6 +88,7 @@ impl Flash {
             phase: Phase::Ready,
             identify: false,
             bank: 0,
+            pending: None,
         })
     }
 
@@ -76,6 +98,22 @@ impl Flash {
 
     pub(super) fn read(self, address: u32, image: &[u8]) -> Result<u8, MemoryError> {
         let offset = (address - SAVE_START) as usize;
+        let index = usize::from(self.bank) * 0x10000 + offset;
+        if let Some(pending) = self.pending {
+            if pending.remaining != 0 {
+                if address != pending.poll {
+                    return Err(MemoryError::UnsupportedCartridgeAccess {
+                        address,
+                        operation: "Flash busy read outside polling address",
+                    });
+                }
+                // Bounded DQ7-only data polling. Toggle/error bits are not modeled.
+                return Ok((pending.mutation.value ^ 0x80) & 0x80);
+            }
+            if (pending.mutation.start..pending.mutation.end).contains(&index) {
+                return Ok(pending.mutation.value);
+            }
+        }
         if self.identify {
             return match offset {
                 0 => Ok(0xc2),
@@ -90,10 +128,33 @@ impl Flash {
                 }),
             };
         }
-        Ok(image[usize::from(self.bank) * 0x10000 + offset])
+        Ok(image[index])
     }
 
-    pub(super) fn write(&mut self, address: u32, value: u8) -> Result<(), MemoryError> {
+    pub(super) fn advance(&mut self, cycles: u32) {
+        if let Some(pending) = self.pending.as_mut() {
+            pending.remaining = pending.remaining.saturating_sub(cycles);
+        }
+    }
+
+    pub(super) fn unfinished(self) -> bool {
+        self.pending.is_some() || self.phase != Phase::Ready
+    }
+
+    pub(super) fn take_mutation(&mut self) -> Option<SaveMutation> {
+        if self.pending.is_some_and(|p| p.remaining == 0) {
+            self.pending.take().map(|p| p.mutation)
+        } else {
+            None
+        }
+    }
+
+    pub(super) fn write(
+        &mut self,
+        address: u32,
+        value: u8,
+        image: &[u8],
+    ) -> Result<(), MemoryError> {
         let offset = address - SAVE_START;
         let error = |operation| MemoryError::UnsupportedIo {
             address,
@@ -101,9 +162,19 @@ impl Flash {
             operation,
         };
         let mut next = *self;
+        if self.pending.is_some_and(|p| p.remaining != 0) {
+            if self.device == SaveDevice::Flash64 && offset == 0x5555 && value == 0xf0 {
+                next.pending = None;
+                next.phase = Phase::Ready;
+                *self = next;
+                return Ok(());
+            }
+            return Err(error("Flash write during busy operation"));
+        }
         // GBATEK documents direct reset for the 64 KiB chip. For 128 KiB, accept
         // only a redundant reset while already idle in array mode. No busy/ID exit is inferred.
-        if offset == 0x5555
+        if self.phase != Phase::Program
+            && offset == 0x5555
             && value == 0xf0
             && (self.device == SaveDevice::Flash64
                 || (self.phase == Phase::Ready && !self.identify))
@@ -129,8 +200,8 @@ impl Flash {
                         }
                         0xb0 if self.device == SaveDevice::Flash128 => Phase::Bank,
                         0xb0 => return Err(error("Flash bank selection on 64 KiB device")),
-                        0xa0 => return Err(error("Flash byte programming")),
-                        0x80 => return Err(error("Flash erase setup")),
+                        0xa0 => Phase::Program,
+                        0x80 => Phase::EraseUnlock,
                         _ => return Err(error("Flash command")),
                     }
                 }
@@ -139,6 +210,52 @@ impl Flash {
                     Phase::Ready
                 }
                 Phase::Bank => return Err(error("Flash bank address/value")),
+                Phase::Program => {
+                    if self.pending.is_some() {
+                        return Err(error("Flash completion awaiting commit"));
+                    }
+                    let index = usize::from(self.bank) * 0x10000 + offset as usize;
+                    if value & !image[index] != 0 {
+                        return Err(error(
+                            "Flash programming requires erase for zero-to-one bits",
+                        ));
+                    }
+                    next.pending = Some(Pending {
+                        mutation: SaveMutation {
+                            start: index,
+                            end: index + 1,
+                            value,
+                        },
+                        remaining: FLASH_PROGRAM_CYCLES,
+                        poll: address,
+                    });
+                    Phase::Ready
+                }
+                Phase::EraseUnlock if offset == 0x5555 && value == 0xaa => Phase::EraseCommand,
+                Phase::EraseCommand if offset == 0x2aaa && value == 0x55 => Phase::EraseConfirm,
+                Phase::EraseConfirm => {
+                    if self.pending.is_some() {
+                        return Err(error("Flash completion awaiting commit"));
+                    }
+                    let (start, end, poll) = match value {
+                        0x10 if offset == 0x5555 => (0, self.device.capacity(), SAVE_START),
+                        0x30 if offset & 0xfff == 0 => {
+                            let start = usize::from(self.bank) * 0x10000 + offset as usize;
+                            (start, start + 0x1000, address)
+                        }
+                        _ => return Err(error("Flash erase confirmation/address")),
+                    };
+                    next.pending = Some(Pending {
+                        mutation: SaveMutation {
+                            start,
+                            end,
+                            value: 0xff,
+                        },
+                        remaining: FLASH_ERASE_CYCLES,
+                        poll,
+                    });
+                    Phase::Ready
+                }
                 _ => return Err(error("Flash unlock/reset sequence")),
             };
         }

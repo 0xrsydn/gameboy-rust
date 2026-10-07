@@ -122,8 +122,8 @@ fn bank_selection_covers_every_byte_and_survives_id_mode() {
 fn unsupported_commands_and_bad_bank_values_are_retryable_without_data_changes() {
     for device in [SaveDevice::Flash64, SaveDevice::Flash128] {
         for (byte, message) in [
-            (0xa0, "programming"),
-            (0x80, "erase setup"),
+            (0x42, "Flash command"),
+            (0x30, "Flash command"),
             (0x10, "Flash command"),
         ] {
             let mut bus = memory(device);

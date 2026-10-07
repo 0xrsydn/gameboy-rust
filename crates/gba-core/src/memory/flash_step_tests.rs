@@ -73,7 +73,7 @@ fn work_ram_byte_loads_observe_selected_id_with_save_bus_costs() {
 }
 
 #[test]
-fn rejected_programming_and_rom_execution_reads_roll_back_cpu_and_command_state() {
+fn rejected_commands_and_rom_execution_reads_roll_back_cpu_and_command_state() {
     for thumb in [false, true] {
         for read in [false, true] {
             let (cpu, mut memory) = prepared(
@@ -84,7 +84,7 @@ fn rejected_programming_and_rom_execution_reads_roll_back_cpu_and_command_state(
                     (false, true) => 0xe5d10000,
                     (true, true) => 0x7808,
                 }],
-                &[(0, 0xa0), (1, if read { SAVE_START } else { HI })],
+                &[(0, 0x42), (1, if read { SAVE_START } else { HI })],
             );
             unlocked(&mut memory);
             let before = memory.cartridge;
@@ -94,7 +94,7 @@ fn rejected_programming_and_rom_execution_reads_roll_back_cpu_and_command_state(
             assert!(error.to_string().contains(if read {
                 "outside work RAM"
             } else {
-                "programming"
+                "Flash command"
             }));
             assert_eq!(machine.step(), Err(error));
             assert_eq!(machine.cpu(), &cpu);
