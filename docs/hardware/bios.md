@@ -387,7 +387,9 @@ Exact firmware cycle counts and undocumented side effects are not reproduced.
 
 ## LZ77 decompression
 
-Both variants read a word-aligned header at r0. Its low byte must be `0x10`; the upper 24 bits specify output length.
+Both variants read a word-aligned header at r0. The upper 24 bits specify output length.
+If the length is zero, both return without checking the low byte or accessing the destination or token stream.
+This includes an all-zero header. Nonempty streams still require low byte `0x10`.
 Each flag byte describes eight tokens, most significant bit first.
 A literal token produces one byte. A reference token copies 3–18 bytes from 1–4,096 bytes behind the output position.
 References can overlap previously produced output. Reads observe each preceding write through the normal emulated bus.
@@ -404,7 +406,10 @@ The emulator does not model firmware quirks for odd output sizes or invalid refe
 The decoder validates the type byte, source alignment, source protection, output address wrap, and reference bounds.
 Sources below `0x02000000`, references before produced output, and runs beyond the declared size reach `bios::INVALID_ARGUMENT_TRAP`.
 Invalid VRAM alignment, odd output size, and distance-one references reach the same diagnostic trap.
-Zero output length reads no tokens and writes no output after header/argument validation.
+Zero output length returns after source alignment/protection checks and the header read, before type or destination checks.
+An odd or unmapped destination is therefore harmless for an empty stream; invalid source addresses still fail.
+The [empty-stream regression](../research/emerald-empty-lz.md) records the local reproduction and emulator evidence.
+This is a bounded compatibility rule, not physical-hardware validation of malformed nonempty streams.
 Truncated cartridge input and invalid destination accesses return normal memory diagnostics.
 Earlier completed writes remain committed on failure; neither the whole service nor the whole output buffer is rolled back.
 Each call runs as ordinary ARM instructions, so callers can enforce machine-step limits on large streams.

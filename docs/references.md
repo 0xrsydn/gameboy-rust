@@ -246,6 +246,13 @@ Disabled sound and disconnected serial reset:
 - [GBATEK normal serial mode](https://problemkaputt.de/gbatek-sio-normal-mode.htm) and its [general-purpose register chapter](https://mgba-emu.github.io/gbatek/), for data widths, control fields, and disconnected input pull-ups.
 - [mGBA BIOS implementation at 3a5e34be](https://github.com/mgba-emu/mgba/blob/3a5e34be33dc7f8f707e5bc9db69e8a430046f21/src/gba/bios.c), for functional serial and sound reset defaults. Exact firmware ordering and timing remain unverified.
 
+Empty LZ77 header diagnostic:
+
+- [GBATEK BIOS decompression](https://problemkaputt.de/gbatek-bios-decompression-functions.htm), for the LZ77 header and 24-bit output length.
+- [mGBA BIOS at 3a5e34be](https://github.com/mgba-emu/mgba/blob/3a5e34be33dc7f8f707e5bc9db69e8a430046f21/src/gba/bios.c), for `_unLz77` skipping token reads and writes when length is zero, without checking the signature byte.
+- Secondary format references: [Rust gba LZ77 wrapper](https://docs.rs/gba/latest/gba/bios/fn.LZ77UnCompReadNormalWrite8bit.html) and [gbadoc BIOS overview](https://gbadev.net/gbadoc/bios.html).
+  See [the isolated reproduction and limits](research/emerald-empty-lz.md). These sources do not establish physical malformed-header behavior.
+
 Optional classifier-assisted debugging:
 
 - [TypeSafe documentation index](https://docs.typesafe.ai/llms.txt), [API reference](https://docs.typesafe.ai/api.md), [models](https://docs.typesafe.ai/models.md), [confidence](https://docs.typesafe.ai/confidence.md), and [Jev limitations](https://docs.typesafe.ai/model-jaggedness/jev-1.13.md), for typed evidence review and its limits.

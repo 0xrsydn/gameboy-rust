@@ -1,6 +1,7 @@
 //! Original LZ77 decoder emitted as ARM instructions.
 //! Invalid streams trap after any earlier successful writes. VRAM output requires
-//! an even size and halfword alignment; distance-one references are rejected.
+//! an even size and halfword alignment for nonempty output; distance-one references
+//! are rejected. A zero-length header returns without reading tokens or checking its type.
 
 use super::ArmImage;
 
@@ -18,9 +19,11 @@ pub(super) fn emit(a: &mut ArmImage) {
     a.branch(3, "invalid_argument");
     a.emit(0xe490_2004); // LDR r2,[r0],#4 (header)
     a.emit(0xe202_b0ff); // AND r11,r2,#0xff
-    a.emit(0xe35b_0010); // CMP r11,#0x10 (LZ77 type, reserved bits zero)
-    a.branch(1, "invalid_argument");
     a.emit(0xe1a0_2422); // MOV r2,r2,LSR #8 (24-bit output byte count)
+    a.emit(0xe352_0000); // CMP r2,#0
+    a.branch(0, "lz_done"); // Empty streams need neither a type tag nor a usable destination.
+    a.emit(0xe35b_0010); // CMP r11,#0x10 (nonempty LZ77 type, reserved bits zero)
+    a.branch(1, "invalid_argument");
     a.emit(0xe35c_0000); // CMP r12,#0
     a.branch(0, "lz_validate_end");
     a.emit(0xe181_b002); // ORR r11,r1,r2 (both destination and size must be even)
@@ -29,8 +32,6 @@ pub(super) fn emit(a: &mut ArmImage) {
     a.label("lz_validate_end");
     a.emit(0xe091_b002); // ADDS r11,r1,r2
     a.branch(2, "invalid_argument"); // Reject output address wrap.
-    a.emit(0xe352_0000); // CMP r2,#0
-    a.branch(0, "lz_done");
     a.emit(0xe1a0_8001); // MOV r8,r1 (start of produced output)
     a.emit(0xe3a0_9000); // MOV r9,#0 (pending halfword)
     a.emit(0xe3a0_a000); // MOV r10,#0 (bit position 0 or 8)

@@ -65,6 +65,9 @@ They verify suite selection, pinned URLs, hashes, sizes, checkpoint validation, 
 The [Pong adapter](public-pong.md) has additional offline tests for its pinned downloads, retained license, and bounded gameplay scenarios.
 Run the external Pong suite separately; ordinary Cargo and Python tests require no public ROM or network access.
 Device initialization regressions use original instructions to check disabled sound, wave RAM, disconnected serial pins, and reset flags.
+LZ77 empty-header tests cover every low header byte, ARM/Thumb callers, both output widths, and unchanged RAM/video/stack sentinels.
+An unmapped odd destination and header ending at ROM EOF prove that empty calls access neither output nor tokens.
+Original terminal/native-window callers execute both LZ77 SWIs and verify return markers and retained RAM data.
 Core cartridge GPIO tests use an explicitly attached RTC and original pin sequences, never game code or host time.
 They cover read overlays, unchanged ROM bytes, masks, directions, widths, framing, control/calendar/reset, aborts, and unsupported commands.
 Calendar tests cover all dates in 2000–2099, 12/24-hour representation, PM flags, midnight, leap days, and large/split elapsed durations.

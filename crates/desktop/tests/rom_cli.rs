@@ -77,6 +77,27 @@ fn raw_original_program_runs_with_a_bounded_report_without_changing_the_file() {
     assert_eq!(fs::read(path).unwrap(), original);
 }
 
+fn empty_lz_setup() -> Vec<u32> {
+    // Original ARM caller, an all-zero header at EOF, and a RAM sentinel.
+    // Both LZ variants must return without reading tokens or writing the destination.
+    vec![
+        0xe59f001c, 0xe59f101c, 0xe3a0205a, 0xe5812000, 0xef110000, 0xef120000, 0xe5913000,
+        0xe3a0402a, 0xeafffffe, 0x0800002c, 0x02001000, 0,
+    ]
+}
+
+#[test]
+fn empty_lz_calls_return_through_original_bios_without_changing_destination() {
+    let fixture = Fixture::new();
+    let path = fixture.rom(&empty_lz_setup());
+    let original = fs::read(&path).unwrap();
+    let output = run(&path, "1000");
+    assert!(output.status.success(), "{}", stderr(&output));
+    assert!(stdout(&output).contains("r3=0x0000005a"));
+    assert!(stdout(&output).contains("r4=0x0000002a"));
+    assert_eq!(fs::read(path).unwrap(), original);
+}
+
 fn wave_setup() -> Vec<u32> {
     // Original ARM halfword stores and a status load; no external audio or assets.
     let mut code = Vec::new();
@@ -641,6 +662,12 @@ fn native_rom_window_presents_file_bytes_and_reports_stop_cpu_and_video_errors()
     );
     assert!(stdout(&output).contains("Captured ROM frames: 3"));
     assert!(stdout(&output).contains("Result: window frame limit reached"));
+    let lz_path = fixture.rom(&empty_lz_setup());
+    let lz_output = window(&lz_path, false, None);
+    assert!(lz_output.status.success(), "{}", stderr(&lz_output));
+    assert!(stdout(&lz_output).contains("Captured ROM frames: 3"));
+    assert!(stdout(&lz_output).contains("r3=0x0000005a"));
+    assert!(stdout(&lz_output).contains("r4=0x0000002a"));
     let wave_path = fixture.rom(&wave_setup());
     let wave_output = window(&wave_path, false, None);
     assert!(wave_output.status.success(), "{}", stderr(&wave_output));

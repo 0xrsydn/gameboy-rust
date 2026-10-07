@@ -87,6 +87,7 @@ Update this file when a feature lands or a limit is removed.
 - Raw ROM-file loading with original BIOS boot, terminal diagnostics, and final CPU/step reports.
 - Firmware boot initializes BG2/BG3 identity scales for bitmap and affine programs that do not program their own matrices.
 - RegisterRamReset supports disabled sound and disconnected serial initialization, including the common `r0=0xff` request.
+- Both LZ77 BIOS services return without output for zero-length headers, including all-zero headers; nonempty validation remains strict.
 - Disconnected Joybus selection, local data/status registers, and transmit-pending state without invented remote events or IRQs.
 - Direct Sound A/B support timer-driven FIFO playback, stereo digital levels, and DMA1/A or DMA2/B refill blocks.
 - PSG pulse channels 1 and 2 support independent nominal frequency/duty playback, length, envelope, status, and stereo mixing. Channel 1 also supports sweep.
@@ -192,6 +193,9 @@ A later [fixed-time input probe](research/emerald-wave.md) found a wave trigger 
 Wave support now passes that point and reaches 1,320 frames with scheduled Start/A presses and releases.
 Output differs from a no-input control, but readable menus and gameplay remain unverified.
 Flash writing and host persistence now pass original save/restart/load tests. Emerald saving and reloading remain unverified.
+A user reached starter selection, then reported a BIOS invalid-argument trap.
+An [isolated reproduction](research/emerald-empty-lz.md) identified a zero-length LZ77 header rejected before the length check.
+The replacement BIOS now returns for that empty stream. Full starter-selection progress after this correction needs user retesting.
 Without `--rtc`, cartridge GPIO writes still return read-only diagnostics.
 No title-screen, gameplay, or audible-game compatibility is established.
 See [the startup result](research/emerald-reset.md) for the bounded run and next investigation.

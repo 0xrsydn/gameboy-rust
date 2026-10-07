@@ -305,16 +305,39 @@ fn decompression_restores_user_mode_masks_and_all_caller_registers() {
 }
 
 #[test]
-fn zero_output_length_does_not_read_flags_or_touch_destination() {
+fn empty_headers_ignore_type_without_reading_payload_or_accessing_destination() {
+    // Original synthetic headers, including the all-zero empty-stream case.
+    // The unmapped, odd destination also proves no output alignment/access is needed.
     for service in [0x11, 0x12] {
-        let (mut machine, return_pc) = prepare(service, false, 0x0e00_0000, &[0x10, 0, 0, 0]);
-        complete(&mut machine, return_pc); // Destination and next source byte are unmapped.
+        for thumb in [false, true] {
+            for low_byte in 0..=255 {
+                let (mut machine, return_pc) =
+                    prepare(service, thumb, 0x0e00_0001, &[low_byte, 0, 0, 0]);
+                let before = machine.cpu().clone();
+                complete(&mut machine, return_pc); // Header ends at the last supplied ROM byte.
+                assert_eq!(&machine.cpu().registers()[..15], &before.registers()[..15]);
+                assert_eq!(machine.cpu().cpsr(), before.cpsr());
+            }
+        }
+    }
+}
+
+#[test]
+fn empty_headers_preserve_ram_video_and_stack_sentinels() {
+    for service in [0x11, 0x12] {
+        for thumb in [false, true] {
+            for destination in [DEST, VRAM_START + 4] {
+                for low_byte in [0, 0x10, 0xff] {
+                    verify(service, thumb, destination, &[low_byte, 0, 0, 0], &[]);
+                }
+            }
+        }
     }
 }
 
 #[test]
 fn bad_headers_alignment_and_wrapping_destinations_are_rejected() {
-    for header in [0_u32, 0x0200, 0x0211, 0x0220, 0x02ff] {
+    for header in [0x0100_u32, 0x0200, 0x0211, 0x0220, 0x02ff] {
         let (mut machine, _) = prepare(0x11, false, DEST, &header.to_le_bytes());
         assert_invalid(fail(&mut machine));
         assert_eq!(machine.memory().read32(DEST).unwrap(), 0);
