@@ -1,5 +1,7 @@
 //! Nominal Direct Sound and PSG channels, including single-bank wave playback. No host output.
 
+pub(crate) mod capture;
+pub use capture::{AUDIO_QUEUE_CAPACITY, AUDIO_SAMPLE_RATE};
 mod modulation;
 mod noise;
 mod pulse;

@@ -7,6 +7,8 @@ pub(super) const STAGED_IRQ_MASK: u16 = 0xf8;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct TimerStep {
     pub(crate) audio: crate::audio::Audio,
+    pub(crate) sample_clock: crate::audio::capture::SampleClock,
+    pub(crate) samples: crate::audio::capture::SampleBatch,
     pub(crate) serial: super::Serial,
     pub(super) timers: [Timer; 4],
     pub(super) phase: u16,
@@ -18,6 +20,8 @@ impl TimerStep {
     pub(super) fn new(io: &Io) -> Self {
         Self {
             audio: io.audio,
+            sample_clock: io.audio_capture.clock,
+            samples: Default::default(),
             serial: io.serial,
             timers: io.timers,
             phase: io.timer_phase,
@@ -29,12 +33,23 @@ impl TimerStep {
     pub(crate) fn advance_to(&mut self, elapsed: u32) {
         assert!(elapsed >= self.elapsed, "timer step time must be monotonic");
         self.pending |= self.serial.advance(elapsed - self.elapsed);
-        self.pending |= Io::advance_timer_bank(
-            &mut self.timers,
-            &mut self.phase,
-            &mut self.audio,
+        let dropped = self.sample_clock.advance(
             elapsed - self.elapsed,
+            crate::audio::capture::STEP_SAMPLES - self.samples.len,
+            |count, sample| {
+                self.pending |= Io::advance_timer_bank(
+                    &mut self.timers,
+                    &mut self.phase,
+                    &mut self.audio,
+                    count,
+                );
+                if sample {
+                    self.samples.samples[self.samples.len] = self.audio.level();
+                    self.samples.len += 1;
+                }
+            },
         );
+        self.samples.dropped = self.samples.dropped.saturating_add(dropped);
         self.elapsed = elapsed;
     }
 

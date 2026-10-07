@@ -1,6 +1,8 @@
 use std::{cell::Cell, error::Error, fmt};
 
 #[cfg(test)]
+mod audio_capture_tests;
+#[cfg(test)]
 mod audio_step_tests;
 #[cfg(test)]
 mod cartridge_step_tests;
@@ -277,6 +279,28 @@ impl Memory {
     /// Current committed audio mixer level. This is not a host sample stream.
     pub fn audio_level(&self) -> StereoLevel {
         self.io.audio.level()
+    }
+
+    /// Enable optional 32768 Hz stereo capture. A toggle clears queued frames,
+    /// resets its synthetic phase/drop counter, and does not reset sound hardware.
+    /// Call between machine steps. Repeating the current setting preserves state.
+    pub fn set_audio_capture(&mut self, enabled: bool) {
+        assert!(
+            self.timer_step.get().is_none(),
+            "audio capture configuration during a step"
+        );
+        self.io.audio_capture.set_enabled(enabled);
+    }
+
+    /// Drain committed frames, oldest first. Failed steps never publish samples.
+    /// Each sample is a signed ten-bit digital level, not normalized host PCM.
+    pub fn drain_audio_samples(&mut self, output: &mut [StereoLevel]) -> usize {
+        self.io.audio_capture.drain(output)
+    }
+
+    /// Frames discarded because the bounded capture buffers were full.
+    pub fn audio_dropped_samples(&self) -> u64 {
+        self.io.audio_capture.dropped
     }
 
     fn serial_state(&self) -> Serial {

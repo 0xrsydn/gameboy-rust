@@ -161,6 +161,7 @@ enum PowerState {
 pub(crate) struct Io {
     pub(crate) serial: Serial,
     pub(crate) audio: Audio,
+    pub(crate) audio_capture: crate::audio::capture::AudioCapture,
     timers: [Timer; 4],
     // Low ten system-clock bits cover every supported divider. STOP freezes this phase.
     timer_phase: u16,
@@ -430,6 +431,7 @@ impl Io {
 
     pub(crate) fn commit_timer_step(&mut self, step: TimerStep) {
         self.audio = step.audio;
+        self.audio_capture.commit(step.sample_clock, step.samples);
         self.serial = step.serial;
         self.dma.trigger_sound(self.audio.take_requests());
         self.timers = step.timers;
@@ -493,12 +495,20 @@ impl Io {
         self.pending |= self.display.advance(cycles);
         if advance_timers {
             self.pending |= self.serial.advance(cycles);
-            self.pending |= Self::advance_timer_bank(
-                &mut self.timers,
-                &mut self.timer_phase,
-                &mut self.audio,
-                cycles,
-            );
+            let mut clock = self.audio_capture.clock;
+            let dropped = clock.advance(cycles, self.audio_capture.capacity(), |count, sample| {
+                self.pending |= Self::advance_timer_bank(
+                    &mut self.timers,
+                    &mut self.timer_phase,
+                    &mut self.audio,
+                    count,
+                );
+                if sample {
+                    self.audio_capture.push(self.audio.level());
+                }
+            });
+            self.audio_capture.clock = clock;
+            self.audio_capture.dropped = self.audio_capture.dropped.saturating_add(dropped);
             self.dma.trigger_sound(self.audio.take_requests());
         }
         self.wake_if_requested();

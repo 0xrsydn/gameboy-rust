@@ -226,14 +226,41 @@ This centered mixer follows GBATEK's signed range and the NanoBoyAdvance compari
 The mixer adds all supported channels and the ten-bit bias, clips each side to `0..1023`, and subtracts 512.
 `StereoLevel` therefore contains signed levels in `-512..511`. Master disable returns zero.
 Bias resolution bits retain their values but do not yet drive pulse-width modulation (PWM) sampling or quantization.
-There is no resampling, analog filtering, sample queue, or host output backend.
-Polling once per video frame will not reconstruct audio.
+The optional capture stream below samples this mixer. Hardware PWM sampling and analog filtering remain unimplemented.
+Polling `audio_level()` once per video frame will not reconstruct audio.
 
 Timer and sound state share the staged CPU/DMA clock.
 Reads and writes observe their nominal bus-completion phase, after earlier timer overflows.
 Successful steps commit once. Failed steps discard FIFO consumption, held samples, PSG clocks/state, register writes, and refill requests.
 Block-store validation simulates sound enable/disable in a temporary state before committing any RAM or I/O writes.
 Other devices retain their existing scheduling limits.
+
+## Fixed-rate digital capture
+
+`Memory::set_audio_capture(true)` enables optional stereo capture at `AUDIO_SAMPLE_RATE` (32,768 Hz).
+The first sample occurs after 512 system clocks. Later samples use the same interval, independent of video frames.
+This is a nominal digital stream, not the hardware PWM/resolution model selected by SOUNDBIAS.
+
+Each sample observes PSG advancement and timer-driven Direct Sound consumption through its clock boundary.
+When a CPU write completes on that same boundary, sampling precedes the write under the existing bus-phase ordering.
+No host time, window code, device dependency, resampling, or file operation enters the core.
+Master sound disable produces silence while capture continues. HALT continues capture; STOP freezes its phase and produces no frames.
+
+`drain_audio_samples` copies committed stereo frames, oldest first, into a caller-provided slice.
+Values use the same signed ten-bit scale as `StereoLevel`, not normalized host PCM.
+CPU/DMA steps stage samples alongside timer/audio state. A failed step discards its samples and sample-clock changes.
+Block-store preflight never publishes samples. Row capture does not clock sound a second time.
+CPU-only stepping retains its existing no-device-clock behavior.
+
+The committed queue holds at most `AUDIO_QUEUE_CAPACITY` (4,096) stereo frames.
+A transaction stages at most eight frames. Ordinary instruction/DMA timing fits within this budget.
+Full buffers discard new frames, retain older frames, and increment `audio_dropped_samples` without blocking emulation.
+Large device-only clock advances bound work by available capacity, then advance remaining hardware state in bulk.
+Draining often avoids loss; callers must inspect the drop counter rather than assuming lossless capture.
+
+Capture is disabled by default. Changing enable state clears queued frames, phase, and the drop counter, but does not reset audio hardware.
+Repeating the current enable state preserves capture state. Configure capture between machine steps.
+Original tests cover exact sample boundaries, timer consumption, pulse phases, batching, queue overflow, HALT/STOP, and transactional rollback.
 
 ## Validation and remaining work
 
@@ -251,7 +278,7 @@ CPU/DMA tests include noise register writes at bus completion and failed-step ro
 BIOS reset tests verify that selected sound reset stops all supported PSG channels, while unselected sound state remains active.
 
 These tests validate the documented nominal model, not hardware audio fidelity.
-Remaining audio work: two-bank wave playback, verified live bank changes, a continuous output stream, PWM/mixer sampling, and a Darwin host backend.
+Remaining audio work: two-bank wave playback, verified live bank changes, hardware PWM sampling, filtering/resampling, and a Darwin host backend.
 A local Emerald input probe exposed a wave trigger with the gate disabled. This is now accepted without activating playback.
 The same scheduled-input probe passes that point and completes its extended frame budget; audible output and gameplay remain unverified.
 See [the local runtime result](../research/emerald-reset.md).

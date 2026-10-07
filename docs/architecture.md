@@ -65,6 +65,9 @@ The repository is a Cargo workspace with three crates:
 | `crates/gba-core/src/cpu/fetch_boundary_tests.rs` | Actual fetch-region snapshots, split refills, IWRAM lane requirements, ROM-window boundaries, and nominal timing |
 | `crates/gba-core/src/io.rs` | I/O registers, timers, HALT/STOP wake-up, next-event bounds, and IRQ latches |
 | `crates/gba-core/src/audio.rs` | Direct Sound state, PSG sequencer, wave banks, and instantaneous stereo mixing |
+| `crates/gba-core/src/audio/capture.rs` | Optional fixed-rate sample clock, bounded committed queue, transaction batches, and drop accounting |
+| `crates/gba-core/tests/audio_capture.rs` | Sample rate/order, timer and pulse samples, HALT/STOP, batching, and bounded overflow |
+| `crates/gba-core/src/memory/audio_capture_tests.rs` | Sample/store bus ordering, speculative capture, failed-step rollback, and preflight isolation |
 | `crates/gba-core/src/audio/pulse.rs` | Shared pulse oscillator; sweep is mapped only for channel 1 |
 | `crates/gba-core/src/audio/modulation.rs` | Shared PSG length, envelope, logical DAC gate, and activity state |
 | `crates/gba-core/src/audio/wave.rs` | Single-bank wave samples, rotating RAM, length/gate state, and fractional gain |

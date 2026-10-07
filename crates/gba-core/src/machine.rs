@@ -77,7 +77,7 @@ impl Error for FrameRunError {
 }
 
 /// Owns the CPU and memory bus. Use this instead of Cpu::step to advance device
-/// clocks, execute DMA, honor HALT/STOP, and deliver interrupts. No audio yet.
+/// clocks, execute DMA, honor HALT/STOP, and deliver interrupts. Host audio is external.
 pub struct Machine {
     cpu: Cpu,
     memory: Memory,
