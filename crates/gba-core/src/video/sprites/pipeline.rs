@@ -3,11 +3,12 @@
 //! individual fetches, fetch budgets, or OAM/VRAM contention.
 
 use super::PreparedObjects;
+use crate::snapshot::{Reader, Snapshot, SnapshotError, Writer};
 use crate::{display::CYCLES_PER_LINE, video::VideoError};
 
 pub(crate) const PREPARE_CYCLE: u32 = 40;
 
-#[derive(Default)]
+#[derive(Debug, Default, PartialEq, Eq)]
 pub(crate) struct SpritePipeline {
     rows: [Option<(usize, Result<PreparedObjects, VideoError>)>; 2],
     pub started: bool,
@@ -118,5 +119,132 @@ mod tests {
                 assert!(latest_events(phase, distance)[1].is_some());
             }
         }
+    }
+}
+
+impl Snapshot for SpritePipeline {
+    fn save(&self, writer: &mut Writer) {
+        let Self { rows, started } = self;
+        writer.tag(b"SPRP");
+        writer.bool(*started);
+        for row in rows {
+            writer.option(row.as_ref(), |(index, result), writer| {
+                if *index >= crate::video::HEIGHT {
+                    writer.fail(SnapshotError::Unsupported("invalid sprite row index"));
+                }
+                writer.u64(*index as u64);
+                match result {
+                    Ok(objects) => {
+                        writer.u8(0);
+                        objects.save(writer);
+                    }
+                    Err(_) => {
+                        writer.u8(1);
+                        writer.fail(SnapshotError::Unsupported("deferred video diagnostic"));
+                    }
+                }
+            });
+        }
+    }
+
+    fn load(&mut self, reader: &mut Reader<'_>) -> Result<(), SnapshotError> {
+        let Self { rows, started } = self;
+        reader.tag(b"SPRP")?;
+        *started = reader.bool()?;
+        for (slot, destination) in rows.iter_mut().enumerate() {
+            *destination = reader.option(|reader| {
+                let index = usize::try_from(reader.u64()?)
+                    .map_err(|_| SnapshotError::Corrupt("sprite row index"))?;
+                if index >= crate::video::HEIGHT || index % 2 != slot {
+                    return Err(SnapshotError::Corrupt("sprite row index"));
+                }
+                let result = match reader.u8()? {
+                    0 => {
+                        let mut objects = PreparedObjects::default();
+                        objects.load(reader)?;
+                        Ok(objects)
+                    }
+                    1 => return Err(SnapshotError::Corrupt("deferred video diagnostic")),
+                    _ => return Err(SnapshotError::Corrupt("sprite row result")),
+                };
+                Ok((index, result))
+            })?;
+        }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod snapshot_tests {
+    use super::*;
+    use crate::video::sprites::{ObjectPixel, Sample};
+
+    fn encoded(value: &SpritePipeline) -> Vec<u8> {
+        let mut writer = Writer::new();
+        value.save(&mut writer);
+        writer.finish().unwrap()
+    }
+
+    fn prepared(index: usize) -> PreparedObjects {
+        PreparedObjects {
+            samples: vec![
+                Sample {
+                    pixel: Some(ObjectPixel {
+                        palette_index: (index % 256) as u16,
+                        semi_transparent: true,
+                    }),
+                    priority: (index % 4) as u8,
+                    mosaic: true,
+                };
+                crate::video::WIDTH
+            ],
+            window: vec![index % 2 == 0; crate::video::WIDTH],
+        }
+    }
+
+    #[test]
+    fn sprite_pipeline_round_trips_rows_and_checks_prefixes() {
+        let source = SpritePipeline {
+            rows: [Some((4, Ok(prepared(13)))), Some((5, Ok(prepared(17))))],
+            started: true,
+        };
+        let bytes = encoded(&source);
+        let mut restored = SpritePipeline::default();
+        restored.load(&mut Reader::new(&bytes)).unwrap();
+        assert_eq!(restored, source);
+        for end in 0..bytes.len() {
+            assert!(
+                SpritePipeline::default()
+                    .load(&mut Reader::new(&bytes[..end]))
+                    .is_err(),
+                "prefix {end}"
+            );
+        }
+
+        let mut invalid = bytes.clone();
+        invalid[4] = 2;
+        assert_eq!(
+            SpritePipeline::default().load(&mut Reader::new(&invalid)),
+            Err(SnapshotError::Corrupt("boolean"))
+        );
+        invalid.copy_from_slice(&bytes);
+        invalid[6] = crate::video::HEIGHT as u8;
+        invalid[7..14].fill(0);
+        assert_eq!(
+            SpritePipeline::default().load(&mut Reader::new(&invalid)),
+            Err(SnapshotError::Corrupt("sprite row index"))
+        );
+    }
+
+    #[test]
+    fn deferred_sprite_diagnostic_cannot_be_saved() {
+        let mut source = SpritePipeline::default();
+        source.rows[0] = Some((0, Err(VideoError::UnsupportedMode(7))));
+        let mut writer = Writer::new();
+        source.save(&mut writer);
+        assert_eq!(
+            writer.finish(),
+            Err(SnapshotError::Unsupported("deferred video diagnostic"))
+        );
     }
 }

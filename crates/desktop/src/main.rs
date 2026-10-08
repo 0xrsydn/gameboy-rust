@@ -58,6 +58,7 @@ fn parse_args(args: &[OsString]) -> Result<RunMode, io::Error> {
             "--speed",
             "--save-type",
             "--save-file",
+            "--state-file",
         ]
         .iter()
         .any(|flag| arg == flag)
@@ -90,7 +91,7 @@ fn parse_args(args: &[OsString]) -> Result<RunMode, io::Error> {
         [arg] if arg == "--help" || arg == "-h" => Ok(RunMode::Help),
         _ => Err(io::Error::new(
             io::ErrorKind::InvalidInput,
-            "usage: gameboy-rust [--cpu-demo | --timer-demo | --graphics-demo | --smoke-test | --graphics-smoke-test | --raster-demo | --raster-smoke-test | --mosaic-demo | --mosaic-smoke-test | --effects-demo | --effects-smoke-test | --tile-demo | --tile-smoke-test | --affine-demo | --affine-smoke-test | --affine-raster-demo | --affine-raster-smoke-test | --bitmap4-demo | --bitmap5-demo | --bitmap4-smoke-test | --bitmap5-smoke-test | --help]; or gameboy-rust --rom PATH [--rtc] [--save-type flash64|flash128] [--save-file PATH] (--steps COUNT | --window [--frames COUNT] [--audio] [--speed MULTIPLIER]); or gameboy-rust --test-suite PATH.json",
+            "usage: gameboy-rust [--cpu-demo | --timer-demo | --graphics-demo | --smoke-test | --graphics-smoke-test | --raster-demo | --raster-smoke-test | --mosaic-demo | --mosaic-smoke-test | --effects-demo | --effects-smoke-test | --tile-demo | --tile-smoke-test | --affine-demo | --affine-smoke-test | --affine-raster-demo | --affine-raster-smoke-test | --bitmap4-demo | --bitmap5-demo | --bitmap4-smoke-test | --bitmap5-smoke-test | --help]; or gameboy-rust --rom PATH [--rtc] [--save-type flash64|flash128] [--save-file PATH] (--steps COUNT | --window [--frames COUNT] [--audio] [--speed MULTIPLIER] [--state-file PATH]); or gameboy-rust --test-suite PATH.json",
         )),
     }
 }
@@ -141,6 +142,7 @@ fn run() -> Result<(), Box<dyn Error>> {
                 --rtc                    Select cartridge RTC (UTC startup, host elapsed time)\n\
                 --save-type flash64|flash128  Select nominal Macronix Flash emulation\n\
                 --save-file PATH         Load raw Flash image; persist only on clean exit\n\
+                --state-file PATH        ROM window save state; F5 saves, F9 loads (default: ROM path + .state)\n\
                 --test-suite PATH.json    Run bounded ROM assertions; write a JSON report\n\
                 --cpu-demo     Run the terminal-only ARM/Thumb instruction demo\n\
                 --timer-demo   Run the timer IRQ demo with nominal cycle costs\n\
@@ -175,7 +177,7 @@ fn run() -> Result<(), Box<dyn Error>> {
                 Bitmap pages: Arrows pan; Q rotates; W zooms; Z forces page1; Enter resets; Escape exits.\n\
                 All demos use original test content. ROM mode uses our limited BIOS replacement.\n\
                 Terminal ROM mode has no window, input, or audio. ROM windows offer --audio on macOS. Saves require --save-type and --save-file.\n\
-                ROM window: Arrows=D-pad; Z/X=A/B; Q/W=L/R; Enter=Start; Backspace=Select; Escape exits.\n\
+                ROM window: Arrows=D-pad; Z/X=A/B; Q/W=L/R; Enter=Start; Backspace=Select; F5=save state; F9=load state; Escape exits.\n\
                 Commercial games are not supported."
             );
             Ok(())

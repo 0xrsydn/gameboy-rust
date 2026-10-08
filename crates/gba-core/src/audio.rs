@@ -6,6 +6,7 @@ mod modulation;
 mod noise;
 mod pulse;
 mod wave;
+use crate::snapshot::{Reader, Snapshot, SnapshotError, Writer};
 use noise::Noise;
 use pulse::Pulse;
 use wave::Wave;
@@ -324,5 +325,281 @@ impl Audio {
             left: sides[1],
             right: sides[0],
         }
+    }
+}
+
+impl Snapshot for StereoLevel {
+    fn save(&self, writer: &mut Writer) {
+        let Self { left, right } = self;
+        writer.tag(b"STLV");
+        writer.i16(*left);
+        writer.i16(*right);
+    }
+
+    fn load(&mut self, reader: &mut Reader<'_>) -> Result<(), SnapshotError> {
+        reader.tag(b"STLV")?;
+        let Self { left, right } = self;
+        *left = reader.i16()?;
+        *right = reader.i16()?;
+        Ok(())
+    }
+}
+
+impl Snapshot for Fifo {
+    fn save(&self, writer: &mut Writer) {
+        let Self {
+            words,
+            read,
+            len,
+            playback,
+            remaining,
+            sample,
+        } = self;
+        writer.tag(b"FIF0");
+        for word in words {
+            writer.u32(*word);
+        }
+        writer.u32(*read as u32);
+        writer.u32(*len as u32);
+        writer.u32(*playback);
+        writer.u8(*remaining);
+        writer.u8(*sample as u8);
+    }
+
+    fn load(&mut self, reader: &mut Reader<'_>) -> Result<(), SnapshotError> {
+        reader.tag(b"FIF0")?;
+        let Self {
+            words,
+            read,
+            len,
+            playback,
+            remaining,
+            sample,
+        } = self;
+        for word in words {
+            *word = reader.u32()?;
+        }
+        let read_value = reader.u32()?;
+        let len_value = reader.u32()?;
+        *playback = reader.u32()?;
+        *remaining = reader.u8()?;
+        *sample = reader.u8()? as i8;
+        if read_value >= 7 || len_value > 7 || *remaining > 4 {
+            return Err(SnapshotError::Corrupt("FIFO range"));
+        }
+        *read = read_value as usize;
+        *len = len_value as usize;
+        Ok(())
+    }
+}
+
+impl Snapshot for Audio {
+    fn save(&self, writer: &mut Writer) {
+        let Self {
+            enabled,
+            psg,
+            pulses,
+            noise,
+            wave_channel,
+            sequencer_phase,
+            next_step,
+            control,
+            bias,
+            wave,
+            fifo,
+            requests,
+        } = self;
+        writer.tag(b"AUD0");
+        writer.bool(*enabled);
+        for register in psg {
+            writer.u16(*register);
+        }
+        for pulse in pulses {
+            pulse.save(writer);
+        }
+        noise.save(writer);
+        wave_channel.save(writer);
+        writer.u16(*sequencer_phase);
+        writer.u8(*next_step);
+        writer.u16(*control);
+        writer.u16(*bias);
+        writer.raw(&wave[0]);
+        writer.raw(&wave[1]);
+        for fifo in fifo {
+            fifo.save(writer);
+        }
+        for request in requests {
+            writer.bool(*request);
+        }
+    }
+
+    fn load(&mut self, reader: &mut Reader<'_>) -> Result<(), SnapshotError> {
+        reader.tag(b"AUD0")?;
+        let Self {
+            enabled,
+            psg,
+            pulses,
+            noise,
+            wave_channel,
+            sequencer_phase,
+            next_step,
+            control,
+            bias,
+            wave,
+            fifo,
+            requests,
+        } = self;
+        *enabled = reader.bool()?;
+        for register in psg {
+            *register = reader.u16()?;
+        }
+        for pulse in pulses {
+            pulse.load(reader)?;
+        }
+        noise.load(reader)?;
+        wave_channel.load(reader)?;
+        *sequencer_phase = reader.u16()?;
+        *next_step = reader.u8()?;
+        *control = reader.u16()?;
+        *bias = reader.u16()?;
+        reader.raw_into(&mut wave[0])?;
+        reader.raw_into(&mut wave[1])?;
+        for fifo in fifo {
+            fifo.load(reader)?;
+        }
+        for request in requests {
+            *request = reader.bool()?;
+        }
+        if u32::from(*sequencer_phase) >= SEQUENCER_PERIOD
+            || *next_step > 7
+            || *control & !0x770f != 0
+            || *bias & !0xc3fe != 0
+        {
+            return Err(SnapshotError::Corrupt("audio range"));
+        }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod snapshot_tests {
+    use super::*;
+
+    fn encode<T: Snapshot>(value: &T) -> Vec<u8> {
+        let mut writer = Writer::new();
+        value.save(&mut writer);
+        writer.finish().unwrap()
+    }
+
+    fn check_prefixes<T: Snapshot + Default>(bytes: &[u8], mut target: T) {
+        for end in 0..bytes.len() {
+            assert!(target.load(&mut Reader::new(&bytes[..end])).is_err());
+        }
+    }
+
+    #[test]
+    fn stereo_level_round_trip_and_prefixes() {
+        let source = StereoLevel {
+            left: -371,
+            right: 248,
+        };
+        let bytes = encode(&source);
+        let mut loaded = StereoLevel::default();
+        loaded.load(&mut Reader::new(&bytes)).unwrap();
+        assert_eq!(loaded, source);
+        check_prefixes(&bytes, StereoLevel::default());
+    }
+
+    #[test]
+    fn fifo_round_trip_prefixes_and_invalid_index() {
+        let source = Fifo {
+            words: [0x1234_5678, 0x9abc_def0, 3, 4, 5, 6, 7],
+            read: 5,
+            len: 6,
+            playback: 0xabcd_9876,
+            remaining: 3,
+            sample: -47,
+        };
+        let bytes = encode(&source);
+        let mut loaded = Fifo::default();
+        loaded.load(&mut Reader::new(&bytes)).unwrap();
+        assert_eq!(loaded, source);
+        check_prefixes(&bytes, Fifo::default());
+
+        let mut corrupt = bytes;
+        corrupt[32..36].copy_from_slice(&7u32.to_le_bytes());
+        assert_eq!(
+            loaded.load(&mut Reader::new(&corrupt)),
+            Err(SnapshotError::Corrupt("FIFO range"))
+        );
+    }
+
+    #[test]
+    fn audio_round_trip_prefixes_and_invalid_boolean() {
+        let mut source = Audio {
+            enabled: true,
+            psg: [0x1234; 17],
+            ..Audio::default()
+        };
+        source.pulses[0].write(0, 0x09, 0);
+        source.pulses[0].write(2, 0x9d, 0);
+        source.pulses[0].write(3, 0xa3, 0);
+        source.pulses[0].write(4, 0x7b, 0);
+        source.pulses[0].write(5, 0x84, 0);
+        source.pulses[0].advance(23);
+        source.pulses[0].clock(2);
+        source.pulses[1].write(2, 0x5b, 0);
+        source.pulses[1].write(3, 0x71, 0);
+        source.pulses[1].write(4, 0x42, 0);
+        source.pulses[1].write(5, 0x83, 0);
+        source.pulses[1].advance(11);
+        source.noise.write(0, 5, 0);
+        source.noise.write(1, 0xa3, 0);
+        source.noise.write(4, 0x39, 0);
+        source.noise.write(5, 0x80, 0);
+        source.noise.advance(3_601);
+        source.wave_channel.write(0, 0xa0, 0);
+        source.wave_channel.write(2, 55, 0);
+        source.wave_channel.write(3, 0xe0, 0);
+        source.wave_channel.write(4, 0x7b, 0);
+        source.wave_channel.write(5, 0xc1, 0);
+        source.wave_channel.advance(13_352, &mut source.wave);
+        source.sequencer_phase = 12_345;
+        source.next_step = 5;
+        source.control = 0x7105;
+        source.bias = 0x83ac;
+        source.wave = [[0x12; 16], [0xa5; 16]];
+        source.fifo = [
+            Fifo {
+                words: [0x1122_3344; 7],
+                read: 3,
+                len: 5,
+                playback: 0xaabb_ccdd,
+                remaining: 2,
+                sample: -91,
+            },
+            Fifo {
+                words: [0x5566_7788; 7],
+                read: 6,
+                len: 7,
+                playback: 0x1234_5678,
+                remaining: 4,
+                sample: 102,
+            },
+        ];
+        source.requests = [true, true];
+
+        let bytes = encode(&source);
+        let mut loaded = Audio::default();
+        loaded.load(&mut Reader::new(&bytes)).unwrap();
+        assert_eq!(loaded, source);
+        check_prefixes(&bytes, Audio::default());
+
+        let mut corrupt = bytes;
+        corrupt[4] = 2;
+        assert_eq!(
+            loaded.load(&mut Reader::new(&corrupt)),
+            Err(SnapshotError::Corrupt("boolean"))
+        );
     }
 }

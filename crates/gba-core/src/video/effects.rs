@@ -3,6 +3,7 @@
 //! and horizontal comparator history. Layer/effect selection remains row-sampled.
 
 use super::Pixel;
+use crate::snapshot::{Reader, Snapshot, SnapshotError, Writer};
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Effects {
@@ -92,4 +93,90 @@ fn channels(first: u16, second: u16, operation: impl Fn(u16, u16) -> u16) -> u16
     [0, 5, 10].into_iter().fold(0, |color, shift| {
         color | (operation((first >> shift) & 31, (second >> shift) & 31) << shift)
     })
+}
+
+impl Snapshot for Effects {
+    fn save(&self, writer: &mut Writer) {
+        let Self {
+            horizontal,
+            vertical,
+            inside,
+            outside,
+            control,
+            alpha,
+            brightness,
+        } = self;
+        writer.tag(b"EFCT");
+        for value in horizontal {
+            writer.u16(*value);
+        }
+        for value in vertical {
+            writer.u16(*value);
+        }
+        writer.u16(*inside);
+        writer.u16(*outside);
+        writer.u16(*control);
+        writer.u16(*alpha);
+        writer.u16(*brightness);
+    }
+
+    fn load(&mut self, reader: &mut Reader<'_>) -> Result<(), SnapshotError> {
+        let Self {
+            horizontal,
+            vertical,
+            inside,
+            outside,
+            control,
+            alpha,
+            brightness,
+        } = self;
+        reader.tag(b"EFCT")?;
+        for value in horizontal {
+            *value = reader.u16()?;
+        }
+        for value in vertical {
+            *value = reader.u16()?;
+        }
+        *inside = reader.u16()?;
+        *outside = reader.u16()?;
+        *control = reader.u16()?;
+        *alpha = reader.u16()?;
+        *brightness = reader.u16()?;
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod snapshot_tests {
+    use super::*;
+
+    #[test]
+    fn effects_round_trip_and_reject_every_strict_prefix() {
+        let source = Effects {
+            horizontal: [0x1234, 0x5678],
+            vertical: [0x9abc, 0xdef0],
+            inside: 0x1357,
+            outside: 0x2468,
+            control: 0xaaaa,
+            alpha: 0x5555,
+            brightness: 0xdead,
+        };
+        let mut writer = Writer::new();
+        source.save(&mut writer);
+        let bytes = writer.finish().unwrap();
+        let mut restored = Effects::default();
+        restored.load(&mut Reader::new(&bytes)).unwrap();
+        assert_eq!(restored, source);
+        for end in 0..bytes.len() {
+            assert!(Effects::default()
+                .load(&mut Reader::new(&bytes[..end]))
+                .is_err());
+        }
+        let mut invalid = bytes;
+        invalid[0] ^= 1;
+        assert_eq!(
+            Effects::default().load(&mut Reader::new(&invalid)),
+            Err(SnapshotError::Corrupt("section tag"))
+        );
+    }
 }

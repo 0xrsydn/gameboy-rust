@@ -84,6 +84,7 @@ Update this file when a feature lands or a limit is removed.
 - Transactional Flash completion and modification tracking, with exact-size core image loading and inspection.
 - Optional desktop `--save-file` loading and clean-exit persistence, with exclusive locks, atomic installation, and unique previous-image backups.
 - Original ROM save/restart/load checks across processes, including native-window persistence on Darwin arm64.
+- Whole-machine [save states](hardware/save-states.md): `Machine::save_state`/`load_state` with image and cartridge identity checks, a checksum, and verify-before-mutate loading; ROM windows bind F5 (save) and F9 (load) to a `--state-file` slot.
 - Raw ROM-file loading with original BIOS boot, terminal diagnostics, and final CPU/step reports.
 - Firmware boot initializes BG2/BG3 identity scales for bitmap and affine programs that do not program their own matrices.
 - RegisterRamReset supports disabled sound and disconnected serial initialization, including the common `r0=0xff` request.
@@ -192,7 +193,7 @@ That run used no scripted input or pixel assertions.
 A [fixed-time input probe](research/emerald-wave.md) found a wave trigger with its gate disabled.
 Wave support now passes that point and reaches 1,320 frames with scheduled Start/A presses and releases.
 Output differs from a no-input control, but readable menus and gameplay remain unverified.
-Flash writing and host persistence now pass original save/restart/load tests. Emerald saving and reloading remain unverified.
+Flash writing and host persistence now pass original save/restart/load tests. Emerald saving and reloading remain unverified; save states offer a separate restore point.
 A user reached starter selection, then reported a BIOS invalid-argument trap.
 An [isolated reproduction](research/emerald-empty-lz.md) identified a zero-length LZ77 header rejected before the length check.
 The replacement BIOS now returns for that empty stream. Full starter-selection progress after this correction needs user retesting.

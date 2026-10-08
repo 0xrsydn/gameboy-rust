@@ -1,6 +1,7 @@
 //! One mapped sample supplies instruction bits and the supported bus observation.
 //! Sampling is side-effect-free; execution commits history under the diagnostic policy.
 use super::{InstructionSet, Memory, MemoryError};
+use crate::snapshot::{Reader, Snapshot, SnapshotError, Writer};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct InstructionFetch {
@@ -73,5 +74,172 @@ impl Memory {
             *byte = self.read_mapped_byte(address.wrapping_add(offset as u32))?;
         }
         Ok(u32::from_le_bytes(bytes))
+    }
+}
+
+impl Snapshot for InstructionFetch {
+    fn save(&self, writer: &mut Writer) {
+        let Self {
+            address,
+            state,
+            instruction,
+            bus_word,
+        } = self;
+        writer.tag(b"FETC");
+        writer.u32(*address);
+        writer.u8(match state {
+            InstructionSet::Arm => 0,
+            InstructionSet::Thumb => 1,
+        });
+        save_fetch_result(instruction, writer);
+        writer.option(bus_word.as_ref(), |word, writer| writer.u32(*word));
+    }
+
+    fn load(&mut self, reader: &mut Reader<'_>) -> Result<(), SnapshotError> {
+        let Self {
+            address,
+            state,
+            instruction,
+            bus_word,
+        } = self;
+        reader.tag(b"FETC")?;
+        *address = reader.u32()?;
+        *state = match reader.u8()? {
+            0 => InstructionSet::Arm,
+            1 => InstructionSet::Thumb,
+            _ => return Err(SnapshotError::Corrupt("instruction set")),
+        };
+        *instruction = load_fetch_result(reader)?;
+        *bus_word = reader.option(|reader| reader.u32())?;
+        Ok(())
+    }
+}
+
+/// A deferred fetch diagnostic is stored beside the instruction it would have
+/// produced. Address-only errors are encoded; errors that carry a static
+/// description string are not, and fail the save.
+pub(crate) fn save_fetch_result(instruction: &Result<u32, MemoryError>, writer: &mut Writer) {
+    match instruction {
+        Ok(value) => {
+            writer.u8(0);
+            writer.u32(*value);
+        }
+        Err(MemoryError::Unmapped(address)) => {
+            writer.u8(1);
+            writer.u32(*address);
+        }
+        Err(MemoryError::ReadOnly(address)) => {
+            writer.u8(2);
+            writer.u32(*address);
+        }
+        Err(MemoryError::Unaligned(address)) => {
+            writer.u8(3);
+            writer.u32(*address);
+        }
+        Err(_) => {
+            writer.u8(0xff);
+            writer.fail(SnapshotError::Unsupported("deferred fetch diagnostic"));
+        }
+    }
+}
+
+pub(crate) fn load_fetch_result(
+    reader: &mut Reader<'_>,
+) -> Result<Result<u32, MemoryError>, SnapshotError> {
+    Ok(match reader.u8()? {
+        0 => Ok(reader.u32()?),
+        1 => Err(MemoryError::Unmapped(reader.u32()?)),
+        2 => Err(MemoryError::ReadOnly(reader.u32()?)),
+        3 => Err(MemoryError::Unaligned(reader.u32()?)),
+        _ => return Err(SnapshotError::Corrupt("fetch result")),
+    })
+}
+
+#[cfg(test)]
+mod snapshot_tests {
+    use super::*;
+
+    fn populated_fetch() -> InstructionFetch {
+        InstructionFetch {
+            address: 0x0800_0022,
+            state: InstructionSet::Thumb,
+            instruction: Ok(0x46c0),
+            bus_word: Some(0x1234_46c0),
+        }
+    }
+
+    fn save(fetch: &InstructionFetch) -> Vec<u8> {
+        let mut writer = Writer::new();
+        fetch.save(&mut writer);
+        writer.finish().unwrap()
+    }
+
+    #[test]
+    fn instruction_fetch_round_trips_all_fields() {
+        let source = populated_fetch();
+        let bytes = save(&source);
+        let mut restored = InstructionFetch {
+            address: 0,
+            state: InstructionSet::Arm,
+            instruction: Ok(0),
+            bus_word: None,
+        };
+        restored.load(&mut Reader::new(&bytes)).unwrap();
+        assert_eq!(restored, source);
+    }
+
+    #[test]
+    fn every_strict_fetch_prefix_is_rejected() {
+        let bytes = save(&populated_fetch());
+        for end in 0..bytes.len() {
+            let mut restored = populated_fetch();
+            assert!(
+                restored.load(&mut Reader::new(&bytes[..end])).is_err(),
+                "accepted prefix of length {end}"
+            );
+        }
+    }
+
+    #[test]
+    fn instruction_fetch_rejects_unknown_instruction_set() {
+        let mut bytes = save(&populated_fetch());
+        bytes[8] = 0xff;
+        let mut restored = populated_fetch();
+        assert!(matches!(
+            restored.load(&mut Reader::new(&bytes)),
+            Err(SnapshotError::Corrupt(_))
+        ));
+    }
+
+    #[test]
+    fn address_diagnostics_round_trip_and_described_ones_cannot_be_saved() {
+        for error in [
+            MemoryError::Unmapped(0x0200_0000),
+            MemoryError::ReadOnly(0x0800_0000),
+            MemoryError::Unaligned(0x0300_0001),
+        ] {
+            let source = InstructionFetch {
+                instruction: Err(error),
+                ..populated_fetch()
+            };
+            let bytes = save(&source);
+            let mut restored = populated_fetch();
+            restored.load(&mut Reader::new(&bytes)).unwrap();
+            assert_eq!(restored, source);
+        }
+        let fetch = InstructionFetch {
+            instruction: Err(MemoryError::UnsupportedIo {
+                address: 0x0400_0000,
+                value: 0,
+                operation: "write",
+            }),
+            ..populated_fetch()
+        };
+        let mut writer = Writer::new();
+        fetch.save(&mut writer);
+        assert_eq!(
+            writer.finish(),
+            Err(SnapshotError::Unsupported("deferred fetch diagnostic"))
+        );
     }
 }

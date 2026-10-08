@@ -3,6 +3,8 @@
 //! or HALT-idle boundaries; display bus contention and IRQ synchronization delays
 //! are not modeled. Forced blank does not stop this clock.
 
+use crate::snapshot::{Reader, Snapshot, SnapshotError, Writer};
+
 pub const CPU_HZ: u32 = 16_777_216;
 pub const CYCLES_PER_LINE: u32 = 1232;
 pub const HBLANK_START: u32 = 1006;
@@ -129,4 +131,84 @@ fn crossings(start: u32, elapsed: u32, period: u32, offset: u32) -> u64 {
     let shift = u64::from(period - offset);
     let begin = u64::from(start) + shift;
     (begin + u64::from(elapsed)) / u64::from(period) - begin / u64::from(period)
+}
+
+impl Snapshot for Display {
+    fn save(&self, writer: &mut Writer) {
+        let Self {
+            phase,
+            control,
+            frames,
+            vblanks,
+        } = self;
+        writer.tag(b"DISP");
+        writer.u32(*phase);
+        writer.u16(*control);
+        writer.u64(*frames);
+        writer.u64(*vblanks);
+    }
+
+    fn load(&mut self, reader: &mut Reader<'_>) -> Result<(), SnapshotError> {
+        let Self {
+            phase,
+            control,
+            frames,
+            vblanks,
+        } = self;
+        reader.tag(b"DISP")?;
+        *phase = reader.u32()?;
+        *control = reader.u16()?;
+        *frames = reader.u64()?;
+        *vblanks = reader.u64()?;
+        if *phase >= CYCLES_PER_FRAME {
+            return Err(SnapshotError::Corrupt("display phase"));
+        }
+        if *control & !0xff38 != 0 {
+            return Err(SnapshotError::Corrupt("display control"));
+        }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod snapshot_tests {
+    use super::*;
+
+    fn encode(display: &Display) -> Vec<u8> {
+        let mut writer = Writer::new();
+        display.save(&mut writer);
+        writer.finish().unwrap()
+    }
+
+    #[test]
+    fn round_trip_and_reject_every_strict_prefix() {
+        let source = Display {
+            phase: CYCLES_PER_LINE * 137 + 1009,
+            control: 0xab38,
+            frames: 0x1234_5678,
+            vblanks: 0x8765_4321,
+        };
+        let bytes = encode(&source);
+        let mut restored = Display::default();
+        let mut reader = Reader::new(&bytes);
+        restored.load(&mut reader).unwrap();
+        reader.finish().unwrap();
+        assert_eq!(restored, source);
+
+        for end in 0..bytes.len() {
+            let mut truncated = Reader::new(&bytes[..end]);
+            assert!(
+                Display::default().load(&mut truncated).is_err(),
+                "accepted prefix of length {end}"
+            );
+        }
+    }
+
+    #[test]
+    fn out_of_range_phase_is_corrupt() {
+        let mut bytes = encode(&Display::default());
+        bytes[4..8].copy_from_slice(&CYCLES_PER_FRAME.to_le_bytes());
+        let result = Display::default().load(&mut Reader::new(&bytes));
+        assert!(matches!(result, Err(SnapshotError::Corrupt(_))));
+    }
 }

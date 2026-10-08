@@ -1,5 +1,6 @@
 //! Nominal GBA channel 4 polynomial counter. No random numbers or host clocks.
 use super::modulation::Modulation;
+use crate::snapshot::{Reader, Snapshot, SnapshotError, Writer};
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub(super) struct Noise {
@@ -77,6 +78,78 @@ impl Noise {
         } else {
             -i16::from(self.modulation.volume)
         }
+    }
+}
+
+impl Snapshot for Noise {
+    fn save(&self, writer: &mut Writer) {
+        let Self {
+            modulation,
+            polynomial,
+            lfsr,
+            remaining,
+            high,
+        } = self;
+        writer.tag(b"NOI0");
+        modulation.save(writer);
+        writer.u8(*polynomial);
+        writer.u16(*lfsr);
+        writer.u32(*remaining);
+        writer.bool(*high);
+    }
+
+    fn load(&mut self, reader: &mut Reader<'_>) -> Result<(), SnapshotError> {
+        reader.tag(b"NOI0")?;
+        let Self {
+            modulation,
+            polynomial,
+            lfsr,
+            remaining,
+            high,
+        } = self;
+        modulation.load(reader)?;
+        *polynomial = reader.u8()?;
+        *lfsr = reader.u16()?;
+        *remaining = reader.u32()?;
+        *high = reader.bool()?;
+        if *lfsr > 0x7fff || *remaining > 14_680_064 {
+            return Err(SnapshotError::Corrupt("noise range"));
+        }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod snapshot_tests {
+    use super::*;
+
+    #[test]
+    fn snapshot_round_trip_prefixes_and_invalid_boolean() {
+        let mut source = Noise::default();
+        source.write(0, 5, 0);
+        source.write(1, 0xa3, 0);
+        source.write(4, 0x39, 0);
+        source.write(5, 0x80, 0);
+        let cycles = 7 * source.period() + 17;
+        source.advance(cycles);
+        source.clock(7);
+
+        let mut writer = Writer::new();
+        source.save(&mut writer);
+        let bytes = writer.finish().unwrap();
+        let mut loaded = Noise::default();
+        loaded.load(&mut Reader::new(&bytes)).unwrap();
+        assert_eq!(loaded, source);
+        for end in 0..bytes.len() {
+            assert!(loaded.load(&mut Reader::new(&bytes[..end])).is_err());
+        }
+
+        let mut corrupt = bytes;
+        corrupt[8] = 2;
+        assert_eq!(
+            loaded.load(&mut Reader::new(&corrupt)),
+            Err(SnapshotError::Corrupt("boolean"))
+        );
     }
 }
 

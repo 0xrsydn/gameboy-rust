@@ -38,6 +38,11 @@ impl TileDemo {
     }
 }
 
+/// The original Mode 0 scene as a raw ROM, for hosts that drive their own machine.
+pub fn rom() -> Vec<u8> {
+    program(Scene::Tiles)
+}
+
 fn literal(code: &mut Vec<u32>, patches: &mut Vec<(usize, u32, u32)>, reg: u32, value: u32) {
     patches.push((code.len(), reg, value));
     code.push(0);

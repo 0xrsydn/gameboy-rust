@@ -1,14 +1,27 @@
 //! Main-thread ROM presentation, physical keyboard input, and optional host audio.
 
-use std::io::Write;
+use std::{
+    io::Write,
+    path::{Path, PathBuf},
+};
 
 use super::*;
-use crate::cartridge::window::{Session, Update};
+use crate::cartridge::{
+    state_file,
+    window::{Session, Update},
+};
+use gba_core::snapshot::SnapshotError;
 
 /// Host-only playback policy. The CLI validates integer speeds from 1 through 16.
 pub struct Playback {
     pub audio: bool,
     pub speed: u32,
+}
+
+/// Host files for one ROM window: the optional Flash save and the save-state slot.
+pub struct Persistence<'a> {
+    pub save_file: Option<&'a mut crate::cartridge::save_file::SaveFile>,
+    pub state_path: PathBuf,
 }
 
 impl Playback {
@@ -20,6 +33,49 @@ impl Playback {
         Duration::from_secs_f64(
             f64::from(CYCLES_PER_FRAME) / f64::from(CPU_HZ) / f64::from(self.speed),
         )
+    }
+}
+
+/// Write the current state to `path`. A failed save is reported and play continues.
+fn save_state_slot(session: &Session, path: &Path, writer: &mut impl Write) -> io::Result<()> {
+    let saved = session
+        .save_state()
+        .map_err(|error| error.to_string())
+        .and_then(|bytes| {
+            state_file::write(path, &bytes)
+                .map(|()| bytes.len())
+                .map_err(|error| error.to_string())
+        });
+    match saved {
+        Ok(length) => writeln!(writer, "State saved: {path:?} ({length} bytes)"),
+        Err(error) => writeln!(writer, "State not saved: {error}"),
+    }
+}
+
+/// Restore `path`. Returns whether the state was loaded. Rejected states leave the
+/// machine running unchanged; only a failure after restoration began is fatal.
+fn load_state_slot(
+    session: &mut Session,
+    path: &Path,
+    writer: &mut impl Write,
+) -> Result<bool, Box<dyn Error>> {
+    let bytes = match state_file::read(path) {
+        Ok(bytes) => bytes,
+        Err(error) => {
+            writeln!(writer, "State not loaded: {path:?}: {error}")?;
+            return Ok(false);
+        }
+    };
+    match session.load_state(&bytes) {
+        Ok(()) => {
+            writeln!(writer, "State loaded: {path:?}")?;
+            Ok(true)
+        }
+        Err(error @ SnapshotError::RestoreFailed(_)) => Err(Box::new(error)),
+        Err(error) => {
+            writeln!(writer, "State not loaded: {error}")?;
+            Ok(false)
+        }
     }
 }
 
@@ -38,9 +94,13 @@ pub fn run(
     hardware: gba_core::cartridge::CartridgeHardware,
     save_device: gba_core::cartridge::SaveDevice,
     playback: Playback,
-    save_file: Option<&mut crate::cartridge::save_file::SaveFile>,
+    persistence: Persistence<'_>,
     writer: &mut impl Write,
 ) -> Result<(), Box<dyn Error>> {
+    let Persistence {
+        save_file,
+        state_path,
+    } = persistence;
     let audio_enabled = playback.audio_enabled();
     let mut session = Session::new(bytes)?;
     session.set_cartridge_hardware(hardware);
@@ -57,11 +117,11 @@ pub fn run(
     };
     writeln!(
         writer,
-        "ROM window: Arrows=D-pad; Z/X=A/B; Q/W=L/R; Enter=Start; Backspace=Select; Escape exits."
+        "ROM window: Arrows=D-pad; Z/X=A/B; Q/W=L/R; Enter=Start; Backspace=Select; F5=save state; F9=load state; Escape exits."
     )?;
     writeln!(
         writer,
-        "Input releases and audio mutes on focus loss. Save files require --save-file and clean exit. Startup frames are not suppressed."
+        "Input releases and audio mutes on focus loss. Save files require --save-file and clean exit; state file: {state_path:?}. Startup frames are not suppressed."
     )?;
     writeln!(
         writer,
@@ -114,6 +174,19 @@ pub fn run(
             let reported_active = window.is_active();
             let focused = is_focused(reported_active);
             let buttons = read_buttons(reported_active, |key| window.is_key_down(key));
+            if focused && window.is_key_pressed(Key::F5, KeyRepeat::No) {
+                save_state_slot(&session, &state_path, writer)?;
+                writer.flush()?;
+            }
+            if focused
+                && window.is_key_pressed(Key::F9, KeyRepeat::No)
+                && load_state_slot(&mut session, &state_path, writer)?
+            {
+                writer.flush()?;
+                if let Some(output) = audio.as_ref() {
+                    output.clear()?;
+                }
+            }
             let update = session.update(buttons)?;
             let stopped = update == Update::Stopped;
             if let Some(output) = audio.as_ref() {

@@ -11,6 +11,7 @@ pub use serial::{
     JOYCNT, JOYSTAT, JOY_RECV, JOY_TRANS, RCNT, SIOCNT, SIODATA32, SIODATA8, SIOMLT_SEND,
     SIOMULTI0, SIOMULTI1, SIOMULTI2, SIOMULTI3,
 };
+mod snapshot;
 mod timer_step;
 pub(crate) use timer_step::TimerStep;
 use timer_step::STAGED_IRQ_MASK;

@@ -10,5 +10,6 @@ pub mod input;
 pub mod io;
 pub mod machine;
 pub mod memory;
+pub mod snapshot;
 pub mod timing;
 pub mod video;

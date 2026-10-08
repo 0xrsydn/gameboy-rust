@@ -6,6 +6,7 @@
 
 use std::{error::Error, fmt};
 
+use crate::snapshot::{Reader, Snapshot, SnapshotError, Writer};
 use crate::{memory::MemoryError, timing::AccessWidth};
 
 pub const DMA_BASE: u32 = 0x0400_00b0;
@@ -282,4 +283,186 @@ fn advance_address(address: u32, width: u32, mode: u16) -> u32 {
 fn replace_byte(previous: u32, byte: u32, value: u8) -> u32 {
     let shift = byte * 8;
     (previous & !(0xff << shift)) | (u32::from(value) << shift)
+}
+
+fn save_channel(channel: &Channel, writer: &mut Writer) {
+    let Channel {
+        source,
+        destination,
+        count,
+        control,
+        current_source,
+        current_destination,
+        remaining,
+        active,
+        first,
+        data_latch,
+    } = channel;
+    writer.u32(*source);
+    writer.u32(*destination);
+    writer.u16(*count);
+    writer.u16(*control);
+    writer.u32(*current_source);
+    writer.u32(*current_destination);
+    writer.u32(*remaining);
+    writer.bool(*active);
+    writer.bool(*first);
+    writer.option(data_latch.as_ref(), |value, writer| writer.u32(*value));
+}
+
+fn load_channel(
+    channel: &mut Channel,
+    index: usize,
+    reader: &mut Reader<'_>,
+) -> Result<(), SnapshotError> {
+    let Channel {
+        source,
+        destination,
+        count,
+        control,
+        current_source,
+        current_destination,
+        remaining,
+        active,
+        first,
+        data_latch,
+    } = channel;
+    *source = reader.u32()?;
+    *destination = reader.u32()?;
+    *count = reader.u16()?;
+    *control = reader.u16()?;
+    *current_source = reader.u32()?;
+    *current_destination = reader.u32()?;
+    *remaining = reader.u32()?;
+    *active = reader.bool()?;
+    *first = reader.bool()?;
+    *data_latch = reader.option(Reader::u32)?;
+
+    let source_mask = if index == 0 { 0x07ff_fffe } else { 0x0fff_fffe };
+    let destination_mask = if index == 3 { 0x0fff_fffe } else { 0x07ff_fffe };
+    let count_mask = if index == 3 { 0xffff } else { 0x3fff };
+    let control_mask = if index == 3 { 0xffe0 } else { 0xf7e0 };
+    let max_remaining = if index == 3 { 0x1_0000 } else { 0x4000 };
+    if *source & !source_mask != 0
+        || *destination & !destination_mask != 0
+        || *count & !count_mask != 0
+        || *control & !control_mask != 0
+        || *remaining > max_remaining
+        || (*active && (*remaining == 0 || *control & 0x8000 == 0))
+    {
+        return Err(SnapshotError::Corrupt("DMA channel"));
+    }
+    Ok(())
+}
+
+impl Snapshot for Dma {
+    fn save(&self, writer: &mut Writer) {
+        let Self { channels } = self;
+        writer.tag(b"DMA0");
+        for channel in channels {
+            save_channel(channel, writer);
+        }
+    }
+
+    fn load(&mut self, reader: &mut Reader<'_>) -> Result<(), SnapshotError> {
+        let Self { channels } = self;
+        reader.tag(b"DMA0")?;
+        for (index, channel) in channels.iter_mut().enumerate() {
+            load_channel(channel, index, reader)?;
+        }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod snapshot_tests {
+    use super::*;
+
+    fn state() -> Dma {
+        Dma {
+            channels: [
+                Channel {
+                    source: 0x0200_1000,
+                    destination: 0x0300_1000,
+                    count: 0x1234,
+                    control: 0x8000,
+                    current_source: 0x0200_2000,
+                    current_destination: 0x0300_3000,
+                    remaining: 0x1234,
+                    active: true,
+                    first: true,
+                    data_latch: Some(0x1122_3344),
+                },
+                Channel {
+                    source: 0x0800_0000,
+                    destination: 0x0600_1000,
+                    count: 0x2345,
+                    control: 0xc660,
+                    current_source: 0x0800_1234,
+                    current_destination: 0x0600_2344,
+                    remaining: 0x2345,
+                    active: true,
+                    first: false,
+                    data_latch: None,
+                },
+                Channel {
+                    source: 0x0800_2000,
+                    destination: 0x0600_2000,
+                    count: 0x0234,
+                    control: 0xa000,
+                    current_source: 0x0800_3000,
+                    current_destination: 0x0600_4000,
+                    remaining: 5,
+                    active: true,
+                    first: false,
+                    data_latch: Some(0x5566_7788),
+                },
+                Channel {
+                    source: 0x0a00_4000,
+                    destination: 0x0800_4000,
+                    count: 0xabcd,
+                    control: 0x4000,
+                    current_source: 0x0a00_5000,
+                    current_destination: 0x0800_6000,
+                    remaining: 0x4567,
+                    active: false,
+                    first: true,
+                    data_latch: None,
+                },
+            ],
+        }
+    }
+
+    fn encode(dma: &Dma) -> Vec<u8> {
+        let mut writer = Writer::new();
+        dma.save(&mut writer);
+        writer.finish().unwrap()
+    }
+
+    #[test]
+    fn round_trip_and_reject_every_strict_prefix() {
+        let source = state();
+        let bytes = encode(&source);
+        let mut restored = Dma::default();
+        let mut reader = Reader::new(&bytes);
+        restored.load(&mut reader).unwrap();
+        reader.finish().unwrap();
+        assert_eq!(restored, source);
+
+        for end in 0..bytes.len() {
+            let mut truncated = Reader::new(&bytes[..end]);
+            assert!(
+                Dma::default().load(&mut truncated).is_err(),
+                "accepted prefix of length {end}"
+            );
+        }
+    }
+
+    #[test]
+    fn invalid_boolean_discriminant_is_corrupt() {
+        let mut bytes = encode(&state());
+        bytes[28] = 2;
+        let result = Dma::default().load(&mut Reader::new(&bytes));
+        assert!(matches!(result, Err(SnapshotError::Corrupt(_))));
+    }
 }

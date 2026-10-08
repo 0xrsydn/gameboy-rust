@@ -1,6 +1,7 @@
 //! ARM7 processor modes, register banks, and status-register transfers.
 
 use super::{Cpu, CpuError, Flags, InstructionSet};
+use crate::snapshot::{Reader, SnapshotError, Writer};
 
 /// ARMv4T processor mode. User and System share a register bank.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -178,6 +179,43 @@ impl Cpu {
             self.apply_status(next, mode);
         }
         self.registers[15] = self.pc().wrapping_add(4);
+        Ok(())
+    }
+}
+
+impl Banks {
+    pub(super) fn save_snapshot(&self, writer: &mut Writer) {
+        let Self { high, sp_lr, spsr } = self;
+        for bank in high {
+            for register in bank {
+                writer.u32(*register);
+            }
+        }
+        for bank in sp_lr {
+            for register in bank {
+                writer.u32(*register);
+            }
+        }
+        for register in spsr {
+            writer.u32(*register);
+        }
+    }
+
+    pub(super) fn load_snapshot(&mut self, reader: &mut Reader<'_>) -> Result<(), SnapshotError> {
+        let Self { high, sp_lr, spsr } = self;
+        for bank in high {
+            for register in bank {
+                *register = reader.u32()?;
+            }
+        }
+        for bank in sp_lr {
+            for register in bank {
+                *register = reader.u32()?;
+            }
+        }
+        for register in spsr {
+            *register = reader.u32()?;
+        }
         Ok(())
     }
 }

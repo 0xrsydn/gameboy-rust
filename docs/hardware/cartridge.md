@@ -97,6 +97,7 @@ Controls use the same focus correction and key mapping as the existing demos:
 | Backspace | Select |
 
 Escape or the window close control ends execution. Enter does not reset the emulator.
+F5 writes and F9 loads a [save state](save-states.md) in the file chosen by `--state-file PATH` (default: the ROM path with a `.state` extension).
 Focus loss releases all buttons but does not pause execution.
 The host samples buttons before each execution slice, including while stopped.
 

@@ -130,7 +130,7 @@ The frontend persists changed bytes only on a clean exit:
 
 An incomplete Flash command/operation refuses persistence and returns an error, even if no bytes changed yet.
 CPU, DMA, rendering, window, or reported audio errors do not persist the session image.
-There is no autosave, crash recovery, save-state support, or RTC persistence.
+There is no autosave, crash recovery, or RTC persistence. [Save states](save-states.md) are a separate, whole-machine feature and do not replace the game's own save.
 The emulator cannot detect a game's multi-command save transaction. Exiting between completed commands can still save incomplete game data.
 A crash or forced termination loses changes since startup and can leave a stale lock.
 

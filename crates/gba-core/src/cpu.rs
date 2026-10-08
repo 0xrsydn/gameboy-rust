@@ -1,6 +1,7 @@
 use std::{error::Error, fmt};
 
 use crate::memory::{Memory, MemoryError};
+use crate::snapshot::{Reader, Snapshot, SnapshotError, Writer};
 
 // Semantic tests compare architectural state after successful instructions.
 // Error/rollback tests keep full Cpu equality, including buffered fetch results.
@@ -331,5 +332,203 @@ impl Cpu {
         } else {
             self.registers[register]
         }
+    }
+}
+
+fn save_instruction_set(instruction_set: InstructionSet, writer: &mut Writer) {
+    writer.u8(match instruction_set {
+        InstructionSet::Arm => 0,
+        InstructionSet::Thumb => 1,
+    });
+}
+
+fn load_instruction_set(reader: &mut Reader<'_>) -> Result<InstructionSet, SnapshotError> {
+    match reader.u8()? {
+        0 => Ok(InstructionSet::Arm),
+        1 => Ok(InstructionSet::Thumb),
+        _ => Err(SnapshotError::Corrupt("instruction set")),
+    }
+}
+
+fn save_mode(mode: Mode, writer: &mut Writer) {
+    writer.u8(match mode {
+        Mode::User => 0,
+        Mode::Fiq => 1,
+        Mode::Irq => 2,
+        Mode::Supervisor => 3,
+        Mode::Abort => 4,
+        Mode::Undefined => 5,
+        Mode::System => 6,
+    });
+}
+
+fn load_mode(reader: &mut Reader<'_>) -> Result<Mode, SnapshotError> {
+    match reader.u8()? {
+        0 => Ok(Mode::User),
+        1 => Ok(Mode::Fiq),
+        2 => Ok(Mode::Irq),
+        3 => Ok(Mode::Supervisor),
+        4 => Ok(Mode::Abort),
+        5 => Ok(Mode::Undefined),
+        6 => Ok(Mode::System),
+        _ => Err(SnapshotError::Corrupt("processor mode")),
+    }
+}
+
+impl Snapshot for Cpu {
+    fn save(&self, writer: &mut Writer) {
+        let Self {
+            registers,
+            flags,
+            instruction_set,
+            mode,
+            irq_disabled,
+            fiq_disabled,
+            banks,
+            pipeline,
+        } = self;
+        writer.tag(b"CPU0");
+        for register in registers {
+            writer.u32(*register);
+        }
+        let Flags {
+            negative,
+            zero,
+            carry,
+            overflow,
+        } = flags;
+        writer.bool(*negative);
+        writer.bool(*zero);
+        writer.bool(*carry);
+        writer.bool(*overflow);
+        save_instruction_set(*instruction_set, writer);
+        save_mode(*mode, writer);
+        writer.bool(*irq_disabled);
+        writer.bool(*fiq_disabled);
+        banks.save_snapshot(writer);
+        writer.option(pipeline.as_ref(), |pipeline, writer| {
+            pipeline.save_snapshot(writer);
+        });
+    }
+
+    fn load(&mut self, reader: &mut Reader<'_>) -> Result<(), SnapshotError> {
+        let Self {
+            registers,
+            flags,
+            instruction_set,
+            mode,
+            irq_disabled,
+            fiq_disabled,
+            banks,
+            pipeline,
+        } = self;
+        reader.tag(b"CPU0")?;
+        for register in registers {
+            *register = reader.u32()?;
+        }
+        let Flags {
+            negative,
+            zero,
+            carry,
+            overflow,
+        } = flags;
+        *negative = reader.bool()?;
+        *zero = reader.bool()?;
+        *carry = reader.bool()?;
+        *overflow = reader.bool()?;
+        *instruction_set = load_instruction_set(reader)?;
+        *mode = load_mode(reader)?;
+        *irq_disabled = reader.bool()?;
+        *fiq_disabled = reader.bool()?;
+        banks.load_snapshot(reader)?;
+        *pipeline = reader.option(|reader| pipeline::Pipeline::load_snapshot(reader))?;
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod snapshot_tests {
+    use super::*;
+    use crate::memory::ROM_START;
+
+    fn populated_cpu() -> Cpu {
+        const THUMB_STORE: [u8; 2] = [0x08, 0x60];
+        let mut cpu = Cpu::new(ROM_START);
+        cpu.instruction_set = InstructionSet::Thumb;
+        cpu.registers[0] = 0xaabb_ccdd;
+        cpu.registers[1] = 0x0200_0000;
+        let mut memory = Memory::new(THUMB_STORE.repeat(8)).unwrap();
+        cpu.step(&mut memory).unwrap();
+
+        for (index, register) in cpu.registers[..15].iter_mut().enumerate() {
+            *register = 0x1000 + index as u32;
+        }
+        cpu.registers[15] = ROM_START + 2;
+        cpu.flags = Flags {
+            negative: true,
+            zero: false,
+            carry: true,
+            overflow: true,
+        };
+        cpu.irq_disabled = true;
+        cpu.fiq_disabled = true;
+
+        for (mode, seed) in [
+            (Mode::User, 0x10_000),
+            (Mode::Fiq, 0x20_000),
+            (Mode::Irq, 0x30_000),
+            (Mode::Supervisor, 0x40_000),
+            (Mode::Abort, 0x50_000),
+            (Mode::Undefined, 0x60_000),
+            (Mode::System, 0x70_000),
+        ] {
+            cpu.switch_mode(mode);
+            for (index, register) in cpu.registers[8..15].iter_mut().enumerate() {
+                *register = seed + index as u32;
+            }
+            if !matches!(mode, Mode::User | Mode::System) {
+                cpu.set_spsr(seed + 0x800);
+            }
+        }
+        cpu.switch_mode(Mode::Irq);
+        cpu
+    }
+
+    fn save(cpu: &Cpu) -> Vec<u8> {
+        let mut writer = Writer::new();
+        cpu.save(&mut writer);
+        writer.finish().unwrap()
+    }
+
+    #[test]
+    fn cpu_round_trips_register_banks_flags_and_pipeline() {
+        let source = populated_cpu();
+        let bytes = save(&source);
+        let mut restored = Cpu::new(0);
+        restored.load(&mut Reader::new(&bytes)).unwrap();
+        assert_eq!(restored, source);
+    }
+
+    #[test]
+    fn every_strict_cpu_prefix_is_rejected() {
+        let bytes = save(&populated_cpu());
+        for end in 0..bytes.len() {
+            let mut restored = Cpu::new(0);
+            assert!(
+                restored.load(&mut Reader::new(&bytes[..end])).is_err(),
+                "accepted prefix of length {end}"
+            );
+        }
+    }
+
+    #[test]
+    fn cpu_rejects_unknown_instruction_set_discriminant() {
+        let mut bytes = save(&populated_cpu());
+        bytes[72] = 0xff;
+        let mut restored = Cpu::new(0);
+        assert!(matches!(
+            restored.load(&mut Reader::new(&bytes)),
+            Err(SnapshotError::Corrupt(_))
+        ));
     }
 }

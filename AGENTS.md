@@ -39,6 +39,7 @@ Window smoke tests (`--*-smoke-test`) need a logged-in desktop session. Details 
 | ROM test suites, assertions, and JSON reports | [docs/rom-tests.md](docs/rom-tests.md) |
 | Jev-assisted diagnostic review and `/jev-gb-debug` | [docs/jev-debugging.md](docs/jev-debugging.md) |
 | ROM files, window execution, and terminal diagnostics | [docs/hardware/cartridge.md](docs/hardware/cartridge.md) |
+| Save states (`Machine::save_state`, `Snapshot` impls, F5/F9) | [docs/hardware/save-states.md](docs/hardware/save-states.md) |
 | Pinned public BIOS read-protection test and firmware limits | [docs/public-bios-tests.md](docs/public-bios-tests.md) |
 | BIOS services (SWI) | [docs/hardware/bios.md](docs/hardware/bios.md) |
 | Timers, IE/IF/IME, HALT/STOP | [docs/hardware/timers-irq.md](docs/hardware/timers-irq.md) |

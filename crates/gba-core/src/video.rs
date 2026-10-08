@@ -10,6 +10,7 @@ pub(crate) mod mosaic;
 pub(crate) mod sprites;
 pub(crate) mod windows;
 
+use crate::snapshot::{Reader, Snapshot, SnapshotError, Writer};
 use std::{error::Error, fmt};
 
 pub const WIDTH: usize = 240;
@@ -65,6 +66,86 @@ pub(crate) struct Background {
     pub x: u16,
     pub y: u16,
     pub affine: affine::AffineBackground,
+}
+
+impl Snapshot for Background {
+    fn save(&self, writer: &mut Writer) {
+        let Self {
+            control,
+            x,
+            y,
+            affine,
+        } = self;
+        writer.tag(b"BGND");
+        writer.u16(*control);
+        writer.u16(*x);
+        writer.u16(*y);
+        affine.save(writer);
+    }
+
+    fn load(&mut self, reader: &mut Reader<'_>) -> Result<(), SnapshotError> {
+        let Self {
+            control,
+            x,
+            y,
+            affine,
+        } = self;
+        reader.tag(b"BGND")?;
+        *control = reader.u16()?;
+        *x = reader.u16()?;
+        *y = reader.u16()?;
+        affine.load(reader)
+    }
+}
+
+#[cfg(test)]
+mod snapshot_tests {
+    use super::*;
+
+    fn encoded<T: Snapshot>(value: &T) -> Vec<u8> {
+        let mut writer = Writer::new();
+        value.save(&mut writer);
+        writer.finish().unwrap()
+    }
+
+    fn assert_prefixes(bytes: &[u8]) {
+        for end in 0..bytes.len() {
+            let mut value = Background::default();
+            assert!(
+                value.load(&mut Reader::new(&bytes[..end])).is_err(),
+                "prefix {end}"
+            );
+        }
+    }
+
+    #[test]
+    fn background_round_trips_and_rejects_bad_affine_boolean() {
+        let mut affine = affine::AffineBackground::default();
+        for offset in 0..8 {
+            affine.write8(offset, offset as u8 + 1, false);
+        }
+        for offset in 8..16 {
+            affine.write8(offset, offset as u8 + 1, true);
+        }
+        let source = Background {
+            control: 0xa51d,
+            x: 0x1357,
+            y: 0x2468,
+            affine,
+        };
+        let bytes = encoded(&source);
+        let mut restored = Background::default();
+        restored.load(&mut Reader::new(&bytes)).unwrap();
+        assert_eq!(restored, source);
+        assert_prefixes(&bytes);
+
+        let mut invalid = bytes;
+        *invalid.last_mut().unwrap() = 2;
+        assert_eq!(
+            Background::default().load(&mut Reader::new(&invalid)),
+            Err(SnapshotError::Corrupt("boolean"))
+        );
+    }
 }
 
 pub(crate) struct RenderSettings<'a> {

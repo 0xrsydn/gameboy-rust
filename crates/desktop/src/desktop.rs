@@ -13,7 +13,7 @@ pub use bitmap::run as run_bitmap;
 pub use effects::run as run_effects;
 pub use mosaic::run as run_mosaic;
 pub use raster::run as run_raster;
-pub use rom::{run as run_rom, Playback as RomPlayback};
+pub use rom::{run as run_rom, Persistence as RomPersistence, Playback as RomPlayback};
 
 use std::{
     error::Error,

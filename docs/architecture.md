@@ -99,6 +99,10 @@ The repository is a Cargo workspace with three crates:
 | `crates/gba-core/src/display.rs` | Display clock, scanline status, comparison edges, and display IRQ events |
 | `crates/gba-core/src/dma.rs` | DMA registers, internal pointers, retained channel data, trigger state, priority, and completion IRQs |
 | `crates/gba-core/src/machine.rs` | Timed CPU/DMA/device stepping and IRQ delivery |
+| `crates/gba-core/src/snapshot.rs` | Save-state binary primitives (writer, reader, tags, FNV fingerprint) and `SnapshotError` |
+| `crates/gba-core/src/machine/snapshot.rs` | `Machine::save_state`/`load_state`: header, image and cartridge identity, checksum, verify-before-mutate |
+| `crates/gba-core/src/memory/snapshot.rs`, `crates/gba-core/src/io/snapshot.rs` | Memory bus and I/O register encoders; every other state type implements `Snapshot` beside its definition |
+| `crates/gba-core/tests/save_state.rs` | Restore-equals-uninterrupted determinism, in-flight Flash operation, and rejected-input tests |
 | `crates/gba-core/src/timing.rs` | Bus widths, wait-state costs, ordered CPU timing transactions, and timing breakdowns |
 | `crates/gba-core/src/timing/prefetch.rs` | Nominal eight-halfword opcode queue, partial transfers, capacity stops, and cancellation |
 | `crates/gba-core/src/timing/prefetch/tests.rs` | Wait-state matrices, partial words, cancellation phases, boundaries, configuration, and progress consistency |
@@ -175,6 +179,7 @@ The repository is a Cargo workspace with three crates:
 | `crates/desktop/tests/save_cli.rs` | Original program/save/restart/load tests, diagnostic isolation, and native-window persistence |
 | `crates/desktop/src/cartridge/rtc_clock.rs` | Host-only UTC seed and monotonic elapsed-time adapter, with injected epoch/duration tests |
 | `crates/desktop/src/cartridge/window.rs` | ROM-window session, bounded slices, capture, STOP/input handling, and progress limits |
+| `crates/desktop/src/cartridge/state_file.rs` | Atomic save-state file writes and bounded reads |
 | `crates/desktop/src/cartridge/window/tests.rs` | Original ROM pixels, keyboard mapping, STOP wake, HALT, frame budgets, and diagnostics |
 | `crates/desktop/src/desktop/rom.rs` | Main-thread ROM window, input polling, optional audio draining/muting, speed-scaled host pacing, and frame-limited exit |
 | `crates/desktop/examples/write_rom_demo.rs` | Non-overwriting export of the original input-test ROM |

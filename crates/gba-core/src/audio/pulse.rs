@@ -1,6 +1,7 @@
 //! Shared nominal pulse oscillator and sweep unit. No host-clock dependency.
 //! Channel 2 never receives sweep-register writes, so its sweep remains disabled.
 use super::modulation::Modulation;
+use crate::snapshot::{Reader, Snapshot, SnapshotError, Writer};
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub(super) struct Pulse {
@@ -131,6 +132,105 @@ impl Pulse {
         } else {
             -i16::from(self.modulation.volume)
         }
+    }
+}
+
+impl Snapshot for Pulse {
+    fn save(&self, writer: &mut Writer) {
+        let Self {
+            modulation,
+            sweep,
+            duty,
+            frequency,
+            phase,
+            remaining,
+            sweep_shadow,
+            sweep_ticks,
+            sweep_running,
+            subtracted,
+        } = self;
+        writer.tag(b"PUL0");
+        modulation.save(writer);
+        writer.u8(*sweep);
+        writer.u8(*duty);
+        writer.u16(*frequency);
+        writer.u8(*phase);
+        writer.u32(*remaining);
+        writer.u16(*sweep_shadow);
+        writer.u8(*sweep_ticks);
+        writer.bool(*sweep_running);
+        writer.bool(*subtracted);
+    }
+
+    fn load(&mut self, reader: &mut Reader<'_>) -> Result<(), SnapshotError> {
+        reader.tag(b"PUL0")?;
+        let Self {
+            modulation,
+            sweep,
+            duty,
+            frequency,
+            phase,
+            remaining,
+            sweep_shadow,
+            sweep_ticks,
+            sweep_running,
+            subtracted,
+        } = self;
+        modulation.load(reader)?;
+        *sweep = reader.u8()?;
+        *duty = reader.u8()?;
+        *frequency = reader.u16()?;
+        *phase = reader.u8()?;
+        *remaining = reader.u32()?;
+        *sweep_shadow = reader.u16()?;
+        *sweep_ticks = reader.u8()?;
+        *sweep_running = reader.bool()?;
+        *subtracted = reader.bool()?;
+        if *sweep > 0x7f
+            || *duty > 3
+            || *frequency > 2047
+            || *phase > 7
+            || *remaining > 32768
+            || *sweep_shadow > 2047
+            || *sweep_ticks > 8
+        {
+            return Err(SnapshotError::Corrupt("pulse range"));
+        }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod snapshot_tests {
+    use super::*;
+
+    #[test]
+    fn snapshot_round_trip_prefixes_and_invalid_boolean() {
+        let mut source = Pulse::default();
+        source.write(0, 0x09, 0);
+        source.write(2, 0x9d, 0);
+        source.write(3, 0xa3, 0);
+        source.write(4, 0x7b, 0);
+        source.write(5, 0x84, 0);
+        source.advance(23);
+        source.clock(2);
+
+        let mut writer = Writer::new();
+        source.save(&mut writer);
+        let bytes = writer.finish().unwrap();
+        let mut loaded = Pulse::default();
+        loaded.load(&mut Reader::new(&bytes)).unwrap();
+        assert_eq!(loaded, source);
+        for end in 0..bytes.len() {
+            assert!(loaded.load(&mut Reader::new(&bytes[..end])).is_err());
+        }
+
+        let mut corrupt = bytes;
+        corrupt[8] = 2;
+        assert_eq!(
+            loaded.load(&mut Reader::new(&corrupt)),
+            Err(SnapshotError::Corrupt("boolean"))
+        );
     }
 }
 

@@ -1,4 +1,5 @@
 //! Validated 2000–2099 RTC calendar arithmetic. No clock sampling or timezone conversion.
+use crate::snapshot::{Reader, Snapshot, SnapshotError, Writer};
 use std::{error::Error, fmt};
 
 const DAYS_PER_CENTURY: u64 = 36_525;
@@ -150,6 +151,24 @@ impl RtcDateTime {
             ((time / 60) % 60) as u8,
             (time % 60) as u8,
         ];
+    }
+}
+
+impl Snapshot for RtcDateTime {
+    fn save(&self, writer: &mut Writer) {
+        let Self(parts) = self;
+        writer.tag(b"DATE");
+        writer.raw(parts);
+    }
+
+    fn load(&mut self, reader: &mut Reader<'_>) -> Result<(), SnapshotError> {
+        let Self(current) = self;
+        reader.tag(b"DATE")?;
+        let mut parts = [0; 7];
+        reader.raw_into(&mut parts)?;
+        let validated = Self::new(parts).map_err(|_| SnapshotError::Corrupt("RTC date/time"))?;
+        *current = validated.0;
+        Ok(())
     }
 }
 

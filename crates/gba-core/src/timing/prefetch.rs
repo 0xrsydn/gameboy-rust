@@ -1,6 +1,7 @@
 //! Nominal Game Pak opcode prefetch timing. No ROM bytes or CPU instructions live here.
 //! Full-buffer pause/restart follows the independently reviewed ares/jgenesis model.
 use super::{bus_cycles, AccessKind, AccessWidth};
+use crate::snapshot::{Reader, Snapshot, SnapshotError, Writer};
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Prefetch {
@@ -163,3 +164,100 @@ impl Prefetch {
 
 #[cfg(test)]
 mod tests;
+
+impl Snapshot for Prefetch {
+    fn save(&self, writer: &mut Writer) {
+        let Self { waitcnt, stream } = self;
+        writer.tag(b"PFCH");
+        writer.u16(*waitcnt);
+        writer.option(stream.as_ref(), |stream, writer| {
+            let Stream {
+                head,
+                ready,
+                remaining,
+                running,
+            } = stream;
+            writer.u32(*head);
+            writer.u8(*ready);
+            writer.u32(*remaining);
+            writer.bool(*running);
+        });
+    }
+
+    fn load(&mut self, reader: &mut Reader<'_>) -> Result<(), SnapshotError> {
+        let Self { waitcnt, stream } = self;
+        reader.tag(b"PFCH")?;
+        *waitcnt = reader.u16()?;
+        *stream = reader.option(|reader| {
+            let head = reader.u32()?;
+            let ready = reader.u8()?;
+            let remaining = reader.u32()?;
+            let running = reader.bool()?;
+            if ready > 8 {
+                return Err(SnapshotError::Corrupt("prefetch queue"));
+            }
+            Ok(Stream {
+                head,
+                ready,
+                remaining,
+                running,
+            })
+        })?;
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod snapshot_tests {
+    use super::*;
+
+    fn populated_prefetch() -> Prefetch {
+        Prefetch {
+            waitcnt: 0x5a34,
+            stream: Some(Stream {
+                head: 0x0a12_3456,
+                ready: 3,
+                remaining: 7,
+                running: true,
+            }),
+        }
+    }
+
+    fn save(prefetch: &Prefetch) -> Vec<u8> {
+        let mut writer = Writer::new();
+        prefetch.save(&mut writer);
+        writer.finish().unwrap()
+    }
+
+    #[test]
+    fn prefetch_round_trips_waitcnt_and_stream() {
+        let source = populated_prefetch();
+        let bytes = save(&source);
+        let mut restored = Prefetch::default();
+        restored.load(&mut Reader::new(&bytes)).unwrap();
+        assert_eq!(restored, source);
+    }
+
+    #[test]
+    fn every_strict_prefetch_prefix_is_rejected() {
+        let bytes = save(&populated_prefetch());
+        for end in 0..bytes.len() {
+            let mut restored = Prefetch::default();
+            assert!(
+                restored.load(&mut Reader::new(&bytes[..end])).is_err(),
+                "accepted prefix of length {end}"
+            );
+        }
+    }
+
+    #[test]
+    fn prefetch_rejects_invalid_stream_values() {
+        let mut bytes = save(&populated_prefetch());
+        bytes[11] = 9;
+        let mut restored = Prefetch::default();
+        assert!(matches!(
+            restored.load(&mut Reader::new(&bytes)),
+            Err(SnapshotError::Corrupt(_))
+        ));
+    }
+}

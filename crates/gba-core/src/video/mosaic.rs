@@ -3,6 +3,7 @@
 //! for sprite preparation. Per-access size latching is not modeled.
 
 use crate::display::{CYCLES_PER_FRAME, CYCLES_PER_LINE, VISIBLE_LINES};
+use crate::snapshot::{Reader, Snapshot, SnapshotError, Writer};
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct VerticalMosaic {
@@ -186,5 +187,85 @@ mod tests {
         assert_eq!((mosaic.background, mosaic.object), (0, 0));
         mosaic.advance(160 * CYCLES_PER_LINE, 68 * CYCLES_PER_LINE, 0xffff);
         assert_eq!((mosaic.background, mosaic.object), (0, 1)); // Row1 phase, row0 already prepared.
+    }
+}
+
+impl Snapshot for VerticalMosaic {
+    fn save(&self, writer: &mut Writer) {
+        let Self {
+            background,
+            object,
+            started,
+        } = self;
+        writer.tag(b"VMOS");
+        if *background >= 16 || *object >= 16 {
+            writer.fail(SnapshotError::Unsupported(
+                "invalid vertical mosaic counter",
+            ));
+        }
+        writer.u8(*background);
+        writer.u8(*object);
+        writer.bool(*started);
+    }
+
+    fn load(&mut self, reader: &mut Reader<'_>) -> Result<(), SnapshotError> {
+        let Self {
+            background,
+            object,
+            started,
+        } = self;
+        reader.tag(b"VMOS")?;
+        let loaded_background = reader.u8()?;
+        let loaded_object = reader.u8()?;
+        if loaded_background >= 16 || loaded_object >= 16 {
+            return Err(SnapshotError::Corrupt("vertical mosaic counter"));
+        }
+        *background = loaded_background;
+        *object = loaded_object;
+        *started = reader.bool()?;
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod snapshot_tests {
+    use super::*;
+
+    #[test]
+    fn vertical_mosaic_round_trips_and_rejects_invalid_values() {
+        let source = VerticalMosaic {
+            background: 13,
+            object: 7,
+            started: true,
+        };
+        let mut writer = Writer::new();
+        source.save(&mut writer);
+        let bytes = writer.finish().unwrap();
+        let mut restored = VerticalMosaic::default();
+        restored.load(&mut Reader::new(&bytes)).unwrap();
+        assert_eq!(restored, source);
+        for end in 0..bytes.len() {
+            assert!(VerticalMosaic::default()
+                .load(&mut Reader::new(&bytes[..end]))
+                .is_err());
+        }
+        let mut invalid = bytes;
+        *invalid.last_mut().unwrap() = 2;
+        assert_eq!(
+            VerticalMosaic::default().load(&mut Reader::new(&invalid)),
+            Err(SnapshotError::Corrupt("boolean"))
+        );
+        let mut invalid = encoded_mosaic(&source);
+        invalid[4] = 16;
+        assert_eq!(
+            VerticalMosaic::default().load(&mut Reader::new(&invalid)),
+            Err(SnapshotError::Corrupt("vertical mosaic counter"))
+        );
+    }
+
+    fn encoded_mosaic(value: &VerticalMosaic) -> Vec<u8> {
+        let mut writer = Writer::new();
+        value.save(&mut writer);
+        writer.finish().unwrap()
     }
 }

@@ -6,7 +6,10 @@ use std::{
     io::{self, Write},
 };
 
-use gba_core::{bios, input::Buttons, machine::Machine, memory::MemoryError, video::Framebuffer};
+use gba_core::{
+    bios, input::Buttons, machine::Machine, memory::MemoryError, snapshot::SnapshotError,
+    video::Framebuffer,
+};
 
 use super::{write_state, Stats};
 
@@ -60,6 +63,22 @@ impl Session {
     }
     pub fn frames(&self) -> u64 {
         self.frames
+    }
+
+    /// Encode the machine at the current step boundary. Host counters are not part of it.
+    pub fn save_state(&self) -> Result<Vec<u8>, SnapshotError> {
+        self.machine.save_state()
+    }
+
+    /// Restore a state and show its last captured frame at once. Any error other than
+    /// `SnapshotError::RestoreFailed` leaves the running machine untouched.
+    pub fn load_state(&mut self, bytes: &[u8]) -> Result<(), SnapshotError> {
+        self.machine.load_state(bytes)?;
+        self.vblank = self.machine.memory().display_position().vblanks;
+        self.frame_steps = 0;
+        // A captured frame that failed to render is reported at the next VBlank instead.
+        let _ = self.machine.memory().present_frame(&mut self.frame);
+        Ok(())
     }
 
     /// Sample input, then advance at most one bounded slice or one VBlank event.

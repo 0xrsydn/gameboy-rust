@@ -1,5 +1,6 @@
 //! Disconnected serial: normal shifting, idle multiplayer, and local Joybus registers.
 use super::replace_byte;
+use crate::snapshot::{Reader, Snapshot, SnapshotError, Writer};
 
 pub const SIODATA32: u32 = 0x0400_0120;
 pub const SIOMULTI0: u32 = SIODATA32;
@@ -281,5 +282,141 @@ impl Serial {
         }
         self.until_bit -= cycles;
         0
+    }
+}
+
+impl Snapshot for Serial {
+    fn save(&self, writer: &mut Writer) {
+        let Self {
+            data,
+            multi_extra,
+            send,
+            control,
+            rcnt,
+            joy_control,
+            joy_receive,
+            joy_transmit,
+            joy_status,
+            bits_left,
+            until_bit,
+        } = self;
+        writer.tag(b"SER0");
+        writer.u32(*data);
+        writer.u32(*multi_extra);
+        writer.u16(*send);
+        writer.u16(*control);
+        writer.u16(*rcnt);
+        writer.u8(*joy_control);
+        writer.u32(*joy_receive);
+        writer.u32(*joy_transmit);
+        writer.u8(*joy_status);
+        writer.u8(*bits_left);
+        writer.u32(*until_bit);
+    }
+
+    fn load(&mut self, reader: &mut Reader<'_>) -> Result<(), SnapshotError> {
+        let Self {
+            data,
+            multi_extra,
+            send,
+            control,
+            rcnt,
+            joy_control,
+            joy_receive,
+            joy_transmit,
+            joy_status,
+            bits_left,
+            until_bit,
+        } = self;
+        reader.tag(b"SER0")?;
+        *data = reader.u32()?;
+        *multi_extra = reader.u32()?;
+        *send = reader.u16()?;
+        *control = reader.u16()?;
+        *rcnt = reader.u16()?;
+        *joy_control = reader.u8()?;
+        *joy_receive = reader.u32()?;
+        *joy_transmit = reader.u32()?;
+        *joy_status = reader.u8()?;
+        *bits_left = reader.u8()?;
+        *until_bit = reader.u32()?;
+
+        let control_mask = if *control & 0x3000 == 0x2000 {
+            0x6f03
+        } else {
+            0x508b
+        };
+        if *control & !control_mask != 0 {
+            return Err(SnapshotError::Corrupt("serial control"));
+        }
+        if *rcnt & !0xc1ff != 0 || *joy_control & !0x40 != 0 || *joy_status & !0x32 != 0 {
+            return Err(SnapshotError::Corrupt("serial register"));
+        }
+
+        let transfer = *rcnt & 0x8000 == 0 && *control & 0x3000 != 0x2000 && *control & 0x80 != 0;
+        if transfer {
+            let width = if *control & 0x1000 != 0 { 32 } else { 8 };
+            let period = if *control & 2 != 0 { 8 } else { 64 };
+            if *bits_left == 0 || *bits_left > width || *until_bit == 0 || *until_bit > period {
+                return Err(SnapshotError::Corrupt("serial transfer"));
+            }
+        } else if *bits_left != 0 || *until_bit != 0 {
+            return Err(SnapshotError::Corrupt("serial transfer"));
+        }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod snapshot_tests {
+    use super::*;
+
+    fn state() -> Serial {
+        Serial {
+            data: 0x1234_5678,
+            multi_extra: 0x8765_4321,
+            send: 0x5aa5,
+            control: 0x1083,
+            rcnt: 0x0123,
+            joy_control: 0x40,
+            joy_receive: 0x0bad_cafe,
+            joy_transmit: 0xfeed_face,
+            joy_status: 0x32,
+            bits_left: 23,
+            until_bit: 4,
+        }
+    }
+
+    fn encode(serial: &Serial) -> Vec<u8> {
+        let mut writer = Writer::new();
+        serial.save(&mut writer);
+        writer.finish().unwrap()
+    }
+
+    #[test]
+    fn round_trip_and_reject_every_strict_prefix() {
+        let source = state();
+        let bytes = encode(&source);
+        let mut restored = Serial::default();
+        let mut reader = Reader::new(&bytes);
+        restored.load(&mut reader).unwrap();
+        reader.finish().unwrap();
+        assert_eq!(restored, source);
+
+        for end in 0..bytes.len() {
+            let mut truncated = Reader::new(&bytes[..end]);
+            assert!(
+                Serial::default().load(&mut truncated).is_err(),
+                "accepted prefix of length {end}"
+            );
+        }
+    }
+
+    #[test]
+    fn invalid_control_bits_are_corrupt() {
+        let mut bytes = encode(&state());
+        bytes[14..16].copy_from_slice(&u16::MAX.to_le_bytes());
+        let result = Serial::default().load(&mut Reader::new(&bytes));
+        assert!(matches!(result, Err(SnapshotError::Corrupt(_))));
     }
 }

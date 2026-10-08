@@ -301,3 +301,26 @@ fn report_contains_capture_count_and_propagates_output_errors() {
         io::ErrorKind::BrokenPipe
     );
 }
+
+#[test]
+fn loading_a_state_restores_the_machine_and_shows_its_frame_at_once() {
+    let mut session = original();
+    let pressed = Buttons::default().with(Button::A, true);
+    next_frame(&mut session, pressed);
+    next_frame(&mut session, pressed);
+    assert_color(&session, 0x001f);
+    let state = session.save_state().unwrap();
+    next_frame(&mut session, Buttons::default());
+    assert_color(&session, 0x7c00);
+
+    session.load_state(&state).unwrap();
+    assert_color(&session, 0x001f);
+    assert_eq!(session.save_state().unwrap(), state);
+    next_frame(&mut session, Buttons::default());
+    assert_color(&session, 0x7c00);
+
+    // A rejected state is an error and leaves the running session untouched.
+    let before = session.save_state().unwrap();
+    assert!(session.load_state(b"not a save state at all").is_err());
+    assert_eq!(session.save_state().unwrap(), before);
+}

@@ -9,6 +9,7 @@ use crate::{
     memory::Memory,
     timing::StepTiming,
 };
+mod snapshot;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StepKind {

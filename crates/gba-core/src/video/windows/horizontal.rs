@@ -1,6 +1,7 @@
 //! Horizontal comparator history only, not pixel-fetch or color-register timing.
 //! Sample X=0..255 at line cycles 0,4,..1020; right-edge matches clear after left.
 
+use crate::snapshot::{Reader, Snapshot, SnapshotError, Writer};
 use crate::{display::CYCLES_PER_LINE, video::WIDTH};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -164,5 +165,69 @@ mod tests {
         assert_eq!(state, before);
         state.advance(1, 3, [0; 2]);
         assert_eq!(state, before); // X0 already passed, X1 has not started.
+    }
+}
+
+impl Snapshot for HorizontalWindows {
+    fn save(&self, writer: &mut Writer) {
+        let Self { active, pixels } = self;
+        writer.tag(b"HWIN");
+        for value in active {
+            writer.bool(*value);
+        }
+        for window in pixels {
+            for value in window {
+                writer.bool(*value);
+            }
+        }
+    }
+
+    fn load(&mut self, reader: &mut Reader<'_>) -> Result<(), SnapshotError> {
+        let Self { active, pixels } = self;
+        reader.tag(b"HWIN")?;
+        for value in active {
+            *value = reader.bool()?;
+        }
+        for window in pixels {
+            for value in window {
+                *value = reader.bool()?;
+            }
+        }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod snapshot_tests {
+    use super::*;
+
+    #[test]
+    fn horizontal_windows_round_trip_comparator_history() {
+        let mut source = HorizontalWindows {
+            active: [true, false],
+            ..HorizontalWindows::default()
+        };
+        for window in 0..2 {
+            for x in 0..WIDTH {
+                source.pixels[window][x] = (x + window) % 3 != 0;
+            }
+        }
+        let mut writer = Writer::new();
+        source.save(&mut writer);
+        let bytes = writer.finish().unwrap();
+        let mut restored = HorizontalWindows::default();
+        restored.load(&mut Reader::new(&bytes)).unwrap();
+        assert_eq!(restored, source);
+        for end in 0..bytes.len() {
+            assert!(HorizontalWindows::default()
+                .load(&mut Reader::new(&bytes[..end]))
+                .is_err());
+        }
+        let mut invalid = bytes;
+        invalid[4] = 2;
+        assert_eq!(
+            HorizontalWindows::default().load(&mut Reader::new(&invalid)),
+            Err(SnapshotError::Corrupt("boolean"))
+        );
     }
 }

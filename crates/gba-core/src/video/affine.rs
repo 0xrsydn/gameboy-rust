@@ -5,6 +5,7 @@
 use super::{halfword, vram_index, Background, VideoError, HEIGHT, WIDTH};
 #[cfg(test)]
 use crate::display::{CYCLES_PER_FRAME, CYCLES_PER_LINE};
+use crate::snapshot::{Reader, Snapshot, SnapshotError, Writer};
 
 const REFERENCE_MASK: u32 = 0x0fff_ffff;
 
@@ -83,6 +84,89 @@ impl AffineBackground {
             coordinate(rx + a * x as i32 + b * y as i32),
             coordinate(ry + c * x as i32 + d * y as i32),
         )
+    }
+}
+
+impl Snapshot for AffineBackground {
+    fn save(&self, writer: &mut Writer) {
+        let Self {
+            matrix,
+            reference,
+            internal,
+            reload_next,
+        } = self;
+        writer.tag(b"AFBG");
+        for value in matrix {
+            writer.u16(*value);
+        }
+        for value in reference {
+            writer.u32(*value);
+        }
+        for value in internal {
+            writer.u32(*value);
+        }
+        for value in reload_next {
+            writer.bool(*value);
+        }
+    }
+
+    fn load(&mut self, reader: &mut Reader<'_>) -> Result<(), SnapshotError> {
+        let Self {
+            matrix,
+            reference,
+            internal,
+            reload_next,
+        } = self;
+        reader.tag(b"AFBG")?;
+        for value in matrix {
+            *value = reader.u16()?;
+        }
+        for value in reference {
+            *value = reader.u32()?;
+        }
+        for value in internal {
+            *value = reader.u32()?;
+        }
+        for value in reload_next {
+            *value = reader.bool()?;
+        }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod snapshot_tests {
+    use super::*;
+
+    fn encoded(value: &AffineBackground) -> Vec<u8> {
+        let mut writer = Writer::new();
+        value.save(&mut writer);
+        writer.finish().unwrap()
+    }
+
+    #[test]
+    fn affine_background_round_trips_every_latch_and_checks_prefixes() {
+        let source = AffineBackground {
+            matrix: [1, 0x2345, 0x6789, 0xabcd],
+            reference: [0x0123_4567, 0x089a_bcde],
+            internal: [0x0765_4321, 0x0123_4567],
+            reload_next: [true, false],
+        };
+        let bytes = encoded(&source);
+        let mut restored = AffineBackground::default();
+        restored.load(&mut Reader::new(&bytes)).unwrap();
+        assert_eq!(restored, source);
+        for end in 0..bytes.len() {
+            assert!(AffineBackground::default()
+                .load(&mut Reader::new(&bytes[..end]))
+                .is_err());
+        }
+        let mut invalid = bytes;
+        *invalid.last_mut().unwrap() = 2;
+        assert_eq!(
+            AffineBackground::default().load(&mut Reader::new(&invalid)),
+            Err(SnapshotError::Corrupt("boolean"))
+        );
     }
 }
 

@@ -2,6 +2,7 @@
 //! CPU instructions stage changes; successful DMA units commit accesses in order.
 use std::cell::Cell;
 
+use crate::snapshot::{Reader, Snapshot, SnapshotError, Writer};
 use crate::timing::AccessWidth;
 
 #[derive(Clone, Copy, Default)]
@@ -113,5 +114,103 @@ mod tests {
         bus.begin();
         bus.access(0x0300_0106, AccessWidth::Halfword, 0x5678);
         assert_eq!(bus.snapshot(), Some(0x5678_3344));
+    }
+}
+
+impl Snapshot for IwramBus {
+    fn save(&self, writer: &mut Writer) {
+        let Self { committed, pending } = self;
+        if pending.get().is_some() {
+            writer.fail(SnapshotError::MidStep);
+            return;
+        }
+        writer.tag(b"IWBS");
+        let Lanes { value, known } = committed;
+        writer.u32(*value);
+        writer.u32(*known);
+    }
+
+    fn load(&mut self, reader: &mut Reader<'_>) -> Result<(), SnapshotError> {
+        let Self { committed, pending } = self;
+        reader.tag(b"IWBS")?;
+        if pending.get().is_some() {
+            return Err(SnapshotError::MidStep);
+        }
+        let value = reader.u32()?;
+        let known = reader.u32()?;
+        if value & !known != 0
+            || [0x0000_00ff, 0x0000_ff00, 0x00ff_0000, 0xff00_0000]
+                .into_iter()
+                .any(|lane| {
+                    let bits = known & lane;
+                    bits != 0 && bits != lane
+                })
+        {
+            return Err(SnapshotError::Corrupt("IWRAM bus lanes"));
+        }
+        *committed = Lanes { value, known };
+        pending.set(None);
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod snapshot_tests {
+    use super::*;
+
+    fn populated_bus() -> IwramBus {
+        let mut bus = IwramBus::default();
+        bus.dma_access(0x0300_0000, AccessWidth::Byte, 0x12);
+        bus.dma_access(0x0300_0002, AccessWidth::Halfword, 0x3456);
+        bus
+    }
+
+    fn save(bus: &IwramBus) -> Vec<u8> {
+        let mut writer = Writer::new();
+        bus.save(&mut writer);
+        writer.finish().unwrap()
+    }
+
+    #[test]
+    fn iwram_bus_round_trips_committed_lane_history() {
+        let source = populated_bus();
+        let bytes = save(&source);
+        let mut restored = IwramBus::default();
+        restored.load(&mut Reader::new(&bytes)).unwrap();
+        let mut writer = Writer::new();
+        restored.save(&mut writer);
+        assert_eq!(writer.finish().unwrap(), bytes);
+    }
+
+    #[test]
+    fn every_strict_iwram_bus_prefix_is_rejected() {
+        let bytes = save(&populated_bus());
+        for end in 0..bytes.len() {
+            let mut restored = IwramBus::default();
+            assert!(
+                restored.load(&mut Reader::new(&bytes[..end])).is_err(),
+                "accepted prefix of length {end}"
+            );
+        }
+    }
+
+    #[test]
+    fn iwram_bus_rejects_values_in_unknown_lanes() {
+        let mut bytes = save(&populated_bus());
+        bytes[5] |= 0x80;
+        let mut restored = IwramBus::default();
+        assert!(matches!(
+            restored.load(&mut Reader::new(&bytes)),
+            Err(SnapshotError::Corrupt(_))
+        ));
+    }
+
+    #[test]
+    fn iwram_bus_rejects_transaction_staging() {
+        let mut bus = populated_bus();
+        bus.begin();
+        let mut writer = Writer::new();
+        bus.save(&mut writer);
+        assert_eq!(writer.finish(), Err(SnapshotError::MidStep));
     }
 }

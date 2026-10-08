@@ -4,7 +4,8 @@
 mod budget;
 pub(crate) mod pipeline;
 
-use super::{halfword, Pixel, VideoError, WIDTH};
+use super::{halfword, Pixel, VideoError, HEIGHT, WIDTH};
+use crate::snapshot::{Reader, Snapshot, SnapshotError, Writer};
 
 const SIZES: [[(usize, usize); 4]; 3] = [
     [(8, 8), (16, 16), (32, 32), (64, 64)],
@@ -17,19 +18,20 @@ pub(super) struct Objects {
     pub window: Vec<bool>,
 }
 
+#[derive(Debug, Default, PartialEq, Eq)]
 pub(crate) struct PreparedObjects {
     samples: Vec<Sample>,
     window: Vec<bool>,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct ObjectPixel {
     palette_index: u16,
     semi_transparent: bool,
 }
 
 // Transparent texels can change priority and mosaic without replacing color.
-#[derive(Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 struct Sample {
     pixel: Option<ObjectPixel>,
     priority: u8,
@@ -226,5 +228,310 @@ impl PreparedObjects {
             }
         }
         output
+    }
+}
+
+impl ObjectPixel {
+    fn save_fields(palette_index: &u16, semi_transparent: &bool, writer: &mut Writer) {
+        if *palette_index > 255 {
+            writer.fail(SnapshotError::Unsupported("invalid OBJ palette index"));
+        }
+        writer.u16(*palette_index);
+        writer.bool(*semi_transparent);
+    }
+
+    fn load_fields(
+        palette_index: &mut u16,
+        semi_transparent: &mut bool,
+        reader: &mut Reader<'_>,
+    ) -> Result<(), SnapshotError> {
+        let loaded_index = reader.u16()?;
+        let loaded_transparency = reader.bool()?;
+        if loaded_index > 255 {
+            return Err(SnapshotError::Corrupt("OBJ palette index"));
+        }
+        *palette_index = loaded_index;
+        *semi_transparent = loaded_transparency;
+        Ok(())
+    }
+
+    fn save_payload(&self, writer: &mut Writer) {
+        let Self {
+            palette_index,
+            semi_transparent,
+        } = self;
+        Self::save_fields(palette_index, semi_transparent, writer);
+    }
+
+    fn load_payload(&mut self, reader: &mut Reader<'_>) -> Result<(), SnapshotError> {
+        let Self {
+            palette_index,
+            semi_transparent,
+        } = self;
+        Self::load_fields(palette_index, semi_transparent, reader)
+    }
+}
+
+impl Snapshot for ObjectPixel {
+    fn save(&self, writer: &mut Writer) {
+        let Self {
+            palette_index,
+            semi_transparent,
+        } = self;
+        writer.tag(b"OPXL");
+        Self::save_fields(palette_index, semi_transparent, writer);
+    }
+
+    fn load(&mut self, reader: &mut Reader<'_>) -> Result<(), SnapshotError> {
+        let Self {
+            palette_index,
+            semi_transparent,
+        } = self;
+        reader.tag(b"OPXL")?;
+        Self::load_fields(palette_index, semi_transparent, reader)
+    }
+}
+
+impl Sample {
+    fn save_fields(pixel: &Option<ObjectPixel>, priority: &u8, mosaic: &bool, writer: &mut Writer) {
+        writer.option(pixel.as_ref(), |pixel, writer| {
+            pixel.save_payload(writer);
+        });
+        if *priority > 3 {
+            writer.fail(SnapshotError::Unsupported("invalid OBJ priority"));
+        }
+        writer.u8(*priority);
+        writer.bool(*mosaic);
+    }
+
+    fn load_fields(
+        pixel: &mut Option<ObjectPixel>,
+        priority: &mut u8,
+        mosaic: &mut bool,
+        reader: &mut Reader<'_>,
+    ) -> Result<(), SnapshotError> {
+        let loaded_pixel = reader.option(|reader| {
+            let mut pixel = ObjectPixel {
+                palette_index: 0,
+                semi_transparent: false,
+            };
+            pixel.load_payload(reader)?;
+            Ok(pixel)
+        })?;
+        let loaded_priority = reader.u8()?;
+        if loaded_priority > 3 {
+            return Err(SnapshotError::Corrupt("OBJ priority"));
+        }
+        let loaded_mosaic = reader.bool()?;
+        *pixel = loaded_pixel;
+        *priority = loaded_priority;
+        *mosaic = loaded_mosaic;
+        Ok(())
+    }
+
+    fn save_payload(&self, writer: &mut Writer) {
+        let Self {
+            pixel,
+            priority,
+            mosaic,
+        } = self;
+        Self::save_fields(pixel, priority, mosaic, writer);
+    }
+
+    fn load_payload(&mut self, reader: &mut Reader<'_>) -> Result<(), SnapshotError> {
+        let Self {
+            pixel,
+            priority,
+            mosaic,
+        } = self;
+        Self::load_fields(pixel, priority, mosaic, reader)
+    }
+}
+
+impl Snapshot for Sample {
+    fn save(&self, writer: &mut Writer) {
+        let Self {
+            pixel,
+            priority,
+            mosaic,
+        } = self;
+        writer.tag(b"SAMP");
+        Self::save_fields(pixel, priority, mosaic, writer);
+    }
+
+    fn load(&mut self, reader: &mut Reader<'_>) -> Result<(), SnapshotError> {
+        let Self {
+            pixel,
+            priority,
+            mosaic,
+        } = self;
+        reader.tag(b"SAMP")?;
+        Self::load_fields(pixel, priority, mosaic, reader)
+    }
+}
+
+impl Snapshot for PreparedObjects {
+    fn save(&self, writer: &mut Writer) {
+        let Self { samples, window } = self;
+        writer.tag(b"POBJ");
+        if samples.len() != window.len()
+            || samples.len() % WIDTH != 0
+            || samples.len() > WIDTH * HEIGHT
+        {
+            writer.fail(SnapshotError::Unsupported(
+                "invalid prepared OBJ dimensions",
+            ));
+        }
+        writer.u64(samples.len() as u64);
+        writer.u64(window.len() as u64);
+        for sample in samples {
+            sample.save_payload(writer);
+        }
+        for value in window {
+            writer.bool(*value);
+        }
+    }
+
+    fn load(&mut self, reader: &mut Reader<'_>) -> Result<(), SnapshotError> {
+        let Self { samples, window } = self;
+        reader.tag(b"POBJ")?;
+        let sample_len = usize::try_from(reader.u64()?)
+            .map_err(|_| SnapshotError::Corrupt("prepared OBJ dimensions"))?;
+        let window_len = usize::try_from(reader.u64()?)
+            .map_err(|_| SnapshotError::Corrupt("prepared OBJ dimensions"))?;
+        if sample_len != window_len || sample_len % WIDTH != 0 || sample_len > WIDTH * HEIGHT {
+            return Err(SnapshotError::Corrupt("prepared OBJ dimensions"));
+        }
+        samples.resize(sample_len, Sample::default());
+        window.resize(window_len, false);
+        for sample in samples {
+            sample.load_payload(reader)?;
+        }
+        for value in window {
+            *value = reader.bool()?;
+        }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod snapshot_tests {
+    use super::*;
+
+    fn encoded<T: Snapshot>(value: &T) -> Vec<u8> {
+        let mut writer = Writer::new();
+        value.save(&mut writer);
+        writer.finish().unwrap()
+    }
+
+    fn assert_prefixes<T: Snapshot>(bytes: &[u8], mut fresh: impl FnMut() -> T) {
+        for end in 0..bytes.len() {
+            assert!(
+                fresh().load(&mut Reader::new(&bytes[..end])).is_err(),
+                "prefix {end}"
+            );
+        }
+    }
+
+    #[test]
+    fn object_pixel_round_trips_and_rejects_invalid_boolean() {
+        let source = ObjectPixel {
+            palette_index: 219,
+            semi_transparent: true,
+        };
+        let bytes = encoded(&source);
+        let mut restored = ObjectPixel {
+            palette_index: 0,
+            semi_transparent: false,
+        };
+        restored.load(&mut Reader::new(&bytes)).unwrap();
+        assert_eq!(restored, source);
+        assert_prefixes(&bytes, || ObjectPixel {
+            palette_index: 0,
+            semi_transparent: false,
+        });
+        let mut invalid = bytes.clone();
+        invalid[6] = 2;
+        assert_eq!(
+            ObjectPixel {
+                palette_index: 0,
+                semi_transparent: false,
+            }
+            .load(&mut Reader::new(&invalid)),
+            Err(SnapshotError::Corrupt("boolean"))
+        );
+        invalid[4] = 0xff;
+        invalid[5] = 0x01;
+        invalid[6] = 1;
+        assert_eq!(
+            ObjectPixel {
+                palette_index: 0,
+                semi_transparent: false,
+            }
+            .load(&mut Reader::new(&invalid)),
+            Err(SnapshotError::Corrupt("OBJ palette index"))
+        );
+    }
+
+    #[test]
+    fn sample_round_trips_and_validates_priority() {
+        let source = Sample {
+            pixel: Some(ObjectPixel {
+                palette_index: 173,
+                semi_transparent: true,
+            }),
+            priority: 3,
+            mosaic: true,
+        };
+        let bytes = encoded(&source);
+        let mut restored = Sample::default();
+        restored.load(&mut Reader::new(&bytes)).unwrap();
+        assert_eq!(restored, source);
+        assert_prefixes(&bytes, Sample::default);
+        let mut invalid = bytes.clone();
+        invalid[8] = 4;
+        assert_eq!(
+            Sample::default().load(&mut Reader::new(&invalid)),
+            Err(SnapshotError::Corrupt("OBJ priority"))
+        );
+        invalid[4] = 2;
+        assert_eq!(
+            Sample::default().load(&mut Reader::new(&invalid)),
+            Err(SnapshotError::Corrupt("boolean"))
+        );
+    }
+
+    #[test]
+    fn prepared_objects_round_trip_and_bound_lengths() {
+        let samples = (0..WIDTH * 2)
+            .map(|index| Sample {
+                pixel: (index % 2 == 0).then_some(ObjectPixel {
+                    palette_index: (index % 256) as u16,
+                    semi_transparent: index % 3 == 0,
+                }),
+                priority: (index % 4) as u8,
+                mosaic: index % 5 == 0,
+            })
+            .collect();
+        let window = (0..WIDTH * 2).map(|index| index % 7 == 0).collect();
+        let source = PreparedObjects { samples, window };
+        let bytes = encoded(&source);
+        let mut restored = PreparedObjects::default();
+        restored.load(&mut Reader::new(&bytes)).unwrap();
+        assert_eq!(restored, source);
+        assert_prefixes(&bytes, PreparedObjects::default);
+        let mut invalid = bytes;
+        invalid[4] = 1;
+        invalid[5..8].fill(0);
+        assert_eq!(
+            PreparedObjects::default().load(&mut Reader::new(&invalid)),
+            Err(SnapshotError::Corrupt("prepared OBJ dimensions"))
+        );
+        let mut invalid = encoded(&source);
+        invalid[20] = 2;
+        assert_eq!(
+            PreparedObjects::default().load(&mut Reader::new(&invalid)),
+            Err(SnapshotError::Corrupt("boolean"))
+        );
     }
 }

@@ -1,4 +1,6 @@
 //! Nominal single-bank wave playback. RAM rotates in high-nibble-first order.
+use crate::snapshot::{Reader, Snapshot, SnapshotError, Writer};
+
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub(super) struct Wave {
     control: u8,
@@ -126,6 +128,96 @@ impl Wave {
             [0, 4, 2, 1][usize::from(self.volume >> 5)]
         };
         (i16::from(sample) - 8) * 2 * gain
+    }
+}
+
+impl Snapshot for Wave {
+    fn save(&self, writer: &mut Writer) {
+        let Self {
+            control,
+            volume,
+            frequency,
+            length,
+            length_enabled,
+            active,
+            remaining,
+            sample,
+        } = self;
+        writer.tag(b"WAV0");
+        writer.u8(*control);
+        writer.u8(*volume);
+        writer.u16(*frequency);
+        writer.u16(*length);
+        writer.bool(*length_enabled);
+        writer.bool(*active);
+        writer.u32(*remaining);
+        writer.option(sample.as_ref(), |sample, writer| writer.u8(*sample));
+    }
+
+    fn load(&mut self, reader: &mut Reader<'_>) -> Result<(), SnapshotError> {
+        reader.tag(b"WAV0")?;
+        let Self {
+            control,
+            volume,
+            frequency,
+            length,
+            length_enabled,
+            active,
+            remaining,
+            sample,
+        } = self;
+        *control = reader.u8()?;
+        *volume = reader.u8()?;
+        *frequency = reader.u16()?;
+        *length = reader.u16()?;
+        *length_enabled = reader.bool()?;
+        *active = reader.bool()?;
+        *remaining = reader.u32()?;
+        *sample = reader.option(|reader| reader.u8())?;
+        if *control & !0xe0 != 0
+            || *volume & !0xe0 != 0
+            || *frequency > 2047
+            || *length > 256
+            || *remaining > 16384
+            || matches!(*sample, Some(value) if value > 15)
+        {
+            return Err(SnapshotError::Corrupt("wave range"));
+        }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod snapshot_tests {
+    use super::*;
+
+    #[test]
+    fn snapshot_round_trip_prefixes_and_invalid_option_tag() {
+        let mut source = Wave::default();
+        source.write(0, 0xa0, 0);
+        source.write(2, 55, 0);
+        source.write(3, 0xe0, 0);
+        source.write(4, 0x7b, 0);
+        source.write(5, 0xc1, 0);
+        let mut banks = [[0x12; 16]; 2];
+        source.advance(source.remaining, &mut banks);
+
+        let mut writer = Writer::new();
+        source.save(&mut writer);
+        let bytes = writer.finish().unwrap();
+        let mut loaded = Wave::default();
+        loaded.load(&mut Reader::new(&bytes)).unwrap();
+        assert_eq!(loaded, source);
+        for end in 0..bytes.len() {
+            assert!(loaded.load(&mut Reader::new(&bytes[..end])).is_err());
+        }
+
+        let mut corrupt = bytes;
+        corrupt[16] = 2;
+        assert_eq!(
+            loaded.load(&mut Reader::new(&corrupt)),
+            Err(SnapshotError::Corrupt("boolean"))
+        );
     }
 }
 

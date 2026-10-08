@@ -139,3 +139,29 @@ fn large_and_split_advances_do_not_overflow_or_lose_time() {
         assert_eq!(batched, small);
     }
 }
+
+#[test]
+fn snapshot_round_trips_and_validates_rtc_date_time() {
+    use crate::snapshot::{Reader, Snapshot, SnapshotError, Writer};
+
+    let value = RtcDateTime::new([24, 2, 29, 4, 23, 58, 59]).unwrap();
+    let mut writer = Writer::new();
+    value.save(&mut writer);
+    let bytes = writer.finish().unwrap();
+
+    let mut restored = RtcDateTime::default();
+    restored.load(&mut Reader::new(&bytes)).unwrap();
+    assert_eq!(restored, value);
+    for end in 0..bytes.len() {
+        assert!(RtcDateTime::default()
+            .load(&mut Reader::new(&bytes[..end]))
+            .is_err());
+    }
+
+    let mut corrupt = bytes;
+    corrupt[4] = 0xff;
+    assert_eq!(
+        RtcDateTime::default().load(&mut Reader::new(&corrupt)),
+        Err(SnapshotError::Corrupt("RTC date/time"))
+    );
+}

@@ -1,5 +1,7 @@
 //! Shared nominal PSG length, envelope, activity, and logical DAC gate.
 
+use crate::snapshot::{Reader, Snapshot, SnapshotError, Writer};
+
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub(super) struct Modulation {
     pub(super) active: bool,
@@ -94,5 +96,86 @@ impl Modulation {
                 self.envelope_running = self.envelope_can_run();
             }
         }
+    }
+}
+
+impl Snapshot for Modulation {
+    fn save(&self, writer: &mut Writer) {
+        let Self {
+            active,
+            envelope,
+            length_enabled,
+            length,
+            volume,
+            envelope_ticks,
+            envelope_running,
+        } = self;
+        writer.tag(b"MOD0");
+        writer.bool(*active);
+        writer.u8(*envelope);
+        writer.bool(*length_enabled);
+        writer.u8(*length);
+        writer.u8(*volume);
+        writer.u8(*envelope_ticks);
+        writer.bool(*envelope_running);
+    }
+
+    fn load(&mut self, reader: &mut Reader<'_>) -> Result<(), SnapshotError> {
+        reader.tag(b"MOD0")?;
+        let Self {
+            active,
+            envelope,
+            length_enabled,
+            length,
+            volume,
+            envelope_ticks,
+            envelope_running,
+        } = self;
+        *active = reader.bool()?;
+        *envelope = reader.u8()?;
+        *length_enabled = reader.bool()?;
+        *length = reader.u8()?;
+        *volume = reader.u8()?;
+        *envelope_ticks = reader.u8()?;
+        *envelope_running = reader.bool()?;
+        if *length > 64 || *volume > 15 || *envelope_ticks > 8 {
+            return Err(SnapshotError::Corrupt("modulation range"));
+        }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod snapshot_tests {
+    use super::*;
+
+    #[test]
+    fn snapshot_round_trip_prefixes_and_invalid_boolean() {
+        let source = Modulation {
+            active: true,
+            envelope: 0xf3,
+            length_enabled: true,
+            length: 29,
+            volume: 7,
+            envelope_ticks: 4,
+            envelope_running: true,
+        };
+        let mut writer = Writer::new();
+        source.save(&mut writer);
+        let bytes = writer.finish().unwrap();
+
+        let mut loaded = Modulation::default();
+        loaded.load(&mut Reader::new(&bytes)).unwrap();
+        assert_eq!(loaded, source);
+        for end in 0..bytes.len() {
+            assert!(loaded.load(&mut Reader::new(&bytes[..end])).is_err());
+        }
+
+        let mut corrupt = bytes;
+        corrupt[4] = 2;
+        assert_eq!(
+            loaded.load(&mut Reader::new(&corrupt)),
+            Err(SnapshotError::Corrupt("boolean"))
+        );
     }
 }

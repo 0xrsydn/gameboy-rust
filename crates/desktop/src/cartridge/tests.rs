@@ -30,6 +30,7 @@ fn options_require_both_flags_in_either_order() {
                     hardware: CartridgeHardware::None,
                     save_device: SaveDevice::None,
                     save_file: None,
+                    state_file: None,
                     audio: false,
                     speed: 1,
                 }
@@ -133,6 +134,41 @@ fn speed_rejects_invalid_values_duplicate_flags_and_nonwindow_modes() {
         let mut arguments = args(&["--rom", "test.gba", "--window", "--speed"]);
         arguments.push(OsString::from_vec(vec![255]));
         assert!(parse_args(&arguments).is_err());
+    }
+}
+
+#[test]
+fn state_file_is_a_nonempty_window_only_path() {
+    let accepted = parse_args(&args(&[
+        "--state-file",
+        "slot.state",
+        "--rom",
+        "test.gba",
+        "--window",
+    ]))
+    .unwrap();
+    assert_eq!(accepted.state_file, Some(PathBuf::from("slot.state")));
+    assert_eq!(
+        parse_args(&args(&["--rom", "test.gba", "--window"]))
+            .unwrap()
+            .state_file,
+        None
+    );
+    for arguments in [
+        vec!["--rom", "test.gba", "--steps", "100", "--state-file", "a"],
+        vec!["--rom", "test.gba", "--window", "--state-file"],
+        vec!["--rom", "test.gba", "--window", "--state-file", ""],
+        vec![
+            "--rom",
+            "test.gba",
+            "--window",
+            "--state-file",
+            "a",
+            "--state-file",
+            "b",
+        ],
+    ] {
+        assert!(parse_args(&args(&arguments)).is_err(), "{arguments:?}");
     }
 }
 

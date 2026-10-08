@@ -52,6 +52,7 @@ Use `--test-suite suite.json` for [repeatable headless ROM assertions](docs/rom-
 | [docs/architecture.md](docs/architecture.md) | Crate boundaries and a file-by-file map |
 | [docs/hardware/cpu.md](docs/hardware/cpu.md) | ARM/Thumb execution rules, modes, exceptions, and timing |
 | [docs/hardware/cartridge.md](docs/hardware/cartridge.md) | ROM loading, window/input controls, original ROM generator, and diagnostics |
+| [docs/hardware/save-states.md](docs/hardware/save-states.md) | Whole-machine save states, F5/F9 hotkeys, format, and limits |
 | [docs/hardware/bios.md](docs/hardware/bios.md) | The original BIOS replacement and each supported service |
 | [docs/hardware/timers-irq.md](docs/hardware/timers-irq.md) | Timers, interrupt registers, HALT/STOP, and power control |
 | [docs/hardware/dma.md](docs/hardware/dma.md) | DMA channels, triggers, and timing |

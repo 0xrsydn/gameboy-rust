@@ -1,6 +1,7 @@
 //! Optional Game Pak hardware. No host clock, filesystem, or ROM-byte mutation.
 
 use crate::memory::MemoryError;
+use crate::snapshot::{Reader, Snapshot, SnapshotError, Writer};
 
 mod calendar;
 mod flash;
@@ -173,5 +174,201 @@ impl Gpio {
     fn pins(self) -> u8 {
         // RTC input defaults: SIO high outside a read; SCK/CS/unused low.
         (self.latch & self.direction) | (u8::from(self.rtc.output) << 1 & !self.direction)
+    }
+}
+
+impl Cartridge {
+    /// Host configuration, not state: cartridge hardware then save device, one byte each.
+    pub(crate) fn setup_identity(&self) -> [u8; 2] {
+        let device = self
+            .flash
+            .as_ref()
+            .map_or(SaveDevice::None, |flash| flash.device());
+        [
+            u8::from(self.gpio.is_some()),
+            match device {
+                SaveDevice::None => 0,
+                SaveDevice::Flash64 => 1,
+                SaveDevice::Flash128 => 2,
+            },
+        ]
+    }
+}
+
+impl Snapshot for Cartridge {
+    fn save(&self, writer: &mut Writer) {
+        let Self { gpio, flash } = self;
+        writer.tag(b"CART");
+        writer.raw(&self.setup_identity());
+        if let Some(gpio) = gpio {
+            gpio.save(writer);
+        }
+        if let Some(flash) = flash {
+            flash.save(writer);
+        }
+    }
+
+    fn load(&mut self, reader: &mut Reader<'_>) -> Result<(), SnapshotError> {
+        let Self { gpio, flash } = self;
+        reader.tag(b"CART")?;
+
+        let hardware = reader.u8()?;
+        if hardware > 1 {
+            return Err(SnapshotError::Corrupt("cartridge hardware"));
+        }
+        if hardware != u8::from(gpio.is_some()) {
+            return Err(SnapshotError::ConfigMismatch("cartridge hardware"));
+        }
+
+        let save_device = match reader.u8()? {
+            0 => SaveDevice::None,
+            1 => SaveDevice::Flash64,
+            2 => SaveDevice::Flash128,
+            _ => return Err(SnapshotError::Corrupt("save device")),
+        };
+        let target_device = flash
+            .as_ref()
+            .map_or(SaveDevice::None, |flash| flash.device());
+        if save_device != target_device {
+            return Err(SnapshotError::ConfigMismatch("save device"));
+        }
+
+        if let Some(gpio) = gpio {
+            gpio.load(reader)?;
+        }
+        if let Some(flash) = flash {
+            flash.load(reader)?;
+        }
+        Ok(())
+    }
+}
+
+impl Snapshot for Gpio {
+    fn save(&self, writer: &mut Writer) {
+        let Self {
+            latch,
+            direction,
+            readable,
+            rtc,
+        } = self;
+        writer.tag(b"GPIO");
+        writer.u8(*latch);
+        writer.u8(*direction);
+        writer.bool(*readable);
+        rtc.save(writer);
+    }
+
+    fn load(&mut self, reader: &mut Reader<'_>) -> Result<(), SnapshotError> {
+        let Self {
+            latch,
+            direction,
+            readable,
+            rtc,
+        } = self;
+        reader.tag(b"GPIO")?;
+        let saved_latch = reader.u8()?;
+        let saved_direction = reader.u8()?;
+        if saved_latch & !0x0f != 0 || saved_direction & !0x0f != 0 {
+            return Err(SnapshotError::Corrupt("GPIO pins"));
+        }
+        let saved_readable = reader.bool()?;
+        rtc.load(reader)?;
+        *latch = saved_latch;
+        *direction = saved_direction;
+        *readable = saved_readable;
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod snapshot_tests {
+    use super::*;
+
+    fn encoded<T: Snapshot>(value: &T) -> Vec<u8> {
+        let mut writer = Writer::new();
+        value.save(&mut writer);
+        writer.finish().unwrap()
+    }
+
+    fn configured_cartridge(hardware: CartridgeHardware, device: SaveDevice) -> Cartridge {
+        let mut cartridge = Cartridge::default();
+        cartridge.set_hardware(hardware);
+        cartridge.set_save_device(device);
+        cartridge
+    }
+
+    #[test]
+    fn cartridge_snapshot_round_trips_and_checks_configuration() {
+        let mut original = configured_cartridge(CartridgeHardware::Rtc, SaveDevice::Flash128);
+        let gpio = original.gpio.as_mut().unwrap();
+        gpio.latch = 0x0b;
+        gpio.direction = 0x05;
+        gpio.readable = true;
+        let bytes = encoded(&original);
+
+        let mut restored = configured_cartridge(CartridgeHardware::Rtc, SaveDevice::Flash128);
+        restored.load(&mut Reader::new(&bytes)).unwrap();
+        assert_eq!(restored, original);
+
+        for end in 0..bytes.len() {
+            let mut target = configured_cartridge(CartridgeHardware::Rtc, SaveDevice::Flash128);
+            assert!(target.load(&mut Reader::new(&bytes[..end])).is_err());
+        }
+
+        let mut no_rtc = configured_cartridge(CartridgeHardware::None, SaveDevice::Flash128);
+        assert_eq!(
+            no_rtc.load(&mut Reader::new(&bytes)),
+            Err(SnapshotError::ConfigMismatch("cartridge hardware"))
+        );
+        let mut other_save = configured_cartridge(CartridgeHardware::Rtc, SaveDevice::Flash64);
+        assert_eq!(
+            other_save.load(&mut Reader::new(&bytes)),
+            Err(SnapshotError::ConfigMismatch("save device"))
+        );
+
+        let mut invalid_identity = bytes.clone();
+        invalid_identity[4] = 0xff;
+        assert_eq!(
+            configured_cartridge(CartridgeHardware::Rtc, SaveDevice::Flash128)
+                .load(&mut Reader::new(&invalid_identity)),
+            Err(SnapshotError::Corrupt("cartridge hardware"))
+        );
+
+        let empty = Cartridge::default();
+        let empty_bytes = encoded(&empty);
+        let mut empty_restored = Cartridge::default();
+        empty_restored.load(&mut Reader::new(&empty_bytes)).unwrap();
+        assert_eq!(empty_restored, empty);
+    }
+
+    #[test]
+    fn gpio_snapshot_round_trips_every_gpio_latch() {
+        let mut gpio = Gpio {
+            latch: 0x0d,
+            direction: 0x06,
+            readable: true,
+            ..Gpio::default()
+        };
+        gpio.rtc.update(5, 2).unwrap();
+        gpio.rtc.update(6, 2).unwrap();
+        gpio.rtc.update(7, 2).unwrap();
+        let bytes = encoded(&gpio);
+
+        let mut restored = Gpio::default();
+        restored.load(&mut Reader::new(&bytes)).unwrap();
+        assert_eq!(restored, gpio);
+
+        for end in 0..bytes.len() {
+            assert!(Gpio::default()
+                .load(&mut Reader::new(&bytes[..end]))
+                .is_err());
+        }
+
+        let mut corrupt = bytes;
+        corrupt[4] = 0x10;
+        assert_eq!(
+            Gpio::default().load(&mut Reader::new(&corrupt)),
+            Err(SnapshotError::Corrupt("GPIO pins"))
+        );
     }
 }

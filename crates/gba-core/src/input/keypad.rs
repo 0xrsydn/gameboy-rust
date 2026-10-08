@@ -3,6 +3,7 @@
 //! snapshots, following mGBA's polling model. Exact hardware edges are unverified.
 
 use super::Buttons;
+use crate::snapshot::{Reader, Snapshot, SnapshotError, Writer};
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub(crate) struct Keypad {
@@ -100,5 +101,81 @@ mod tests {
                 }
             }
         }
+    }
+}
+
+impl Snapshot for Keypad {
+    fn save(&self, writer: &mut Writer) {
+        let Self {
+            buttons,
+            control,
+            last_match,
+        } = self;
+        writer.tag(b"KEYP");
+        writer.u16(buttons.bits());
+        writer.u16(*control);
+        writer.option(last_match.as_ref(), |value, writer| writer.u16(*value));
+    }
+
+    fn load(&mut self, reader: &mut Reader<'_>) -> Result<(), SnapshotError> {
+        let Self {
+            buttons,
+            control,
+            last_match,
+        } = self;
+        reader.tag(b"KEYP")?;
+        let button_bits = reader.u16()?;
+        *control = reader.u16()?;
+        *last_match = reader.option(Reader::u16)?;
+        if button_bits & !0x03ff != 0
+            || *control & !0xc3ff != 0
+            || last_match.is_some_and(|pressed| pressed & !0x03ff != 0)
+        {
+            return Err(SnapshotError::Corrupt("keypad state"));
+        }
+        *buttons = Buttons::from_bits(button_bits);
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod snapshot_tests {
+    use super::*;
+
+    fn encode(keypad: &Keypad) -> Vec<u8> {
+        let mut writer = Writer::new();
+        keypad.save(&mut writer);
+        writer.finish().unwrap()
+    }
+
+    #[test]
+    fn round_trip_and_reject_every_strict_prefix() {
+        let source = Keypad {
+            buttons: Buttons::from_bits(0x0155),
+            control: 0xc155,
+            last_match: Some(0x02aa),
+        };
+        let bytes = encode(&source);
+        let mut restored = Keypad::default();
+        let mut reader = Reader::new(&bytes);
+        restored.load(&mut reader).unwrap();
+        reader.finish().unwrap();
+        assert_eq!(restored, source);
+
+        for end in 0..bytes.len() {
+            let mut truncated = Reader::new(&bytes[..end]);
+            assert!(
+                Keypad::default().load(&mut truncated).is_err(),
+                "accepted prefix of length {end}"
+            );
+        }
+    }
+
+    #[test]
+    fn invalid_option_discriminant_is_corrupt() {
+        let mut bytes = encode(&Keypad::default());
+        bytes[8] = 2;
+        let result = Keypad::default().load(&mut Reader::new(&bytes));
+        assert!(matches!(result, Err(SnapshotError::Corrupt(_))));
     }
 }

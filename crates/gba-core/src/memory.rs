@@ -26,13 +26,14 @@ mod multiplayer_step_tests;
 mod prefetch_tests;
 #[cfg(test)]
 mod serial_step_tests;
+mod snapshot;
 #[cfg(test)]
 mod timer_step_tests;
 #[cfg(test)]
 mod timing_event_tests;
 #[cfg(test)]
 mod wave_step_tests;
-pub(crate) use fetch::InstructionFetch;
+pub(crate) use fetch::{load_fetch_result, save_fetch_result, InstructionFetch};
 use iwram_bus::IwramBus;
 
 use crate::{

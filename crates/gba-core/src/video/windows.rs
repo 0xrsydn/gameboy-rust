@@ -4,6 +4,7 @@
 pub(crate) mod horizontal;
 
 use crate::display::{CYCLES_PER_LINE, LINES_PER_FRAME};
+use crate::snapshot::{Reader, Snapshot, SnapshotError, Writer};
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct WindowEdges {
@@ -129,5 +130,56 @@ mod tests {
         assert_eq!(edges.active, [true, false]); // Bottom wins when edges coincide.
         edges.advance(CYCLES_PER_LINE, 1, [0x0101, 0x0110]);
         assert_eq!(edges.active, [true, false]); // The row1 comparator already ran.
+    }
+}
+
+impl Snapshot for WindowEdges {
+    fn save(&self, writer: &mut Writer) {
+        let Self { active, started } = self;
+        writer.tag(b"WEDG");
+        for value in active {
+            writer.bool(*value);
+        }
+        writer.bool(*started);
+    }
+
+    fn load(&mut self, reader: &mut Reader<'_>) -> Result<(), SnapshotError> {
+        let Self { active, started } = self;
+        reader.tag(b"WEDG")?;
+        for value in active {
+            *value = reader.bool()?;
+        }
+        *started = reader.bool()?;
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod snapshot_tests {
+    use super::*;
+
+    #[test]
+    fn window_edges_round_trip_and_validate_booleans() {
+        let source = WindowEdges {
+            active: [true, false],
+            started: true,
+        };
+        let mut writer = Writer::new();
+        source.save(&mut writer);
+        let bytes = writer.finish().unwrap();
+        let mut restored = WindowEdges::default();
+        restored.load(&mut Reader::new(&bytes)).unwrap();
+        assert_eq!(restored, source);
+        for end in 0..bytes.len() {
+            assert!(WindowEdges::default()
+                .load(&mut Reader::new(&bytes[..end]))
+                .is_err());
+        }
+        let mut invalid = bytes;
+        invalid[4] = 2;
+        assert_eq!(
+            WindowEdges::default().load(&mut Reader::new(&invalid)),
+            Err(SnapshotError::Corrupt("boolean"))
+        );
     }
 }

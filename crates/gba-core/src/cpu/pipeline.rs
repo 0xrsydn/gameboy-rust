@@ -1,9 +1,11 @@
 //! ARM/Thumb instruction buffering and the next CPU fetch access kind.
 use super::{Cpu, CpuError, InstructionSet};
 use crate::{
-    memory::{InstructionFetch, Memory, MemoryError},
+    memory::{load_fetch_result, save_fetch_result, InstructionFetch, Memory, MemoryError},
     timing::AccessKind,
 };
+
+use crate::snapshot::{Reader, SnapshotError, Writer};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct Pipeline {
@@ -103,5 +105,42 @@ impl Cpu {
             instructions: fetches.map(|fetch| fetch.instruction),
             next_access: AccessKind::Sequential,
         });
+    }
+}
+
+impl Pipeline {
+    pub(super) fn save_snapshot(&self, writer: &mut Writer) {
+        let Self {
+            pc,
+            instruction_set,
+            instructions,
+            next_access,
+        } = self;
+        writer.u32(*pc);
+        super::save_instruction_set(*instruction_set, writer);
+        for instruction in instructions {
+            save_fetch_result(instruction, writer);
+        }
+        writer.u8(match next_access {
+            AccessKind::NonSequential => 0,
+            AccessKind::Sequential => 1,
+        });
+    }
+
+    pub(super) fn load_snapshot(reader: &mut Reader<'_>) -> Result<Self, SnapshotError> {
+        let pc = reader.u32()?;
+        let instruction_set = super::load_instruction_set(reader)?;
+        let instructions = [load_fetch_result(reader)?, load_fetch_result(reader)?];
+        let next_access = match reader.u8()? {
+            0 => AccessKind::NonSequential,
+            1 => AccessKind::Sequential,
+            _ => return Err(SnapshotError::Corrupt("access kind")),
+        };
+        Ok(Self {
+            pc,
+            instruction_set,
+            instructions,
+            next_access,
+        })
     }
 }
