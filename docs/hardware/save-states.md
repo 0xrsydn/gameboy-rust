@@ -1,7 +1,7 @@
 # Save states
 
 A save state freezes the emulated machine at a step boundary and restores it later.
-It is separate from the game's own save (Flash) and does not replace it: [Flash persistence](saves.md) still needs the game's SAVE command and a clean exit.
+It is separate from the game's own save (Flash, SRAM, or EEPROM) and does not replace it: [save-file persistence](saves.md) still needs the game's SAVE command, then a clean exit or a window diagnostic.
 
 ## Desktop use
 
@@ -18,7 +18,7 @@ State files are created with mode `0600`. The option is accepted only with `--wi
 
 A rejected load (missing file, wrong ROM, corrupt or older-format file) is reported in the terminal and the game keeps running unchanged.
 Loading discards queued host audio and shows the state's last captured frame immediately.
-The Flash image inside the state replaces the running one. It is written to `--save-file` only on a clean exit, and only if it differs from the last persisted bytes.
+The save image inside the state replaces the running one. It is written to `--save-file` only on a clean exit or a window diagnostic, and only if it differs from the last persisted bytes.
 The RTC resumes at the saved calendar value and then follows host elapsed time again.
 Quitting with Escape does not write a state. Press F5 first.
 
@@ -27,8 +27,8 @@ Quitting with Escape does not write a state. Press F5 first.
 `Machine::save_state` and `Machine::load_state` (`crates/gba-core/src/machine/snapshot.rs`) encode:
 
 - CPU registers, banks, status, instruction buffer, and retained fetch history.
-- All RAMs, VRAM, palette, and OAM, plus the Flash image and its modified flag.
-- Every device: timers and the shared prescaler, DMA channels and latches, display position, interrupts, keypad, serial, audio (FIFOs, PSG channels, wave RAM), Flash and RTC/GPIO state machines.
+- All RAMs, VRAM, palette, and OAM, plus the save image (Flash, SRAM, or EEPROM) and its modified flag.
+- Every device: timers and the shared prescaler, DMA channels and latches, display position, interrupts, keypad, serial, audio (FIFOs, PSG channels, wave RAM), Flash, SRAM, and EEPROM state, and RTC/GPIO state machines.
 - Video latches: affine accumulators, mosaic and window counters, sprite row pipeline, and the double-buffered scanline capture.
 - Game Pak prefetch, IWRAM bus lanes, BIOS protected-read snapshot, the device cycle count, and the last step timing.
 
