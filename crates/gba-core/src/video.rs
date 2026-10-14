@@ -29,7 +29,6 @@ pub fn rgb555_to_rgb888(color: u16) -> u32 {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum VideoError {
     UnsupportedMode(u8),
-    UnsupportedLayers(u16),
     UnsupportedTileAddress(usize),
     UnsupportedMapAddress(usize),
     UnsupportedObject { index: usize, reason: &'static str },
@@ -51,9 +50,6 @@ impl fmt::Display for VideoError {
                 "background map address {address:#x} exceeds the supported 128 KiB BG VRAM window"
             ),
             Self::UnsupportedObject { index, reason } => write!(f, "OBJ{index}: {reason}"),
-            Self::UnsupportedLayers(control) => {
-                write!(f, "unsupported display layers in DISPCNT {control:#06x}")
-            }
         }
     }
 }
@@ -227,16 +223,15 @@ pub(crate) fn render_rows(
     };
     let mut output = vec![0; length];
     let mode = control & 7;
-    let unsupported = match mode {
+    // Each mode has a fixed background set. Enable bits for absent backgrounds are ignored.
+    let absent = match mode {
         0 => 0,
         1 => 0x800,     // BG0/1 text, BG2 affine.
         2 => 0x300,     // BG2/3 affine.
         3..=5 => 0xb00, // BG2 bitmap.
         _ => return Err(VideoError::UnsupportedMode(mode as u8)),
     };
-    if control & unsupported != 0 {
-        return Err(VideoError::UnsupportedLayers(control));
-    }
+    let control = control & !absent;
     let mut layers: Vec<usize> = (0..4).filter(|bg| control & (0x100 << bg) != 0).collect();
     // Lower priority number wins. BG0 wins ties, then BG1, BG2, BG3.
     layers.sort_by_key(|&bg| (backgrounds[bg].control & 3, bg));

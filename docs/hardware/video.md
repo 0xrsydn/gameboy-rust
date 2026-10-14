@@ -30,7 +30,7 @@ The renderer samples that bitmap through BG2's matrix and reference-point regist
 Pixel bit 15 and the DISPCNT page-select bit do not affect Mode 3 output. Black pixels are opaque.
 Disabling BG2 leaves palette entry zero behind sprites. Forced blank displays white, regardless of the selected mode.
 All bitmap modes support regular and affine sprites, windows, and color effects.
-Enabling backgrounds other than BG2 in bitmap modes produces errors without changing the output buffer.
+Bitmap modes have only BG2. DISPCNT enable bits for BG0, BG1, and BG3 are ignored there.
 Reserved display modes 6 and 7 return errors. Modes 0 through 5 support snapshots and row capture, not complete hardware implementations.
 
 Mode 4 stores 240×160 byte-sized palette indices. Index zero is transparent and can reveal a lower-priority sprite.
@@ -75,7 +75,7 @@ Affine background snapshots support these configurations:
 - Mode 1: text BG0/BG1 and affine BG2.
 - Mode 2: affine BG2/BG3.
 - Modes 3, 4, and 5: affine bitmap BG2, with out-of-bitmap samples always transparent.
-- Enabling a background unavailable in the selected mode returns a diagnostic rather than silently ignoring it.
+- DISPCNT enable bits for a background the selected mode lacks (BG3 in Mode 1, BG0/BG1 in Mode 2, all but BG2 in Modes 3–5) are ignored, as on hardware.
 
 `BG2PA..BG2PD` occupy `0x04000020..0x04000027`. BG2 reference points X/Y occupy `0x04000028..0x0400002f`.
 BG3 uses the corresponding registers at `0x04000030..0x0400003f`.

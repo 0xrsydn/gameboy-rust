@@ -1,7 +1,7 @@
 use gba_core::{
     io::*,
     memory::{Memory, MemoryError, OAM_START as OAM, PALETTE_START as PAL, VRAM_START as VRAM},
-    video::{rgb555_to_rgb888, Framebuffer, VideoError, WIDTH},
+    video::{rgb555_to_rgb888, Framebuffer, WIDTH},
 };
 
 fn setup(bg: u32, size: u16, wrap: bool) -> Memory {
@@ -252,17 +252,16 @@ fn transformed_backgrounds_composite_with_regular_and_affine_sprites() {
 }
 
 #[test]
-fn unsupported_layers_leave_output_unchanged_and_disabled_layers_skip_validation() {
+fn absent_layer_bits_are_ignored_and_disabled_layers_skip_validation() {
     let mut m = setup(2, 3, false);
     let mut f = Framebuffer::default();
-    f.clear(0x001f);
-    for control in [0xc01, 0xd02, 0xe02] {
+    // Mode 1 has no BG3 and mode 2 has no BG0 or BG1; their enable bits change nothing.
+    for (control, present) in [(0xc01, 0x401), (0xd02, 0xc02), (0xe02, 0xc02)] {
+        m.write16(DISPCNT, present).unwrap();
+        let expected = frame(&m);
         m.write16(DISPCNT, control).unwrap();
-        assert_eq!(
-            m.render_frame(&mut f),
-            Err(VideoError::UnsupportedLayers(control))
-        );
-        assert!(f.pixels().iter().all(|&p| p == 0xff0000));
+        m.render_frame(&mut f).unwrap();
+        assert_eq!(f.pixels(), expected.pixels());
     }
     m.write16(DISPCNT, 2).unwrap();
     m.render_frame(&mut f).unwrap();

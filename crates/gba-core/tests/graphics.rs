@@ -149,7 +149,7 @@ fn forced_blank_is_white_and_disabled_bg2_uses_palette_backdrop() {
 }
 
 #[test]
-fn unsupported_modes_and_layers_report_errors_without_changing_output() {
+fn unsupported_modes_report_errors_and_absent_layer_bits_are_ignored() {
     let mut memory = mode3();
     let mut frame = Framebuffer::default();
     frame.clear(0x001f);
@@ -160,14 +160,17 @@ fn unsupported_modes_and_layers_report_errors_without_changing_output() {
             Err(VideoError::UnsupportedMode(mode as u8))
         );
     }
-    for layer in [0x100, 0x200, 0x800] {
-        memory.write16(DISPCNT, 0x403 | layer).unwrap();
-        assert_eq!(
-            memory.render_frame(&mut frame),
-            Err(VideoError::UnsupportedLayers(0x403 | layer))
-        );
-    }
     assert!(frame.pixels().iter().all(|&pixel| pixel == 0xff0000));
+    // Mode 3 has only BG2. Stale BG0, BG1, and BG3 enables do not change the image.
+    memory.write16(VRAM_START, 0x03e0).unwrap();
+    memory.write16(DISPCNT, 0x403).unwrap();
+    let mut expected = Framebuffer::default();
+    memory.render_frame(&mut expected).unwrap();
+    for layer in [0x100, 0x200, 0x800, 0xb00] {
+        memory.write16(DISPCNT, 0x403 | layer).unwrap();
+        memory.render_frame(&mut frame).unwrap();
+        assert_eq!(frame.pixels(), expected.pixels());
+    }
 }
 
 #[test]

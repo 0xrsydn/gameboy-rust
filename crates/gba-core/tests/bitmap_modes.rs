@@ -1,7 +1,7 @@
 use gba_core::{
     io::{BG2CNT, BG2PA, BG2X, BG2Y, DISPCNT, GREENSWAP},
     memory::{Memory, OAM_START as OAM, PALETTE_START as PAL, VRAM_START as VRAM},
-    video::{rgb555_to_rgb888, Framebuffer, VideoError, WIDTH},
+    video::{rgb555_to_rgb888, Framebuffer, WIDTH},
 };
 
 fn setup(mode: u16) -> Memory {
@@ -423,20 +423,18 @@ fn cpu_bitmap_controls_pan_rotate_zoom_force_page_and_reset() {
 }
 
 #[test]
-fn unsupported_bitmap_layers_leave_frame_unchanged() {
+fn absent_bitmap_layer_bits_are_ignored() {
     for mode in [4, 5] {
         let mut m = setup(mode);
+        m.write16(VRAM + 0xa000, 0x0201).unwrap(); // Visible on the selected second page.
+        m.write16(DISPCNT, 0x410 | mode).unwrap();
+        let expected = frame(&m);
         let mut f = Framebuffer::default();
-        f.clear(0x001f);
         for extra in [0x100, 0x200, 0x800] {
-            let control = 0x410 | mode | extra;
-            m.write16(DISPCNT, control).unwrap();
-            assert_eq!(
-                m.render_frame(&mut f),
-                Err(VideoError::UnsupportedLayers(control))
-            );
+            m.write16(DISPCNT, 0x410 | mode | extra).unwrap();
+            m.render_frame(&mut f).unwrap();
+            assert_eq!(f.pixels(), expected.pixels());
         }
-        assert!(f.pixels().iter().all(|&p| p == 0xff0000));
         assert_eq!(m.cycles(), 0);
     }
 }
