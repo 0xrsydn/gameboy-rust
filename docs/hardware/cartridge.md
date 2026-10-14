@@ -31,7 +31,8 @@ Bytes are not padded, patched, or written back.
 The loader does not validate a cartridge header, logo, or checksum.
 It does not decode archives or ELF executables. Supply a raw binary with an ARM instruction at offset zero.
 Headerless original programs are accepted.
-Reads past supplied cartridge bytes remain explicit memory errors, not open-bus values.
+CPU and DMA reads beyond the ROM chip, the image size rounded up to a power of two, return the halfword address (`(A >> 1) & 0xffff`) on each lane, as no device drives the Game Pak bus there.
+Bytes between a trimmed image's end and that chip boundary are unknown and remain explicit memory errors, as do host reads and instruction fetches beyond the image.
 All three Game Pak ROM windows use the same supplied bytes and existing wait-state rules.
 Ordinary cartridge bytes remain read-only. CPU and DMA writes to the `0x08`–`0x0c` ROM windows pay their bus cost and are ignored, as on hardware.
 Writes to the `0x0d` window remain `ReadOnly` diagnostics until EEPROM is modeled there. Host `Memory::write*` calls stay strict everywhere.

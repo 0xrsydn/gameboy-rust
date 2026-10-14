@@ -343,9 +343,10 @@ fn block_load_can_read_rom_and_store_to_rom_is_ignored() {
 
 #[test]
 fn truncated_rom_does_not_partially_load_a_register_list() {
-    let mut memory = program(&[block(0x0080_0000, true, true, 0, 0x6), 11]);
+    // A 12-byte image in a 16-byte chip: the second word is unknown, so it stays diagnostic.
+    let mut memory = program(&[block(0x0080_0000, true, true, 0, 0x6), 0, 11]);
     let mut cpu = Cpu::new(ROM_START);
-    cpu.registers[0] = ROM_START + 4;
+    cpu.registers[0] = ROM_START + 8;
     let before = cpu.registers;
     assert!(matches!(cpu.step(&mut memory), Err(CpuError::Memory(_))));
     assert_eq!(cpu.registers, before);

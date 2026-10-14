@@ -899,6 +899,18 @@ impl Memory {
                 .map(|word| (word >> ((address & 3) * 8)) as u8)
                 .ok_or(MemoryError::Unmapped(address));
         }
+        if matches!(address >> 24, 0x08..=0x0d)
+            && (address & 0x01ff_ffff) as usize >= self.rom.len().next_power_of_two()
+            && !self.cartridge_state().mapped(address)
+            && (self.cpu_access.is_some() || self.timer_step.get().is_some())
+        {
+            // Beyond the power-of-two ROM chip no device drives the Game Pak bus, which
+            // returns the halfword address (A/2, low 16 bits) on each lane. Bytes between a
+            // trimmed image's end and the chip boundary are unknown and stay diagnostic,
+            // as do host reads and instruction fetches.
+            let halfword = ((address & 0x01ff_fffe) >> 1) as u16;
+            return Ok(halfword.to_le_bytes()[(address & 1) as usize]);
+        }
         if matches!(address, 0x0000_4000..=0x01ff_ffff | 0x1000_0000..=0xffff_ffff) {
             if let Some(word) = self.cpu_access.and_then(|access| access.prefetch) {
                 return Ok((word >> ((address & 3) * 8)) as u8);

@@ -92,7 +92,8 @@ a deliberate policy decision against the explicit-error convention. See
 [the usability roadmap](../usability-roadmap.md) for sequencing.
 
 Update: emulated writes to the `0x08`–`0x0c` ROM windows are now ignored, which removes the
-`0x09fe2ffe` store diagnostic. Reads past the end of the image remain explicit errors.
+`0x09fe2ffe` store diagnostic. CPU reads beyond the 16 MiB chip, such as `0x09fe20f8`, now return the
+Game Pak halfword-address pattern instead of faulting.
 
 ## References
 

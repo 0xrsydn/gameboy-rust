@@ -709,9 +709,11 @@ fn unsupported_thumb_instructions_preserve_registers_flags_and_state() {
 #[test]
 fn thumb_memory_errors_leave_state_unchanged() {
     for instruction in [
-        0x6801, 0x6001, 0x8801, 0x8001, 0x7801, 0x7001, 0x5e81, 0x9801, 0x9001, 0x4801,
+        0x6801, 0x6001, 0x8801, 0x8001, 0x7801, 0x7001, 0x5e81, 0x9801, 0x9001, 0x4802,
     ] {
-        let mut memory = program(&[instruction]);
+        // A 10-byte image in a 16-byte chip: LDR r0,[pc,#8] reads offset 12, an unknown
+        // byte past the trimmed image. Reads beyond the chip return the bus pattern instead.
+        let mut memory = program(&[instruction, 0, 0, 0, 0]);
         let mut cpu = thumb_cpu();
         cpu.flags = flags();
         cpu.registers[1] = 123;

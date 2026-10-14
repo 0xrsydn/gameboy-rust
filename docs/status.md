@@ -230,7 +230,7 @@ BIOS protection uses separate retained BIOS fetch snapshots as described in [BIO
 Host inspection and instruction fetches remain strict. Other unmapped reads return errors.
 CPU and DMA writes to unused I/O addresses are ignored, as on hardware; host writes there stay strict.
 The unmodeled internal memory control register at `0x04xx0800` and all unused I/O reads remain diagnostics.
-Reads beyond the supplied cartridge bytes also return errors.
+CPU and DMA reads beyond the power-of-two ROM chip return the Game Pak halfword-address pattern; reads inside a trimmed image's chip, host reads, and instruction fetches past the image return errors.
 Direct memory-bus halfword and word accesses require alignment.
 CPU load/store instructions apply ARM7TDMI alignment and rotation rules before accessing the bus.
 CPU and DMA writes to the `0x08`–`0x0c` ROM windows are ignored; the `0x0d` window stays diagnostic until EEPROM exists. Explicitly selected cartridge GPIO and supported Flash command writes are separate from ROM storage.

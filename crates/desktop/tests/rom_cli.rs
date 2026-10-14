@@ -404,10 +404,15 @@ fn rtc_selection_is_explicit_and_does_not_modify_the_rom_file() {
     let path = fixture.rom(&rtc_setup());
     let original = fs::read(&path).unwrap();
     // Without the device, the GPIO store is an ordinary ignored ROM write. The read-back
-    // then reaches past this short image, which remains a diagnostic.
+    // lies beyond this short image's chip, so it returns the bus pattern (address / 2).
     let absent = run(&path, "100");
-    assert_eq!(absent.status.code(), Some(1));
-    assert!(stderr(&absent).contains("unmapped memory at 0x080000c8"));
+    assert!(absent.status.success(), "{}", stderr(&absent));
+    assert!(
+        stdout(&absent).contains("r2=0x00000064"),
+        "{}",
+        stdout(&absent)
+    );
+    assert!(!stdout(&absent).contains("RTC selected"));
     let selected = command()
         .arg("--rtc")
         .arg("--rom")

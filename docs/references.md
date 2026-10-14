@@ -6,6 +6,8 @@ Hardware references used for the core:
 
 - [GBATEK ARM instruction cycle times](https://problemkaputt.de/gbatek-arm-cpu-instruction-cycle-times.htm).
 - [GBATEK GBA system control and WAITCNT](https://problemkaputt.de/gbatek-gba-system-control.htm), including HALTCNT power-mode selection.
+- [GBATEK GBA unpredictable things](https://problemkaputt.de/gbatek-gba-unpredictable-things.htm): with no cartridge, the ROM area reads as `Address/2 AND FFFFh`, because the Game Pak shares its data lines with the low address lines. The emulator applies the same undriven-bus pattern beyond the ROM chip.
+- [mGBA `src/gba/memory.c`](https://github.com/mgba-emu/mgba/blob/master/src/gba/memory.c): out-of-bounds ROM loads return `(address >> 1) & 0xFFFF` per halfword. mGBA applies it from the image size; this emulator keeps bytes up to the power-of-two chip boundary diagnostic.
 - [GBATEK BIOS reset functions](https://problemkaputt.de/gbatek-bios-reset-functions.htm), for SoftReset state and restart selection, plus RegisterRamReset flags, RAM bounds, and forced blank.
 - [GBATEK BIOS halt functions](https://problemkaputt.de/gbatek-bios-halt-functions.htm), for wait contracts, STOP clock gating, allowed wake sources, and the clock-off IF note.
 - [GBATEK BIOS function calling conventions](https://problemkaputt.de/gbatek-bios-functions.htm).
