@@ -299,6 +299,9 @@ Other S-bit block transfers access User registers while using the current mode's
 User-bank writeback, S-bit empty lists, and User-mode S-bit transfers return diagnostics.
 These restrictions avoid unpredictable or unverified forms.
 
+ARM multiplies accept a destination equal to the first operand: `MUL`/`MLA` with Rd=Rm and long multiplies with RdHi or RdLo equal to Rm.
+Every operand is read before the result is written. R15 operands and RdHi=RdLo remain diagnostics.
+
 `Cpu::enter_exception` explicitly supports software interrupt, undefined instruction, prefetch abort, data abort, IRQ, and FIQ entry.
 For synchronous exceptions, call it with PC at the faulting instruction.
 For IRQ/FIQ, call it between instructions, with PC at the next instruction.

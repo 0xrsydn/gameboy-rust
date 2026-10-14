@@ -256,9 +256,10 @@ impl Cpu {
         let rs = ((instruction >> 8) & 15) as usize;
         let rm = (instruction & 15) as usize;
         let accumulate = instruction & (1 << 21) != 0;
-        if [rd, rn, rs, rm].contains(&15) || rd == rm || (!accumulate && rn != 0) {
+        if [rd, rn, rs, rm].contains(&15) || (!accumulate && rn != 0) {
             return Err(self.unsupported(instruction));
         }
+        // Rd may equal Rm: every operand is read before the destination is written.
         let mut result = self.registers[rm].wrapping_mul(self.registers[rs]);
         if accumulate {
             result = result.wrapping_add(self.registers[rn]);
@@ -278,7 +279,7 @@ impl Cpu {
         let lo = ((instruction >> 12) & 15) as usize;
         let rs = ((instruction >> 8) & 15) as usize;
         let rm = (instruction & 15) as usize;
-        if [hi, lo, rs, rm].contains(&15) || hi == lo || hi == rm || lo == rm {
+        if [hi, lo, rs, rm].contains(&15) || hi == lo {
             return Err(self.unsupported(instruction));
         }
         let mut result = if instruction & (1 << 22) != 0 {

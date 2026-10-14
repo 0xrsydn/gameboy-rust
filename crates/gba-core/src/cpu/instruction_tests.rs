@@ -488,6 +488,23 @@ fn long_multiply_supports_signed_unsigned_and_accumulation() {
 }
 
 #[test]
+fn multiplies_read_every_operand_before_writing_an_aliased_destination() {
+    for (instruction, expected) in [
+        (0xe000_0190, [u32::MAX - 1, 2, 9, 5]), // MUL r0,r0,r1
+        (0xe020_3190, [3, 2, 9, 5]),            // MLA r0,r0,r1,r3
+        (0xe083_0190, [u32::MAX - 1, 2, 9, 1]), // UMULL r0,r3,r0,r1 (RdLo=Rm)
+        (0xe080_2190, [1, 2, u32::MAX - 1, 5]), // UMULL r2,r0,r0,r1 (RdHi=Rm)
+        (0xe0a3_0190, [u32::MAX - 2, 2, 9, 7]), // UMLAL r0,r3,r0,r1 (+5:0xffffffff)
+    ] {
+        let mut memory = program(&[instruction]);
+        let mut cpu = Cpu::new(ROM_START);
+        cpu.registers[..4].copy_from_slice(&[u32::MAX, 2, 9, 5]);
+        cpu.step(&mut memory).unwrap();
+        assert_eq!(cpu.registers[..4], expected, "{instruction:08x}");
+    }
+}
+
+#[test]
 fn long_multiply_zero_flag_uses_both_halves() {
     let mut memory = program(&[0xe093_2190]);
     let mut cpu = Cpu::new(ROM_START);
@@ -510,7 +527,6 @@ fn invalid_or_unimplemented_encodings_do_not_change_state_or_memory() {
         0xe790_1012, // illegal register-specified memory shift
         0xe790_100f, // memory offset register PC
         0xe1c0_10d0, // ARMv5 doubleword load, not an ARM7 signed store
-        0xe000_0190, // MUL Rd=Rm
         0xe082_2190, // UMULL RdHi=RdLo
         0xe8f0_0001, // LDM user-bank transfer with writeback
         0xe100_f090, // SWP with PC destination
