@@ -412,14 +412,13 @@ fn input_word_refill_failure_does_not_commit_incomplete_output() {
 }
 
 #[test]
-fn destination_failure_preserves_preceding_completed_word() {
+fn destination_failure_follows_an_ignored_rom_word() {
     let (data, _) = encode(8, &pair(), &[0x12; 8]);
-    let (mut m, _) = prepare(false, 0x07ff_fffc, &data);
+    let (mut m, _) = prepare(false, 0x0cff_fffc, &data);
     assert_eq!(
         fail(&mut m),
-        MachineError::Cpu(MemoryError::ReadOnly(ROM_START).into())
+        MachineError::Cpu(MemoryError::ReadOnly(0x0d00_0000).into())
     );
-    assert_eq!(m.memory().read32(0x07ff_fffc).unwrap(), 0x1212_1212);
 }
 
 #[test]

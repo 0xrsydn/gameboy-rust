@@ -249,7 +249,7 @@ fn dma_samples_timers_after_startup_and_source_and_writes_after_destination() {
 
 #[test]
 fn dma_failures_preserve_timers_and_if_and_clear_the_transaction() {
-    for (source, destination) in [(0x0e00_0000, RAM), (TIMER_BASE, ROM_START)] {
+    for (source, destination) in [(0x0e00_0000, RAM), (TIMER_BASE, 0x0d00_0000)] {
         let mut memory = Memory::new(Vec::new()).unwrap();
         start(&mut memory, 0, 0xffff, 0xc0);
         let before = memory.io.timer_step();

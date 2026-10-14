@@ -361,10 +361,10 @@ fn truncated_descriptors_and_sources_return_memory_diagnostics() {
 }
 
 #[test]
-fn destination_failure_preserves_completed_word() {
+fn destination_failure_follows_an_ignored_rom_word() {
     let (mut m, _) = prepare(
         false,
-        0x07ff_fffc,
+        0x0cff_fffc,
         &[0x12, 0x34, 0x56, 0x78, 1, 2, 3, 4],
         8,
         8,
@@ -372,9 +372,8 @@ fn destination_failure_preserves_completed_word() {
     );
     assert_eq!(
         fail(&mut m),
-        MachineError::Cpu(MemoryError::ReadOnly(ROM_START).into())
+        MachineError::Cpu(MemoryError::ReadOnly(0x0d00_0000).into())
     );
-    assert_eq!(m.memory().read32(0x07ff_fffc).unwrap(), 0x7856_3412);
 }
 
 #[test]

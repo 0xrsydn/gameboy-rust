@@ -91,6 +91,9 @@ folding plus write-ignore semantics need independent hardware evidence and
 a deliberate policy decision against the explicit-error convention. See
 [the usability roadmap](../usability-roadmap.md) for sequencing.
 
+Update: emulated writes to the `0x08`–`0x0c` ROM windows are now ignored, which removes the
+`0x09fe2ffe` store diagnostic. Reads past the end of the image remain explicit errors.
+
 ## References
 
 - [GBATEK memory map](https://problemkaputt.de/gbatek-gba-memory-map.htm):

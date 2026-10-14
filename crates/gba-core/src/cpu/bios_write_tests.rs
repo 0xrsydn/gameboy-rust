@@ -183,7 +183,7 @@ fn unmapped_bios_and_cartridge_destinations_remain_retryable_diagnostics() {
         (0, false),
         (0x4000, true),
         (0x0100_0000, true),
-        (ROM_START, true),
+        (0x0d00_0000, true),
     ] {
         let (mut cpu, mut memory, _) = setup(ROM_START, 0xe480_1004, false);
         if !mapped_bios {
@@ -201,7 +201,7 @@ fn unmapped_bios_and_cartridge_destinations_remain_retryable_diagnostics() {
         let error = machine.step().unwrap_err();
         assert_eq!(
             error,
-            MachineError::Cpu(CpuError::Memory(if address == ROM_START {
+            MachineError::Cpu(CpuError::Memory(if address == 0x0d00_0000 {
                 MemoryError::ReadOnly(address)
             } else {
                 MemoryError::Unmapped(address)

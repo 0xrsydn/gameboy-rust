@@ -33,9 +33,10 @@ It does not decode archives or ELF executables. Supply a raw binary with an ARM 
 Headerless original programs are accepted.
 Reads past supplied cartridge bytes remain explicit memory errors, not open-bus values.
 All three Game Pak ROM windows use the same supplied bytes and existing wait-state rules.
-Ordinary cartridge bytes remain read-only.
+Ordinary cartridge bytes remain read-only. CPU and DMA writes to the `0x08`–`0x0c` ROM windows pay their bus cost and are ignored, as on hardware.
+Writes to the `0x0d` window remain `ReadOnly` diagnostics until EEPROM is modeled there. Host `Memory::write*` calls stay strict everywhere.
 Optional `--save-type flash64` or `--save-type flash128` enables [nominal Flash programming, erase, and reads](saves.md).
-Without `--save-file PATH`, changes remain volatile. With it, the frontend loads an exact-size image and persists changes on clean exit.
+Without `--save-file PATH`, changes remain volatile. With it, the frontend loads an exact-size image and persists changes on clean exit or when a ROM window ends on a diagnostic.
 Missing images start erased. Existing images receive unique backups before replacement; incomplete Flash operations refuse persistence.
 Read the [storage safeguards and limits](saves.md#desktop-persistence) before using a valuable save.
 Optional `--rtc` selection enables the bounded [Game Pak GPIO and RTC calendar interface](cartridge-gpio.md).

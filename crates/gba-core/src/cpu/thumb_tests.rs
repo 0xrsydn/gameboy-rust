@@ -727,17 +727,28 @@ fn thumb_memory_errors_leave_state_unchanged() {
 }
 
 #[test]
-fn failed_thumb_store_to_rom_does_not_modify_rom_or_cpu() {
+fn thumb_store_to_rom_is_ignored_and_the_cartridge_window_stays_diagnostic() {
     let mut memory = program(&[0x6001]);
     let mut cpu = thumb_cpu();
     cpu.registers[0] = ROM_START;
+    cpu.registers[1] = 0x1234_5678;
+    cpu.step(&mut memory).unwrap();
+    assert_eq!(cpu.pc(), ROM_START + 2);
+    assert_eq!(memory.read16(ROM_START).unwrap(), 0x6001);
+    // Mirrors past the supplied image ignore stores as well.
+    let mut cpu = thumb_cpu();
+    cpu.registers[0] = 0x09fe_2ffc;
+    cpu.step(&mut memory).unwrap();
+    assert_eq!(cpu.pc(), ROM_START + 2);
+
+    let mut cpu = thumb_cpu();
+    cpu.registers[0] = 0x0d00_0000;
     let before = cpu.registers;
     assert_eq!(
         cpu.step(&mut memory),
-        Err(CpuError::Memory(MemoryError::ReadOnly(ROM_START)))
+        Err(CpuError::Memory(MemoryError::ReadOnly(0x0d00_0000)))
     );
     assert_eq!(cpu.registers, before);
-    assert_eq!(memory.read16(ROM_START).unwrap(), 0x6001);
 }
 
 #[test]
@@ -748,9 +759,14 @@ fn late_thumb_stack_and_block_errors_do_not_partially_commit() {
         memory.write32(0x07ff_fffc, 0x1234_5678).unwrap();
         let mut cpu = thumb_cpu();
         cpu.registers[15] = 0x0300_0000;
-        cpu.registers[0] = 0x07ff_fffc;
+        // Stores cross an ignored ROM word into the diagnostic cartridge window.
+        cpu.registers[0] = if instruction == 0xc003 {
+            0x0cff_fffc
+        } else {
+            0x07ff_fffc
+        };
         cpu.registers[13] = if instruction == 0xb403 {
-            0x0800_0004
+            0x0d00_0004
         } else {
             0x07ff_fffc
         };

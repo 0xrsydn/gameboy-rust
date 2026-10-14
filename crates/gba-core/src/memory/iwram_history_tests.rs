@@ -185,7 +185,7 @@ fn failed_instruction_discards_its_iwram_fetch_and_failed_dma_preserves_committe
     assert_eq!(memory.iwram_bus.committed_word(), Some(WORD));
     let dma = DMA_BASE + 3 * DMA_STRIDE;
     memory.write32(dma, IWRAM + 8).unwrap();
-    memory.write32(dma + 4, ROM_START).unwrap(); // Read-only destination.
+    memory.write32(dma + 4, 0x0d00_0000).unwrap(); // Diagnostic cartridge window.
     memory.write32(dma + 8, 0x8400_0001).unwrap();
     assert!(memory.step_dma().is_err());
     assert_eq!(memory.iwram_bus.committed_word(), Some(WORD));

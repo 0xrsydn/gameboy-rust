@@ -141,7 +141,7 @@ fn empty_stores_advance_devices_only_after_a_successful_single_word_write() {
 
     for instruction in [0xc200, 0xb400] {
         for (address, error) in [
-            (ROM_START, MemoryError::ReadOnly(ROM_START)),
+            (0x0d00_0000, MemoryError::ReadOnly(0x0d00_0000)),
             (0x0e00_0000, MemoryError::Unmapped(0x0e00_0000)),
         ] {
             let (mut cpu, mut memory) = setup(instruction, CODE);

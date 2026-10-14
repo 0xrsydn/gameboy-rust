@@ -75,7 +75,7 @@ Update this file when a feature lands or a limit is removed.
 - Stack save/restore, PC loads, empty register lists, and ARM7 base-register overlap rules.
 - `SWP`/`SWPB`, including unaligned word rotation and register aliases.
 - 256 KiB external work RAM and 32 KiB internal work RAM, including mirrors.
-- Read-only cartridge bytes in the three GBA cartridge windows.
+- Read-only cartridge bytes in the three GBA cartridge windows; emulated writes below the `0x0d` window are ignored.
 - Explicit cartridge RTC selection with first-window GPIO read enable, direction/latch behavior, and serial calendar/control transactions.
 - Validated RTC date/time, BCD transfers, read snapshots, complete writes/reset, and caller-supplied battery-clock advancement.
 - Desktop `--rtc` seeds UTC once and supplies host elapsed seconds independently of CPU cycles and STOP.
@@ -230,7 +230,7 @@ Host inspection and instruction fetches remain strict. Other unmapped reads retu
 Reads beyond the supplied cartridge bytes also return errors.
 Direct memory-bus halfword and word accesses require alignment.
 CPU load/store instructions apply ARM7TDMI alignment and rotation rules before accessing the bus.
-Ordinary ROM writes remain read-only. Explicitly selected cartridge GPIO and supported Flash command writes are separate from ROM storage.
+CPU and DMA writes to the `0x08`–`0x0c` ROM windows are ignored; the `0x0d` window stays diagnostic until EEPROM exists. Explicitly selected cartridge GPIO and supported Flash command writes are separate from ROM storage.
 
 ## Next steps
 

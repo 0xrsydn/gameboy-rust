@@ -498,12 +498,11 @@ fn destination_failure_keeps_preceding_halfword_stores() {
                 angle: 0,
             }])
         };
-        let (mut m, _) = prepare(service, false, [DATA, 0x07ff_fffc, 1, 2], 0x1f, &data);
+        let (mut m, _) = prepare(service, false, [DATA, 0x0cff_fffc, 1, 2], 0x1f, &data);
         assert_eq!(
             fail(&mut m),
-            MachineError::Cpu(MemoryError::ReadOnly(ROM_START).into())
+            MachineError::Cpu(MemoryError::ReadOnly(0x0d00_0000).into())
         );
-        assert_eq!(m.memory().read32(0x07ff_fffc).unwrap(), 256);
     }
 }
 

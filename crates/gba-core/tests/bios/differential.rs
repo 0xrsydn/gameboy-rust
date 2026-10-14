@@ -321,17 +321,13 @@ fn failed_source_reads_keep_completed_units_but_not_pending_halfwords() {
 }
 
 #[test]
-fn destination_failure_preserves_preceding_completed_halfword() {
+fn destination_failure_follows_an_ignored_rom_halfword() {
     for service in [0x17, 0x18] {
         let (data, _) = filtered(service, &[0x12, 0x34, 0x56, 0x78]);
-        let (mut m, _) = prepare(service, false, 0x07ff_fffe, &data);
+        let (mut m, _) = prepare(service, false, 0x0cff_fffe, &data);
         assert_eq!(
             fail(&mut m),
-            MachineError::Cpu(MemoryError::ReadOnly(ROM_START).into())
-        );
-        assert_eq!(
-            m.memory().read16(0x07ff_fffe).unwrap(),
-            if service == 0x17 { 0x3412 } else { 0x12 }
+            MachineError::Cpu(MemoryError::ReadOnly(0x0d00_0000).into())
         );
     }
 }

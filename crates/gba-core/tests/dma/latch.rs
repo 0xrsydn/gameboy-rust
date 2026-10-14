@@ -145,12 +145,12 @@ fn zero_is_known_data_not_an_unknown_latch() {
 fn failed_units_preserve_the_old_latch_without_new_data_or_irq() {
     for (source, destination, control) in [
         (0x0e00_0000, DEST, 0x4400), // Unmapped reads do not use a known latch.
-        (SOURCE, ROM_START, 0x4400),
+        (SOURCE, 0x0d00_0000, 0x4400),
         (SOURCE, 0x0400_0058, 0x4400),
         (SOURCE, DMA_BASE, 0x4400),
         (SOURCE, 0x0400_0300, 0x4400),
-        (SOURCE, DEST, 0x4580), // Unsupported source mode.
-        (0, ROM_START, 0x4400), // A blocked source cannot bypass destination checks.
+        (SOURCE, DEST, 0x4580),   // Unsupported source mode.
+        (0, 0x0d00_0000, 0x4400), // A blocked source cannot bypass destination checks.
     ] {
         let mut machine = machine();
         seed(&mut machine, 3, DATA);
@@ -175,7 +175,7 @@ fn failed_units_preserve_the_old_latch_without_new_data_or_irq() {
 fn failed_destination_does_not_seed_a_cold_channel() {
     let mut machine = machine();
     machine.memory_mut().write32(SOURCE, DATA).unwrap();
-    configure(machine.memory_mut(), 3, SOURCE, ROM_START, 1, 0x400);
+    configure(machine.memory_mut(), 3, SOURCE, 0x0d00_0000, 1, 0x400);
     assert!(machine.step().is_err());
     machine.memory_mut().write16(base(3) + 10, 0).unwrap();
     configure(machine.memory_mut(), 3, 0, DEST, 1, 0x400);

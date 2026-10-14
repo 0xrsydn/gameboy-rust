@@ -437,8 +437,8 @@ fn protected_or_wrapping_source_ranges_return_without_copying() {
 }
 
 #[test]
-fn copy_failure_keeps_earlier_writes_but_not_partial_instruction_changes() {
-    let (mut machine, _) = call(0x0b, false, [SOURCE, 0x07ff_fffc, 2 | (1 << 26)]);
+fn copy_failure_follows_an_ignored_rom_word_without_partial_instruction_changes() {
+    let (mut machine, _) = call(0x0b, false, [SOURCE, 0x0cff_fffc, 2 | (1 << 26)]);
     machine.memory_mut().write32(SOURCE, 0xaabb_ccdd).unwrap();
     let mut failed = false;
     for _ in 0..100 {
@@ -448,12 +448,11 @@ fn copy_failure_keeps_earlier_writes_but_not_partial_instruction_changes() {
         if let Err(error) = machine.step() {
             assert_eq!(
                 error,
-                MachineError::Cpu(MemoryError::ReadOnly(0x0800_0000).into())
+                MachineError::Cpu(MemoryError::ReadOnly(0x0d00_0000).into())
             );
             assert_eq!(machine.cpu(), &before);
             assert_eq!(machine.cycles(), cycles);
             assert_eq!(machine.last_timing(), timing);
-            assert_eq!(machine.memory().read32(0x07ff_fffc).unwrap(), 0xaabb_ccdd);
             failed = true;
             break;
         }

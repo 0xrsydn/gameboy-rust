@@ -686,10 +686,10 @@ fn invalid_memory_and_dma_register_destinations_are_diagnostics() {
         ),
         (
             SOURCE,
-            ROM_START,
+            0x0d00_0000,
             DmaError::Memory {
                 channel: 3,
-                error: MemoryError::ReadOnly(ROM_START),
+                error: MemoryError::ReadOnly(0x0d00_0000),
             },
         ),
         (

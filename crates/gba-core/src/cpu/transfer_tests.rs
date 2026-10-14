@@ -302,7 +302,9 @@ fn block_diagnostics_do_not_commit_partial_register_or_ram_changes() {
         memory.write32(0x07ff_fffc, 0xdead_beef).unwrap();
         let mut cpu = Cpu::new(0x0300_0000);
         cpu.registers[0] = 42;
-        cpu.registers[2] = 0x07ff_fffc; // Second transfer reaches absent/read-only ROM.
+        // The second load reaches absent ROM. The second store crosses an ignored
+        // ROM word into the diagnostic cartridge window.
+        cpu.registers[2] = if load { 0x07ff_fffc } else { 0x0cff_fffc };
         cpu.flags = flags();
         let before = cpu.registers;
         assert_eq!(
@@ -310,7 +312,7 @@ fn block_diagnostics_do_not_commit_partial_register_or_ram_changes() {
             Err(CpuError::Memory(if load {
                 MemoryError::Unmapped(ROM_START)
             } else {
-                MemoryError::ReadOnly(ROM_START)
+                MemoryError::ReadOnly(0x0d00_0000)
             }))
         );
         assert_eq!(cpu.registers, before);
@@ -320,7 +322,7 @@ fn block_diagnostics_do_not_commit_partial_register_or_ram_changes() {
 }
 
 #[test]
-fn block_load_can_read_rom_and_store_reports_read_only_memory() {
+fn block_load_can_read_rom_and_store_to_rom_is_ignored() {
     for load in [false, true] {
         let mut memory = program(&[block(0x0080_0000, load, true, 0, 0x6), 11, 22]);
         let mut cpu = Cpu::new(ROM_START);
@@ -330,13 +332,11 @@ fn block_load_can_read_rom_and_store_reports_read_only_memory() {
             assert_eq!(&cpu.registers[1..3], &[11, 22]);
             assert_eq!(cpu.registers[0], ROM_START + 12);
         } else {
-            let before = cpu.registers;
-            assert_eq!(
-                cpu.step(&mut memory),
-                Err(CpuError::Memory(MemoryError::ReadOnly(ROM_START + 4)))
-            );
-            assert_eq!(cpu.registers, before);
+            cpu.registers[1] = 33;
+            cpu.step(&mut memory).unwrap();
+            assert_eq!(cpu.registers[0], ROM_START + 12);
             assert_eq!(memory.read32(ROM_START + 4).unwrap(), 11);
+            assert_eq!(memory.read32(ROM_START + 8).unwrap(), 22);
         }
     }
 }
@@ -414,19 +414,16 @@ fn swap_snapshots_aliased_source_destination_and_base_registers() {
 }
 
 #[test]
-fn swap_write_failure_preserves_destination_and_memory() {
+fn swap_with_rom_loads_the_old_value_and_ignores_the_store() {
     for byte in [false, true] {
         let mut memory = program(&[0xe100_1092 | (u32::from(byte) << 22), 0x1234_5678]);
         let mut cpu = Cpu::new(ROM_START);
         cpu.registers[0] = ROM_START + 4;
         cpu.registers[1] = 123;
         cpu.registers[2] = 456;
-        let before = cpu.registers;
-        assert_eq!(
-            cpu.step(&mut memory),
-            Err(CpuError::Memory(MemoryError::ReadOnly(ROM_START + 4)))
-        );
-        assert_eq!(cpu.registers, before);
+        cpu.step(&mut memory).unwrap();
+        assert_eq!(cpu.registers[1], if byte { 0x78 } else { 0x1234_5678 });
+        assert_eq!(cpu.registers[2], 456);
         assert_eq!(memory.read32(ROM_START + 4).unwrap(), 0x1234_5678);
     }
 }

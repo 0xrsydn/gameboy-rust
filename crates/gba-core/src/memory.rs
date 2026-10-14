@@ -987,7 +987,7 @@ impl Memory {
             }
             return Ok(());
         }
-        if address < BIOS_SIZE as u32 {
+        if address < BIOS_SIZE as u32 || matches!(address >> 24, 0x08..=0x0d) {
             // Only validated CPU/DMA writes reach here. Pay the bus cost but
             // never modify the mapped ROM image or drive BIOS read history.
             return Ok(());
@@ -1123,8 +1123,11 @@ impl Memory {
                 Ok(0) // I/O does not use a RAM index.
             }
             0x08..=0x0d => {
+                // Game Pak ROM ignores emulated writes; host setup stays strict.
+                // The 0x0d window stays diagnostic until EEPROM is modeled there.
+                let ignored = access == WriteAccess::Emulated && address >> 24 != 0x0d;
                 for offset in 0..N as u32 {
-                    if !self.cartridge_state().mapped(address + offset) {
+                    if !ignored && !self.cartridge_state().mapped(address + offset) {
                         return Err(MemoryError::ReadOnly(address + offset));
                     }
                 }

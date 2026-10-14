@@ -175,7 +175,7 @@ fn failed_dma_and_failed_resumed_instruction_preserve_last_completed_dma_history
             machine.memory_mut(),
             3,
             if fail_destination { IWRAM } else { 0x0e00_0000 },
-            if fail_destination { 0x0800_0000 } else { IWRAM },
+            if fail_destination { 0x0d00_0000 } else { IWRAM },
             1,
             true,
         );

@@ -52,9 +52,9 @@ Byte writes are diagnostic because the consulted bus-width description is uncert
 Byte, halfword, and word reads use ordinary little-endian lanes, including register/ROM boundaries.
 
 Only the documented first-window addresses are implemented.
-Other ROM windows still expose supplied ROM bytes; their writes remain read-only diagnostics.
+Other ROM windows still expose supplied ROM bytes; CPU and DMA writes there are ignored like other ROM writes.
 GPIO mirroring and writes at alias addresses have not been independently validated.
-Without explicit hardware selection, all these addresses remain ordinary read-only cartridge memory.
+Without explicit hardware selection, all these addresses remain ordinary read-only cartridge memory, so CPU and DMA writes are ignored.
 
 ## RTC command and control transfers
 

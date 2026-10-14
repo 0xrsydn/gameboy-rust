@@ -317,14 +317,13 @@ fn incomplete_halfwords_are_not_committed_after_source_failure() {
 }
 
 #[test]
-fn destination_failure_preserves_earlier_completed_writes() {
+fn destination_failure_follows_an_ignored_rom_halfword() {
     let (data, _) = stream(&[Block::Literal(vec![0x12, 0x34, 0x56, 0x78])]);
-    let (mut m, _) = prepare(0x15, false, 0x07ff_fffe, &data);
+    let (mut m, _) = prepare(0x15, false, 0x0cff_fffe, &data);
     assert_eq!(
         fail(&mut m),
-        MachineError::Cpu(MemoryError::ReadOnly(ROM_START).into())
+        MachineError::Cpu(MemoryError::ReadOnly(0x0d00_0000).into())
     );
-    assert_eq!(m.memory().read16(0x07ff_fffe).unwrap(), 0x3412);
 }
 
 #[test]

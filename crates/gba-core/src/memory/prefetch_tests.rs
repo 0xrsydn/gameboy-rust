@@ -232,7 +232,7 @@ fn ram_dma_advances_the_queue_and_rom_dma_cancels_it_before_cpu_resume() {
 
 #[test]
 fn failed_dma_preserves_queue_and_clocks() {
-    for (source, destination) in [(0x0e00_0000, RAM), (RAM, ROM_START)] {
+    for (source, destination) in [(0x0e00_0000, RAM), (RAM, 0x0d00_0000)] {
         let (mut cpu, mut memory) = prepared(false, &[NOP], &[]);
         enable(&mut memory);
         cpu.step_timed(&mut memory).unwrap();

@@ -431,10 +431,9 @@ fn destination_failure_preserves_preceding_completed_halfword() {
         Token::Literal(0x56),
         Token::Literal(0x78),
     ]);
-    let (mut machine, _) = prepare(0x12, false, 0x07ff_fffe, &compressed);
+    let (mut machine, _) = prepare(0x12, false, 0x0cff_fffe, &compressed);
     assert_eq!(
         fail(&mut machine),
-        MachineError::Cpu(MemoryError::ReadOnly(0x0800_0000).into())
+        MachineError::Cpu(MemoryError::ReadOnly(0x0d00_0000).into())
     );
-    assert_eq!(machine.memory().read16(0x07ff_fffe).unwrap(), 0x3412);
 }
