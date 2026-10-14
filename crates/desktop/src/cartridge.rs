@@ -329,7 +329,7 @@ pub fn execute(options: Options, writer: &mut impl Write) -> Result<(), Box<dyn 
         .map(|path| save_file::SaveFile::open(path, &options.path, options.save_device))
         .transpose()?;
     if let Some(save) = save_file.as_ref() {
-        writeln!(writer, "Save file: {}; writes only on clean exit, with unique backups when replacing existing data.", if save.loaded() { "loaded" } else { "new erased image" })?;
+        writeln!(writer, "Save file: {}; writes on clean exit or a ROM window diagnostic, with unique backups when replacing existing data.", if save.loaded() { "loaded" } else { "new erased image" })?;
     } else if options.save_device != SaveDevice::None {
         writeln!(
             writer,
@@ -398,6 +398,37 @@ pub(crate) fn persist_save(
         writeln!(writer, "Save unchanged; no file written.")?;
     }
     Ok(())
+}
+
+/// Keep completed in-game saves when a window session ends on a diagnostic.
+/// The diagnostic stays the session's error, so a refused or failed write is only reported.
+/// A failed state restore leaves save memory undefined and is never written.
+pub(crate) fn persist_save_after_diagnostic(
+    save: &mut save_file::SaveFile,
+    memory: &gba_core::memory::Memory,
+    diagnostic: &(dyn Error + 'static),
+    writer: &mut impl Write,
+) -> io::Result<()> {
+    if matches!(
+        diagnostic.downcast_ref(),
+        Some(gba_core::snapshot::SnapshotError::RestoreFailed(_))
+    ) {
+        return writeln!(
+            writer,
+            "Save not written: machine state is undefined after a failed state restore."
+        );
+    }
+    match save.persist(memory) {
+        Ok(Some(saved)) => {
+            writeln!(writer, "Save persisted after diagnostic.")?;
+            if let Some(backup) = saved.backup {
+                writeln!(writer, "Previous save backup: {backup:?}")?;
+            }
+            Ok(())
+        }
+        Ok(None) => writeln!(writer, "Save unchanged; no file written."),
+        Err(error) => writeln!(writer, "Save not written after diagnostic: {error}"),
+    }
 }
 
 #[cfg(test)]

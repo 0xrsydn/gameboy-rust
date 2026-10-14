@@ -141,7 +141,7 @@ fn run() -> Result<(), Box<dyn Error>> {
                 --audio                  Enable macOS output at 1x (default: muted)\n\
                 --rtc                    Select cartridge RTC (UTC startup, host elapsed time)\n\
                 --save-type flash64|flash128  Select nominal Macronix Flash emulation\n\
-                --save-file PATH         Load raw Flash image; persist only on clean exit\n\
+                --save-file PATH         Load raw Flash image; persist on clean exit or window diagnostic\n\
                 --state-file PATH        ROM window save state; F5 saves, F9 loads (default: ROM path + .state)\n\
                 --test-suite PATH.json    Run bounded ROM assertions; write a JSON report\n\
                 --cpu-demo     Run the terminal-only ARM/Thumb instruction demo\n\

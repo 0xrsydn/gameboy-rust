@@ -129,7 +129,10 @@ The frontend persists changed bytes only on a clean exit:
 - Reaching a terminal step limit or entering terminal STOP.
 
 An incomplete Flash command/operation refuses persistence and returns an error, even if no bytes changed yet.
-CPU, DMA, rendering, window, or reported audio errors do not persist the session image.
+A ROM window that ends on a CPU, DMA, rendering, window, or reported audio error also persists changed bytes, so completed in-game saves outlive the diagnostic.
+The diagnostic remains the session's error. A refused or failed write there is reported as a line of output instead of replacing it.
+A failed save-state restore leaves save memory undefined and never writes the file.
+Terminal runs keep the stricter rule: a diagnostic does not persist the session image.
 There is no autosave, crash recovery, or RTC persistence. [Save states](save-states.md) are a separate, whole-machine feature and do not replace the game's own save.
 The emulator cannot detect a game's multi-command save transaction. Exiting between completed commands can still save incomplete game data.
 A crash or forced termination loses changes since startup and can leave a stale lock.
@@ -159,7 +162,8 @@ Persistence currently requires a Unix host. Darwin arm64 is validated; Linux and
 Original tests cover all program byte values in both banks, erase scope, exact delays, polling, cancellation, and bit transitions.
 ARM/Thumb tests cover store timing, completion reads, failed-step rollback, block preflight, HALT, and STOP.
 File tests cover size checks, unchanged images, locks, external changes, aliases, read-only paths, and retained backups.
-Original ROM process tests program, restart, reload through an IWRAM byte reader, and verify no persistence after diagnostics.
+Original ROM process tests program, restart, reload through an IWRAM byte reader, and verify no persistence after terminal diagnostics.
+File tests also cover window-diagnostic persistence, its reported refusals, and the failed-restore exclusion.
 A native-window test persists on frame-limit exit and reloads in another process.
 No game code, user save, firmware, or copyrighted assets are included in the tests.
 

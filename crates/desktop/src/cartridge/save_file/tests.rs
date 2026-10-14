@@ -199,3 +199,56 @@ fn reject_rom_aliases_symlinks_directories_and_readonly_images() {
     assert_eq!(fs::read(&f.save).unwrap(), image);
     fs::set_permissions(&f.save, fs::Permissions::from_mode(0o600)).unwrap();
 }
+
+fn after_diagnostic(
+    save: &mut SaveFile,
+    m: &Memory,
+    error: &(dyn std::error::Error + 'static),
+) -> String {
+    let mut output = Vec::new();
+    crate::cartridge::persist_save_after_diagnostic(save, m, error, &mut output).unwrap();
+    String::from_utf8(output).unwrap()
+}
+
+#[test]
+fn diagnostics_persist_completed_programs_and_report_refusals() {
+    let diagnostic = io::Error::other("unsupported hardware");
+    let f = Fixture::new();
+    let original = f.image(255);
+    let mut m = memory();
+    let mut save = f.open().unwrap();
+    save.initialize(&mut m).unwrap();
+    assert!(after_diagnostic(&mut save, &m, &diagnostic).contains("Save unchanged"));
+    program(&mut m, 0x12);
+    let text = after_diagnostic(&mut save, &m, &diagnostic);
+    assert!(text.contains("Save persisted after diagnostic."), "{text}");
+    assert!(text.contains("Previous save backup"), "{text}");
+    let written = fs::read(&f.save).unwrap();
+    assert_eq!(written[0], 0x12);
+    assert_eq!(written[1..], original[1..]);
+
+    // An incomplete command is reported, never written, and never replaces the diagnostic.
+    start_program(&mut m, 0x02);
+    let text = after_diagnostic(&mut save, &m, &diagnostic);
+    assert!(text.contains("Save not written after diagnostic"), "{text}");
+    assert!(text.contains("incomplete"), "{text}");
+    assert_eq!(fs::read(&f.save).unwrap(), written);
+}
+
+#[test]
+fn failed_state_restores_never_write_the_save() {
+    use gba_core::snapshot::SnapshotError;
+    let f = Fixture::new();
+    let original = f.image(255);
+    let mut m = memory();
+    let mut save = f.open().unwrap();
+    save.initialize(&mut m).unwrap();
+    program(&mut m, 0x12);
+    let error: Box<dyn std::error::Error> = Box::new(SnapshotError::RestoreFailed(Box::new(
+        SnapshotError::Truncated,
+    )));
+    let text = after_diagnostic(&mut save, &m, error.as_ref());
+    assert!(text.contains("failed state restore"), "{text}");
+    assert_eq!(fs::read(&f.save).unwrap(), original);
+    assert_eq!(fs::read_dir(&f.dir).unwrap().count(), 3); // ROM, image, owned lock only.
+}

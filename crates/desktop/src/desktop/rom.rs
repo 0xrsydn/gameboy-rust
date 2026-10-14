@@ -121,7 +121,7 @@ pub fn run(
     )?;
     writeln!(
         writer,
-        "Input releases and audio mutes on focus loss. Save files require --save-file and clean exit; state file: {state_path:?}. Startup frames are not suppressed."
+        "Input releases and audio mutes on focus loss. Save files require --save-file and persist on exit; state file: {state_path:?}. Startup frames are not suppressed."
     )?;
     writeln!(
         writer,
@@ -256,8 +256,19 @@ pub fn run(
     if let Some(output) = audio.as_ref() {
         output.report(writer)?;
     }
-    result?;
     writer.flush()?;
+    if let Err(diagnostic) = result {
+        // A player's completed in-game saves outlive the diagnostic that ended the session.
+        if let Some(save) = save_file {
+            crate::cartridge::persist_save_after_diagnostic(
+                save,
+                session.memory_mut(),
+                diagnostic.as_ref(),
+                writer,
+            )?;
+        }
+        return Err(diagnostic);
+    }
     if let Some(save) = save_file {
         crate::cartridge::persist_save(save, session.memory_mut(), writer)?;
     }
