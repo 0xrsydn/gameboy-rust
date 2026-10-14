@@ -146,7 +146,7 @@ fn failed_units_preserve_the_old_latch_without_new_data_or_irq() {
     for (source, destination, control) in [
         (0x0e00_0000, DEST, 0x4400), // Unmapped reads do not use a known latch.
         (SOURCE, 0x0d00_0000, 0x4400),
-        (SOURCE, 0x0400_0058, 0x4400),
+        (SOURCE, 0x0400_0800, 0x4400),
         (SOURCE, DMA_BASE, 0x4400),
         (SOURCE, 0x0400_0300, 0x4400),
         (SOURCE, DEST, 0x4580),   // Unsupported source mode.

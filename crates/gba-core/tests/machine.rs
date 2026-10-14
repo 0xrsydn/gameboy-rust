@@ -194,7 +194,7 @@ fn diagnostics_do_not_advance_timers_or_clock() {
 #[test]
 fn late_block_store_error_does_not_change_timer_reload_or_enable() {
     let mut machine = prepared(
-        0xe8a0_003e,
+        0xe8a0_07fe,
         &[
             (0, TIMER_BASE),
             (1, 0x00c0_ffff),
@@ -203,7 +203,7 @@ fn late_block_store_error_does_not_change_timer_reload_or_enable() {
             (4, 0x00c0_ffff),
             (5, 123),
         ],
-    ); // STMIA r0!, {r1-r5}; fifth word is unmapped
+    ); // STMIA r0!, {r1-r10}; unused words are ignored, and r10 reaches SIOMULTI2
     let before = machine.cpu().clone();
     assert!(machine.step().is_err());
     assert_eq!(machine.cpu(), &before);
@@ -217,23 +217,19 @@ fn late_block_store_error_does_not_change_timer_reload_or_enable() {
 }
 
 #[test]
-fn late_block_store_error_does_not_acknowledge_if_or_modify_ie() {
+fn block_store_over_ime_padding_commits_ie_if_waitcnt_and_ime() {
     let mut machine = prepared(
         0xe8a0_001e,
         &[(0, IE), (1, 0x0008_ffff), (2, 123), (3, 1), (4, 42)],
     );
-    // IE/IF, WAITCNT, IME are valid. The fourth word at 0x0400020c is not.
+    // IE/IF, WAITCNT, and IME are written. The fourth word at 0x0400020c is unused.
     pending_timer(machine.memory_mut());
-    machine.memory_mut().write32(IME, 0).unwrap(); // Let the invalid store execute
-    let before = machine.cpu().clone();
-    let cycles = machine.cycles();
-    assert!(machine.step().is_err());
-    assert_eq!(machine.cpu(), &before);
-    assert_eq!(machine.cycles(), cycles);
-    assert_eq!(machine.memory().read32(IE).unwrap(), 0x0008_0008);
-    assert_eq!(machine.memory().read32(WAITCNT).unwrap(), 0);
-    assert_eq!(machine.memory().read32(IME).unwrap(), 0);
-    assert_eq!(machine.last_timing().total(), 0);
+    machine.memory_mut().write32(IME, 0).unwrap(); // Let the store execute
+    assert_eq!(machine.step().unwrap(), StepKind::Instruction);
+    assert_eq!(machine.cpu().registers()[0], IE + 16);
+    assert_eq!(machine.memory().read32(IE).unwrap(), 0x3fff); // IF bit 3 acknowledged.
+    assert_eq!(machine.memory().read32(WAITCNT).unwrap(), 123);
+    assert_eq!(machine.memory().read32(IME).unwrap(), 1);
 }
 
 #[test]
@@ -270,4 +266,29 @@ fn cpu_only_step_does_not_advance_device_time_or_deliver_irq() {
     assert_eq!(cpu.mode(), Mode::System);
     assert_eq!(bus.cycles(), cycles);
     assert!(bus.irq_pending());
+}
+
+#[test]
+fn cpu_stores_to_unused_io_are_ignored_but_memory_control_and_host_writes_stay_strict() {
+    for address in [
+        0x0400_0058,
+        0x0400_00e0,
+        0x0400_020c,
+        0x0400_0304,
+        0x0401_0100,
+    ] {
+        let mut machine = prepared(0xe580_1000, &[(0, address), (1, u32::MAX)]); // STR r1,[r0]
+        assert_eq!(machine.step().unwrap(), StepKind::Instruction);
+        assert_eq!(
+            machine.memory_mut().write32(address, 0),
+            Err(MemoryError::Unmapped(address))
+        );
+    }
+    let mut machine = prepared(0xe580_1000, &[(0, 0x0400_0800), (1, 0)]);
+    let before = machine.cpu().clone();
+    assert_eq!(
+        machine.step(),
+        Err(MachineError::Cpu(MemoryError::Unmapped(0x0400_0800).into()))
+    );
+    assert_eq!(machine.cpu(), &before);
 }

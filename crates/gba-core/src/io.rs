@@ -192,6 +192,13 @@ impl Io {
             || matches!(address, 0x0400_0000..=0x0400_0057 | DMA_BASE..=DMA_END | 0x0400_0100..=0x0400_010f | 0x0400_0130..=0x0400_0133 | 0x0400_0200..=0x0400_020b | POSTFLG..=0x0400_0303)
     }
 
+    /// I/O-page addresses with no register. CPU and DMA writes there are ignored.
+    /// The mirrored internal memory control register at `0x04xx0800` is a real,
+    /// unmodeled register and stays a diagnostic.
+    pub(crate) fn unused(address: u32) -> bool {
+        address >> 24 == 0x04 && !Self::mapped(address) && address & 0xfffc != 0x0800
+    }
+
     pub(crate) fn unsupported_write(address: u32, value: u8) -> Option<&'static str> {
         Serial::unsupported(address, value)
     }

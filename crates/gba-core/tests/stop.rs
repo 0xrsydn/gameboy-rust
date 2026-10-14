@@ -1,11 +1,11 @@
 use gba_core::{
-    cpu::{Cpu, CpuError, InstructionSet},
+    cpu::{Cpu, InstructionSet},
     display::{CYCLES_PER_FRAME, VBLANK_START},
     dma::{DmaError, DMA_BASE},
     input::Buttons,
     io::{DISPCNT, HALTCNT, IE, IF, IME, KEYCNT, POSTFLG, TIMER_BASE},
     machine::{FrameRunError, Machine, MachineError, StepKind},
-    memory::{Memory, MemoryError, BIOS_SIZE, ROM_START},
+    memory::{Memory, BIOS_SIZE, ROM_START},
     timing::StepTiming,
     video::Framebuffer,
 };
@@ -355,12 +355,12 @@ fn arm_and_thumb_stop_stores_finish_with_normal_cycles_before_freezing() {
 }
 
 #[test]
-fn failed_block_store_cannot_partially_enter_stop_or_set_postflg() {
+fn bios_block_store_enters_stop_and_ignores_the_unused_word_after_haltcnt() {
     let mut bios = vec![0; BIOS_SIZE];
     bios[..24].copy_from_slice(&words(&[
         0xe59f_0008,
         0xe59f_1008,
-        0xe8a0_0006,
+        0xe8a0_0006, // STMIA r0!,{r1,r2}: POSTFLG=1, HALTCNT=0x80, then unused I/O.
         0xeaff_fffe,
         POSTFLG,
         0x8001,
@@ -370,19 +370,11 @@ fn failed_block_store_cannot_partially_enter_stop_or_set_postflg() {
     cpu.step(&mut mem).unwrap();
     cpu.step(&mut mem).unwrap();
     let mut m = Machine::new(cpu, mem);
-    let before = m.cpu().clone();
-    assert_eq!(
-        m.step(),
-        Err(MachineError::Cpu(CpuError::Memory(MemoryError::Unmapped(
-            POSTFLG + 4
-        ))))
-    );
-    assert_eq!(m.cpu(), &before);
-    assert!(!m.stopped());
+    assert_eq!(m.step().unwrap(), StepKind::Instruction);
+    assert!(m.stopped());
     assert!(!m.halted());
-    assert_eq!(m.memory().read8(POSTFLG).unwrap(), 0);
-    assert_eq!(m.cycles(), 0);
-    assert_eq!(m.last_timing(), StepTiming::default());
+    assert_eq!(m.memory().read8(POSTFLG).unwrap(), 1);
+    assert_eq!(m.cpu().registers()[0], POSTFLG + 8);
 }
 
 #[test]

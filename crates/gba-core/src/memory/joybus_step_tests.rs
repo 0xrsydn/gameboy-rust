@@ -51,22 +51,20 @@ fn joybus_mode_selection_observes_the_normal_completion_bus_phase() {
 }
 
 #[test]
-fn later_block_padding_failure_discards_data_pending_status_and_writeback() {
+fn block_store_over_joystat_padding_commits_data_pending_status_and_writeback() {
     let (cpu, mut memory) = prepared(
         false,
-        &[0xe8a0000e], // STMIA r0!,{r1-r3}; final word hits JOYSTAT padding.
+        &[0xe8a0000e], // STMIA r0!,{r1-r3}; final word covers JOYSTAT and unused padding.
         &[(0, JOY_RECV), (1, 0x12345678), (2, 0xabcdef90), (3, 0x30)],
     );
     memory.write16(RCNT, 0xc000).unwrap();
-    let serial = memory.io.serial;
     let mut machine = Machine::new(cpu, memory);
-    let cpu = machine.cpu().clone();
-    let error = machine.step().unwrap_err();
-    assert!(error.to_string().contains("0x0400015a"));
-    assert_eq!(machine.step(), Err(error));
-    assert_eq!(machine.cpu(), &cpu);
-    assert_eq!(machine.cycles(), 0);
-    assert_eq!(machine.memory().io.serial, serial);
+    machine.step().unwrap();
+    assert_eq!(machine.cpu().registers()[0], JOY_RECV + 12);
+    assert_eq!(machine.memory().read32(JOY_RECV).unwrap(), 0x12345678);
+    assert_eq!(machine.memory().read32(JOY_TRANS).unwrap(), 0xabcdef90);
+    // Software flags from the store, plus transmit pending from the JOY_TRANS write.
+    assert_eq!(machine.memory().read16(JOYSTAT).unwrap(), 0x32);
 }
 
 #[test]

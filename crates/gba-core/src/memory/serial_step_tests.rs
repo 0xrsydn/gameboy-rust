@@ -95,8 +95,9 @@ fn single_and_block_store_validation_uses_completion_phase_and_does_not_double_a
 fn later_block_failure_restores_completion_and_partial_serial_writes() {
     let (cpu, mut memory) = prepared(
         false,
-        &[0xe8a10005],
-        &[(0, 0x00204081), (1, SIOCNT), (2, 0)],
+        // STMIA r1!,{r0,r2-r4}: SIOCNT, ignored padding, KEYCNT, then an unsupported RCNT.
+        &[0xe8a1001d],
+        &[(0, 0x00204081), (1, SIOCNT), (2, 0), (3, 0), (4, 0x8100)],
     );
     start(&mut memory, 57);
     let serial = memory.io.serial;
@@ -107,7 +108,7 @@ fn later_block_failure_restores_completion_and_partial_serial_writes() {
             .step()
             .unwrap_err()
             .to_string()
-            .contains("0x0400012c"));
+            .contains("0x04000135"));
         assert_eq!(machine.memory().io.serial, serial);
         assert_eq!(machine.memory().read16(IF).unwrap(), 0);
         assert_eq!(machine.cpu(), &cpu);

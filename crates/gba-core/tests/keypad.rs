@@ -371,8 +371,23 @@ fn cpu_store_samples_keys_then_irq_enters_on_the_following_step() {
 
 #[test]
 fn failed_block_store_does_not_commit_key_control_irq_history_or_halt_wake() {
-    // STMIA r0!,{r1,r2}: keypad word is valid, but RCNT's upper padding is not mapped.
-    let mut m = prepared(0xe8a0_0006, KEYINPUT, 0x4001_0000);
+    // STMIA r0!,{r1,r2}: the keypad word is valid, but RCNT enables a GPIO serial IRQ.
+    let mut mem = Memory::new(words(&[
+        0xe59f_000c,
+        0xe59f_100c,
+        0xe59f_200c,
+        0xe8a0_0006,
+        0xeaff_fffe,
+        KEYINPUT,
+        0x4001_0000,
+        0x0000_8100,
+    ]))
+    .unwrap();
+    let mut cpu = Cpu::new(ROM_START);
+    for _ in 0..3 {
+        cpu.step(&mut mem).unwrap();
+    }
+    let mut m = Machine::new(cpu, mem);
     press(m.memory_mut(), 1);
     m.memory_mut().write16(IE, IRQ).unwrap();
     let before = m.cpu().clone();
@@ -380,9 +395,13 @@ fn failed_block_store_does_not_commit_key_control_irq_history_or_halt_wake() {
     let timing = m.last_timing();
     assert_eq!(
         m.step(),
-        Err(MachineError::Cpu(CpuError::Memory(MemoryError::Unmapped(
-            KEYINPUT + 6
-        ))))
+        Err(MachineError::Cpu(CpuError::Memory(
+            MemoryError::UnsupportedIo {
+                address: KEYINPUT + 5,
+                value: 0x81,
+                operation: "GPIO serial interrupt enable",
+            }
+        )))
     );
     assert_eq!(m.cpu(), &before);
     assert_eq!(m.cycles(), cycles);

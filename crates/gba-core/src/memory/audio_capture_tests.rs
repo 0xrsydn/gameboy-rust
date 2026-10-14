@@ -26,12 +26,12 @@ fn samples_before_store_completion_keep_old_level_and_publish_only_once() {
 #[test]
 fn failed_cpu_and_dma_steps_discard_speculative_samples_and_phase() {
     for dma in [false, true] {
-        let (cpu, mut memory) = prepared(false, &[0xe8910005], &[(1, SOUNDBIAS)]); // LDM crosses unmapped 8c.
+        let (cpu, mut memory) = prepared(false, &[0xe8910005], &[(1, SOUNDBIAS)]); // LDM reads unmapped 8c.
         memory.set_audio_capture(true);
         memory.advance_cycles(508);
         if dma {
             memory.write32(DMA_BASE, 0x02000000).unwrap();
-            memory.write32(DMA_BASE + 4, 0x0400008c).unwrap();
+            memory.write32(DMA_BASE + 4, 0x0400_0800).unwrap(); // Unmodeled memory control.
             memory.write32(DMA_BASE + 8, 0x84000001).unwrap();
         }
         let before = memory.io.audio_capture.clone();

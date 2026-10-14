@@ -749,13 +749,14 @@ fn failing_later_unit_preserves_earlier_data_but_not_partial_current_unit() {
 }
 
 #[test]
-fn failed_io_write_does_not_partially_change_display_control() {
+fn unused_io_destination_is_ignored_without_changing_display_control() {
     let mut machine = machine();
     machine.memory_mut().write32(SOURCE, 0xffff_ffff).unwrap();
     configure(machine.memory_mut(), 3, SOURCE, 0x0400_0058, 1, 0x400);
-    assert!(machine.step().is_err());
+    units(&mut machine, 3, 1);
+    assert!(!enabled(&machine, 3));
     assert_eq!(machine.memory().read16(DISPCNT).unwrap(), 0);
-    assert_eq!(machine.cycles(), 0);
+    assert!(machine.cycles() > 0);
 }
 
 #[test]
@@ -787,11 +788,11 @@ fn cpu_can_enable_dma_with_a_combined_count_control_store() {
 }
 
 #[test]
-fn failed_cpu_block_store_cannot_enable_dma_or_change_its_hidden_latches() {
+fn cpu_block_store_past_dma3_control_enables_the_channel_and_ignores_unused_io() {
     let rom = words(&[
         0xe59f_000c, // LDR r0,[pc,#12] (DMA3CNT)
         0xe59f_100c, // LDR r1,[pc,#12] (count/control)
-        0xe8a0_0006, // STMIA r0!,{r1,r2}; second word unmapped.
+        0xe8a0_0006, // STMIA r0!,{r1,r2}; the second word is unused I/O.
         0xeaff_fffe,
         0xe1a0_0000,
         base(3) + 8,
@@ -803,15 +804,14 @@ fn failed_cpu_block_store_cannot_enable_dma_or_change_its_hidden_latches() {
     cpu.step(&mut bus).unwrap();
     configure(&mut bus, 3, SOURCE, DEST, 2, 0);
     bus.write16(base(3) + 10, 0).unwrap();
-    let before = cpu.clone();
+    bus.write32(SOURCE, 0x1234_5678).unwrap();
     let mut machine = Machine::new(cpu, bus);
-    assert!(matches!(machine.step(), Err(MachineError::Cpu(_))));
-    assert_eq!(machine.cpu(), &before);
+    assert_eq!(machine.step().unwrap(), StepKind::Instruction);
+    assert_eq!(machine.cpu().registers()[0], base(3) + 16);
+    assert!(enabled(&machine, 3));
+    units(&mut machine, 3, 1); // The store latched a count of 1.
     assert!(!enabled(&machine, 3));
-    assert_eq!(machine.cycles(), 0);
-    machine.memory_mut().write16(base(3) + 10, 0x8000).unwrap();
-    units(&mut machine, 3, 2); // The count latch is still 2, not 1.
-    assert!(!enabled(&machine, 3));
+    assert_eq!(machine.memory().read32(DEST).unwrap(), 0x1234_5678);
 }
 
 #[test]

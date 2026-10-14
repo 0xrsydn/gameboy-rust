@@ -1035,6 +1035,9 @@ impl Memory {
             }
             for (offset, byte) in bytes.into_iter().enumerate() {
                 let byte_address = address + offset as u32;
+                if !Io::mapped(byte_address) {
+                    continue; // Validated unused I/O; the write has no effect.
+                }
                 if matches!(byte_address, POSTFLG | HALTCNT) && !self.can_write_power_control() {
                     continue; // BIOS-only CPU writes; ignored elsewhere, including STOP requests.
                 }
@@ -1116,8 +1119,11 @@ impl Memory {
             0x07 => Ok((address & 0x3ff) as usize),
             0x04 => {
                 for offset in 0..N as u32 {
-                    if !Io::mapped(address + offset) {
-                        return Err(MemoryError::Unmapped(address + offset));
+                    let at = address + offset;
+                    // Unused I/O ignores emulated writes; host setup stays strict.
+                    let ignored = access == WriteAccess::Emulated && Io::unused(at);
+                    if !(Io::mapped(at) || ignored) {
+                        return Err(MemoryError::Unmapped(at));
                     }
                 }
                 Ok(0) // I/O does not use a RAM index.

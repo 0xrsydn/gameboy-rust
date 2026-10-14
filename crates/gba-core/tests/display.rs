@@ -375,26 +375,38 @@ fn display_sources_enter_an_original_irq_handler_acknowledge_and_return() {
 
 #[test]
 fn failed_block_store_does_not_change_window_controls_or_advance_display() {
-    let rom = [
-        0xe3a0_2301_u32, // MOV r2,#0x04000000
-        0xe282_2048,     // ADD r2,r2,#0x48 (WININ/WINOUT)
-        0xe3a0_003f,     // MOV r0,#0x3f
-        0xe3a0_1001,     // MOV r1,#1
-        0xe8a2_001f,     // STMIA r2!,{r0-r4}; last word is unmapped 0x04000058
-    ]
-    .into_iter()
-    .flat_map(u32::to_le_bytes)
-    .collect();
-    let mut bus = Memory::new(rom).unwrap();
+    // STMIA r12!,{r0-r11} stores WININ/WINOUT through SOUND3CNT_X. Unused words are
+    // ignored. With 64-sample wave mode selected, r11 requests playback, a diagnostic.
+    let operands = [
+        (12, 0x0400_0048),
+        (0, 0x3f),
+        (1, 1),
+        (10, 0xa0),
+        (11, 0x8000),
+    ];
+    let offset = (operands.len() as u32 - 1) * 4;
+    let mut code: Vec<u32> = operands
+        .iter()
+        .map(|&(register, _)| 0xe59f_0000 | (register as u32) << 12 | offset)
+        .collect();
+    code.push(0xe8ac_0fff);
+    code.extend(operands.iter().map(|&(_, value)| value));
+    let mut bus = Memory::new(code.into_iter().flat_map(u32::to_le_bytes).collect()).unwrap();
+    bus.write16(0x0400_0084, 0x80).unwrap(); // Master sound enable.
+    bus.write16(0x0400_0070, 0xa0).unwrap(); // Wave: 64-sample mode, DAC on.
     let mut cpu = Cpu::new(ROM_START);
-    for _ in 0..4 {
+    for _ in operands {
         cpu.step(&mut bus).unwrap();
     }
     bus.advance_cycles(7 * CYCLES_PER_LINE);
     let before = cpu.clone();
     let position = bus.display_position();
     let mut machine = Machine::new(cpu, bus);
-    assert!(machine.step().is_err());
+    let error = machine.step().unwrap_err();
+    assert!(
+        error.to_string().contains("64-sample wave playback"),
+        "{error}"
+    );
     assert_eq!(machine.cpu(), &before);
     assert_eq!(machine.memory().display_position(), position);
     assert_eq!(machine.memory().read32(gba_core::io::WININ).unwrap(), 0);

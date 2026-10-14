@@ -68,7 +68,7 @@ Writes into the mapped 16 KiB BIOS [complete without changing its image](bios.md
 Source reads, channel data, address progression, timing, and completion IRQs still apply to these ignored writes.
 DMA0–2 mask destination bit 27, so a programmed cartridge address can instead select the BIOS region.
 Other accesses use the existing memory map, alignment checks, mirrors, and I/O write rules.
-Other unmapped reads remain diagnostics, not general DMA open-bus behavior. Writes to the `0x08`–`0x0c` ROM windows are ignored; the `0x0d` window remains a diagnostic.
+Other unmapped reads remain diagnostics, not general DMA open-bus behavior. Writes to the `0x08`–`0x0c` ROM windows and to unused I/O addresses are ignored; the `0x0d` window and `0x04000800` remain diagnostics.
 A failed unit changes no memory, device state, or clock. Earlier units remain committed; the failed unit remains pending.
 Successful units update local IWRAM lanes for their actual IWRAM reads and writes, in that order.
 No CPU continuation is required; DMA can establish lanes before the first CPU instruction.

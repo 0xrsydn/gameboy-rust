@@ -168,10 +168,27 @@ fn invalid_word_and_block_writes_do_not_leave_a_partial_external_start() {
     assert_eq!(bus.read16(SIOCNT).unwrap(), 0x5084);
     assert_eq!(bus.read16(SIODATA8).unwrap(), 0xab);
 
-    let mut machine = prepared(false, 0xe8a00006, 0x00ab5080); // STMIA r0!,{r1,r2}; second word unmapped.
+    // STMIA r0!,{r1-r4}: SIOCNT, ignored padding, KEYCNT, then RCNT enabling a GPIO serial IRQ.
+    let code = [
+        0xe59f_000c_u32,
+        0xe59f_100c,
+        0xe59f_400c,
+        0xe8a0_001e,
+        0xeaff_fffe,
+        SIOCNT,
+        0x00ab_5080,
+        0x0000_8100,
+    ];
+    let mut bus = Memory::new(code.into_iter().flat_map(u32::to_le_bytes).collect()).unwrap();
+    let mut cpu = Cpu::new(ROM_START);
+    for _ in 0..3 {
+        cpu.step(&mut bus).unwrap();
+    }
+    bus.write16(SIOCNT, 0x1003).unwrap();
+    let mut machine = Machine::new(cpu, bus);
     let before = machine.cpu().clone();
     let error = machine.step().unwrap_err();
-    assert!(error.to_string().contains("unmapped memory at 0x0400012c"));
+    assert!(error.to_string().contains("0x04000135"), "{error}");
     assert_eq!(machine.cpu(), &before);
     assert_eq!(machine.cycles(), 0);
     assert_eq!(machine.memory().read16(SIOCNT).unwrap(), 0x1007);

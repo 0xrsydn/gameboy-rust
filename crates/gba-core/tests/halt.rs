@@ -584,7 +584,7 @@ fn bios_stop_store_finishes_before_freezing_and_access_context_is_cleared() {
     assert_eq!(machine.step().unwrap(), StepKind::StopIdle);
     assert_eq!(machine.last_timing(), StepTiming::default());
     // A failed non-BIOS instruction must also clear its access context.
-    let mut machine = store_machine(ROM_START, 0xe581_0000, 0x0400_0058, 0, true);
+    let mut machine = store_machine(ROM_START, 0xe581_0000, 0x0400_0800, 0, true);
     assert!(machine.step().is_err());
     machine.memory_mut().write8(POSTFLG, 1).unwrap();
     halt(&mut machine);
@@ -604,15 +604,14 @@ fn non_bios_stop_write_is_ignored_not_a_diagnostic() {
 }
 
 #[test]
-fn failed_block_store_cannot_partially_halt_or_change_postflg() {
-    // The first word is mapped; the second is not. Validation precedes all writes.
-    let mut machine = store_machine(0x100, 0xe8a1_0005, POSTFLG, 1, false); // STMIA r1!,{r0,r2}
-    let before = machine.cpu().clone();
-    assert!(machine.step().is_err());
-    assert_eq!(machine.cpu(), &before);
-    assert!(!machine.halted());
-    assert_eq!(machine.memory().read8(POSTFLG).unwrap(), 0);
-    assert_eq!(machine.cycles(), 0);
+fn bios_block_store_halts_and_ignores_the_unused_word_after_haltcnt() {
+    // STMIA r1!,{r0,r2}: POSTFLG=1 and HALTCNT=0, then an unused I/O word.
+    let mut machine = store_machine(0x100, 0xe8a1_0005, POSTFLG, 1, false);
+    assert_eq!(machine.step().unwrap(), StepKind::Instruction);
+    assert!(machine.halted());
+    assert!(!machine.stopped());
+    assert_eq!(machine.memory().read8(POSTFLG).unwrap(), 1);
+    assert_eq!(machine.cpu().registers()[1], POSTFLG + 8);
 }
 
 #[test]

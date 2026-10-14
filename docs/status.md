@@ -227,6 +227,8 @@ Complete general-bus history, exact boundary timing, general DMA handoff, and un
 [DMA channel data latches](hardware/dma.md#retained-channel-data) support blocked-source reuse, but never replace CPU bus history.
 BIOS protection uses separate retained BIOS fetch snapshots as described in [BIOS behavior](hardware/bios.md#cpu-bios-read-protection).
 Host inspection and instruction fetches remain strict. Other unmapped reads return errors.
+CPU and DMA writes to unused I/O addresses are ignored, as on hardware; host writes there stay strict.
+The unmodeled internal memory control register at `0x04xx0800` and all unused I/O reads remain diagnostics.
 Reads beyond the supplied cartridge bytes also return errors.
 Direct memory-bus halfword and word accesses require alignment.
 CPU load/store instructions apply ARM7TDMI alignment and rotation rules before accessing the bus.
