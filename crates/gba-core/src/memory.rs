@@ -226,7 +226,7 @@ impl Memory {
         );
         self.save_image = vec![0xff; device.capacity()];
         self.save_modified = false;
-        self.cartridge.set_save_device(device);
+        self.cartridge.set_save_device(device, self.rom.len());
     }
 
     /// Inspect the complete save array, independently of ID mode and selected bank.
@@ -253,7 +253,7 @@ impl Memory {
         }
         self.save_image.copy_from_slice(bytes);
         self.save_modified = false;
-        self.cartridge.set_save_device(device);
+        self.cartridge.set_save_device(device, self.rom.len());
         Ok(())
     }
 
@@ -296,6 +296,11 @@ impl Memory {
             let target = &mut self.save_image[effect.start..effect.end];
             self.save_modified |= target.iter().any(|&b| b != effect.value);
             target.fill(effect.value);
+        }
+        if let Some((start, block)) = self.cartridge.take_save_block() {
+            let target = &mut self.save_image[start..start + block.len()];
+            self.save_modified |= *target != block;
+            target.copy_from_slice(&block);
         }
     }
 
@@ -864,6 +869,12 @@ impl Memory {
 
     // Multi-byte reads use this helper to avoid charging each byte as a bus access.
     fn read_byte(&self, address: u32) -> Result<u8, MemoryError> {
+        if self.cartridge_state().eeprom_mapped(address) {
+            return Err(MemoryError::UnsupportedCartridgeAccess {
+                address,
+                operation: "EEPROM non-halfword read",
+            });
+        }
         if self.cartridge_state().flash_mapped(address)
             && self
                 .cpu_access
@@ -990,7 +1001,7 @@ impl Memory {
             },
         );
         let mut cartridge = self.cartridge_state();
-        cartridge.write(address, &bytes, &self.save_image)?;
+        cartridge.write(address, &bytes, &self.save_image, self.cpu_access.is_some())?;
         if cartridge.mapped(address) {
             if self.cartridge_step.get().is_some() {
                 self.cartridge_step.set(Some(cartridge));
@@ -1224,7 +1235,7 @@ impl Memory {
                 self.write_index::<4>(address, self.write_access())?;
                 let bytes = value.to_le_bytes();
                 Self::validate_io_values(&mut audio, address, &bytes)?;
-                cartridge.write(address, &bytes, &self.save_image)?;
+                cartridge.write(address, &bytes, &self.save_image, self.cpu_access.is_some())?;
                 self.record_access(address, AccessWidth::Word);
                 if Serial::mapped(address) {
                     if let Some(mut step) = self.timer_step.get() {
@@ -1255,6 +1266,9 @@ impl Memory {
         if address & 1 != 0 {
             return Err(MemoryError::Unaligned(address));
         }
+        if self.cartridge_state().eeprom_mapped(address) {
+            return self.read_eeprom16(address);
+        }
         self.validate_save_read_width(address)?;
         self.record_access(address, AccessWidth::Halfword);
         let value = u16::from_le_bytes([self.read_byte(address)?, self.read_byte(address + 1)?]);
@@ -1263,8 +1277,26 @@ impl Memory {
         Ok(value)
     }
 
+    /// Shift out one EEPROM bit inside a machine step. Host reads outside a step only
+    /// inspect status or the next bit; nothing outside a step can stage the change.
+    fn read_eeprom16(&self, address: u32) -> Result<u16, MemoryError> {
+        self.record_access(address, AccessWidth::Halfword);
+        let mut cartridge = self.cartridge_state();
+        let value = cartridge.read_eeprom16(address, self.cpu_access.is_some())?;
+        if self.cartridge_step.get().is_some() {
+            self.cartridge_step.set(Some(cartridge));
+        }
+        Ok(value)
+    }
+
     fn validate_save_read_width(&self, address: u32) -> Result<(), MemoryError> {
         let cartridge = self.cartridge_state();
+        if cartridge.eeprom_mapped(address) {
+            return Err(MemoryError::UnsupportedCartridgeAccess {
+                address,
+                operation: "EEPROM non-halfword read",
+            });
+        }
         if cartridge.save_mapped(address) {
             return Err(MemoryError::UnsupportedCartridgeAccess {
                 address,

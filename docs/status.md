@@ -83,6 +83,7 @@ Update this file when a feature lands or a limit is removed.
 - Explicit Macronix Flash64/Flash128 identification, bank selection, delayed byte programming, sector/chip erase, and nominal DQ7 polling.
 - Transactional Flash completion and modification tracking, with exact-size core image loading and inspection.
 - Explicit 32 KiB byte-wide SRAM (`--save-type sram`), mirrored through the save window and readable from ROM code.
+- Explicit 512-byte and 8 KiB serial EEPROM (`--save-type eeprom512|eeprom8k`) over DMA3 bitstreams, with nominal write busy time.
 - Optional desktop `--save-file` loading and clean-exit persistence, with exclusive locks, atomic installation, and unique previous-image backups.
 - Original ROM save/restart/load checks across processes, including native-window persistence on Darwin arm64.
 - Whole-machine [save states](hardware/save-states.md): `Machine::save_state`/`load_state` with image and cartridge identity checks, a checksum, and verify-before-mutate loading; ROM windows bind F5 (save) and F9 (load) to a `--state-file` slot.
@@ -156,7 +157,7 @@ Individual fetch timing, hardware-accurate work cutoffs, video-bus contention, a
 ROM windows offer opt-in Darwin audio output with `--audio` and explicit save persistence with `--save-file`.
 The [Flash subset](hardware/saves.md) supports programming and erase with nominal delays and bounded DQ7 polling.
 Flash timing, STOP clocking, and cancellation are not hardware-verified. Wider accesses and unverified busy addresses remain diagnostic.
-EEPROM, other Flash manufacturers, SRAM halfword/word access, autosave, crash recovery, and game-level save transactions remain unsupported.
+Other Flash manufacturers, SRAM halfword/word access, CPU-driven EEPROM bitstreams, autosave, crash recovery, and game-level save transactions remain unsupported.
 Persistence is tested on Darwin arm64 with original programs, not yet with external-game saves.
 The optional [cartridge GPIO/RTC subset](hardware/cartridge-gpio.md) supports calendar/control transfers and explicit clock updates, selected with `--rtc` in ROM modes.
 RTC persistence, interrupts, invalid-date correction, physical subsecond timing, GPIO aliases, and byte writes remain unsupported or unverified.
@@ -233,7 +234,7 @@ The unmodeled internal memory control register at `0x04xx0800` and all unused I/
 CPU and DMA reads beyond the power-of-two ROM chip return the Game Pak halfword-address pattern; reads inside a trimmed image's chip, host reads, and instruction fetches past the image return errors.
 Direct memory-bus halfword and word accesses require alignment.
 CPU load/store instructions apply ARM7TDMI alignment and rotation rules before accessing the bus.
-CPU and DMA writes to the `0x08`–`0x0c` ROM windows are ignored; the `0x0d` window stays diagnostic until EEPROM exists. Explicitly selected cartridge GPIO and supported Flash command writes are separate from ROM storage.
+CPU and DMA writes to the `0x08`–`0x0c` ROM windows are ignored; the `0x0d` window stays diagnostic unless EEPROM is selected. Explicitly selected cartridge GPIO and supported Flash command writes are separate from ROM storage.
 
 ## Next steps
 

@@ -91,7 +91,7 @@ fn parse_args(args: &[OsString]) -> Result<RunMode, io::Error> {
         [arg] if arg == "--help" || arg == "-h" => Ok(RunMode::Help),
         _ => Err(io::Error::new(
             io::ErrorKind::InvalidInput,
-            "usage: gameboy-rust [--cpu-demo | --timer-demo | --graphics-demo | --smoke-test | --graphics-smoke-test | --raster-demo | --raster-smoke-test | --mosaic-demo | --mosaic-smoke-test | --effects-demo | --effects-smoke-test | --tile-demo | --tile-smoke-test | --affine-demo | --affine-smoke-test | --affine-raster-demo | --affine-raster-smoke-test | --bitmap4-demo | --bitmap5-demo | --bitmap4-smoke-test | --bitmap5-smoke-test | --help]; or gameboy-rust --rom PATH [--rtc] [--save-type flash64|flash128|sram] [--save-file PATH] (--steps COUNT | --window [--frames COUNT] [--audio] [--speed MULTIPLIER] [--state-file PATH]); or gameboy-rust --test-suite PATH.json",
+            "usage: gameboy-rust [--cpu-demo | --timer-demo | --graphics-demo | --smoke-test | --graphics-smoke-test | --raster-demo | --raster-smoke-test | --mosaic-demo | --mosaic-smoke-test | --effects-demo | --effects-smoke-test | --tile-demo | --tile-smoke-test | --affine-demo | --affine-smoke-test | --affine-raster-demo | --affine-raster-smoke-test | --bitmap4-demo | --bitmap5-demo | --bitmap4-smoke-test | --bitmap5-smoke-test | --help]; or gameboy-rust --rom PATH [--rtc] [--save-type flash64|flash128|sram|eeprom512|eeprom8k] [--save-file PATH] (--steps COUNT | --window [--frames COUNT] [--audio] [--speed MULTIPLIER] [--state-file PATH]); or gameboy-rust --test-suite PATH.json",
         )),
     }
 }
@@ -140,7 +140,7 @@ fn run() -> Result<(), Box<dyn Error>> {
                 --speed MULTIPLIER       ROM-window speed: integer 1..=16 (default: 1); mutes audio above 1x\n\
                 --audio                  Enable macOS output at 1x (default: muted)\n\
                 --rtc                    Select cartridge RTC (UTC startup, host elapsed time)\n\
-                --save-type flash64|flash128|sram  Select nominal Macronix Flash or 32 KiB SRAM\n\
+                --save-type flash64|flash128|sram|eeprom512|eeprom8k  Select nominal Flash, 32 KiB SRAM, or serial EEPROM\n\
                 --save-file PATH         Load raw save image; persist on clean exit or window diagnostic\n\
                 --state-file PATH        ROM window save state; F5 saves, F9 loads (default: ROM path + .state)\n\
                 --test-suite PATH.json    Run bounded ROM assertions; write a JSON report\n\

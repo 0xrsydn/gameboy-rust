@@ -254,3 +254,82 @@ fn sram_bytes_written_and_read_from_rom_code_persist_across_processes() {
     assert!(text(&output).contains("r6=0x0000003c"), "{}", text(&output));
     assert!(text(&output).contains("Save unchanged"));
 }
+
+/// One halfword per bit, MSB first, packed into ROM words.
+fn bit_halfwords(bits: &[u8]) -> Vec<u32> {
+    bits.chunks(2)
+        .map(|pair| u32::from(pair[0]) | pair.get(1).map_or(0, |&b| u32::from(b) << 16))
+        .collect()
+}
+
+fn bits(value: u64, width: u32) -> Vec<u8> {
+    (0..width)
+        .rev()
+        .map(|shift| ((value >> shift) & 1) as u8)
+        .collect()
+}
+
+/// Run `dma` transfers (source, destination, halfword count) from ROM code, then `tail`.
+/// Halfword bitstreams live at ROM offset 0x400.
+fn eeprom_rom(dma: &[(u32, u32, u32)], tail: &[u32], data: &[u8]) -> Vec<u32> {
+    let mut code = Vec::new();
+    for &(source, destination, count) in dma {
+        load(&mut code, 0, 0x0400_00d4); // DMA3 source register
+        load(&mut code, 1, source);
+        load(&mut code, 2, destination);
+        load(&mut code, 3, 0x8000_0000 | count);
+        code.push(0xe880_000e); // STMIA r0,{r1-r3}
+    }
+    code.extend(tail);
+    code.push(0xeafffffe);
+    code.resize(0x100, 0);
+    code.extend(bit_halfwords(data));
+    code
+}
+
+#[test]
+fn eeprom_blocks_written_and_read_through_dma3_persist_across_processes() {
+    let f = Fixture::new();
+    let save = f.save();
+    let request = [
+        vec![1, 0],
+        bits(1, 6),
+        bits(0x8011_2233_4455_6677, 64),
+        vec![0],
+    ]
+    .concat();
+    let write = f.rom(
+        "eeprom-writer.gba",
+        &eeprom_rom(&[(0x0800_0400, 0x0d00_0000, 73)], &[], &request),
+    );
+    // Enough steps for the nominal ~108k-cycle write to finish before exit.
+    let output = command(&write, &save, "eeprom512")
+        .args(["--steps", "100000"])
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{}", text(&output));
+    assert!(text(&output).contains("Save persisted on clean exit"));
+    let image = fs::read(&save).unwrap();
+    assert_eq!(image.len(), 512);
+    assert_eq!(image[8..16], 0x8011_2233_4455_6677_u64.to_be_bytes());
+    assert!(image[..8].iter().chain(&image[16..]).all(|&v| v == 255));
+
+    // Request block 1, shift out 68 bits into IWRAM, then load data bits 0 and 1.
+    let request = [vec![1, 1], bits(1, 6), vec![0]].concat();
+    let read = f.rom(
+        "eeprom-reader.gba",
+        &eeprom_rom(
+            &[
+                (0x0800_0400, 0x0d00_0000, 9),
+                (0x0d00_0000, 0x0300_0000, 68),
+            ],
+            &[0xe1d2_50b8, 0xe1d2_60ba], // LDRH r5,[r2,#8]; LDRH r6,[r2,#10]
+            &request,
+        ),
+    );
+    let output = run(&read, &save, "eeprom512");
+    assert!(output.status.success(), "{}", text(&output));
+    assert!(text(&output).contains("r5=0x00000001"), "{}", text(&output));
+    assert!(text(&output).contains("r6=0x00000000"), "{}", text(&output));
+    assert!(text(&output).contains("Save unchanged"));
+}

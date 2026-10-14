@@ -35,8 +35,8 @@ CPU and DMA reads beyond the ROM chip, the image size rounded up to a power of t
 Bytes between a trimmed image's end and that chip boundary are unknown and remain explicit memory errors, as do host reads and instruction fetches beyond the image.
 All three Game Pak ROM windows use the same supplied bytes and existing wait-state rules.
 Ordinary cartridge bytes remain read-only. CPU and DMA writes to the `0x08`–`0x0c` ROM windows pay their bus cost and are ignored, as on hardware.
-Writes to the `0x0d` window remain `ReadOnly` diagnostics until EEPROM is modeled there. Host `Memory::write*` calls stay strict everywhere.
-Optional `--save-type flash64` or `--save-type flash128` enables [nominal Flash programming, erase, and reads](saves.md); `--save-type sram` selects [32 KiB SRAM](saves.md#sram).
+Writes to the `0x0d` window remain `ReadOnly` diagnostics unless [EEPROM](saves.md#eeprom) is selected there. Host `Memory::write*` calls stay strict everywhere.
+Optional `--save-type flash64` or `--save-type flash128` enables [nominal Flash programming, erase, and reads](saves.md); `--save-type sram` selects [32 KiB SRAM](saves.md#sram), and `eeprom512` or `eeprom8k` selects [serial EEPROM](saves.md#eeprom).
 Without `--save-file PATH`, changes remain volatile. With it, the frontend loads an exact-size image and persists changes on clean exit or when a ROM window ends on a diagnostic.
 Missing images start erased. Existing images receive unique backups before replacement; incomplete Flash operations refuse persistence.
 Read the [storage safeguards and limits](saves.md#desktop-persistence) before using a valuable save.

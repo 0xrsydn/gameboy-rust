@@ -1,15 +1,16 @@
-# Cartridge Flash, SRAM, and save files
+# Cartridge Flash, SRAM, EEPROM, and save files
 
 The core supports explicit Macronix Flash selection, identification, bank selection, byte programming, and sector/chip erase.
 Operations complete after nominal delays and expose bounded data polling. They do not complete immediately on the command write.
 The desktop can load and persist raw images through explicit `--save-file PATH` selection.
 Original ROM tests verify save/restart/load across processes. Saving in an external game remains unverified.
-The core also supports explicit 32 KiB SRAM; see [SRAM](#sram).
-EEPROM and other manufacturers' Flash protocols remain separate work.
+The core also supports explicit 32 KiB SRAM and 512-byte or 8 KiB serial EEPROM; see [SRAM](#sram) and [EEPROM](#eeprom).
+Other manufacturers' Flash protocols remain separate work.
 
 ## Selection and core API
 
-Use `--save-type flash64`, `--save-type flash128`, or `--save-type sram` in terminal or window ROM modes.
+Use `--save-type flash64`, `flash128`, `sram`, `eeprom512`, or `eeprom8k` in terminal or window ROM modes.
+EEPROM games do not identify their part size, so the type must match the game (GBATEK: no autodetection mechanism exists).
 Selection is independent of `--rtc`. Omitting the save type leaves save memory unmapped.
 No filename, ROM signature, or first-write detection changes the selected device.
 Without `--save-file`, the selected device starts erased (`0xff`) and all changes remain volatile.
@@ -17,7 +18,7 @@ The ROM suite schema still has no save-selection or save-file field.
 
 Core APIs on `Memory`:
 
-- `set_save_device(SaveDevice)` selects `None`, `Flash64`, `Flash128`, or `Sram` and initializes an erased array.
+- `set_save_device(SaveDevice)` selects `None`, `Flash64`, `Flash128`, `Sram`, `Eeprom512`, or `Eeprom8k` and initializes an erased array.
   GPIO/RTC state is preserved.
 - `load_save_image(&[u8])` accepts exactly the selected capacity. It resets commands, pending operations, ID mode, bank, and modification tracking.
   Invalid size or missing hardware changes nothing.
@@ -39,6 +40,25 @@ Byte stores and loads may execute from ROM; the Flash work-RAM read restriction 
 Halfword and word reads and writes, and DMA transfers, remain diagnostics until 8-bit bus behavior for those widths is verified.
 SRAM shares the save window's WAITCNT wait states, save-image API, host persistence, and save states with Flash.
 A save state records the selected device. Restoring it into a machine with another save device is rejected as a cartridge setup mismatch.
+
+## EEPROM
+
+`Eeprom512` and `Eeprom8k` follow GBATEK's serial protocol on Game Pak data bit 0, one bit per halfword.
+With ROM up to 16 MiB the part answers anywhere in `0x0d000000..0x0dffffff`; above 16 MiB only `0x0dffff00..0x0dffffff`.
+Elsewhere in that window, reads and writes behave as ordinary ROM.
+
+- Read request: `11`, the block address (6 bits, or 14 bits with the low 10 decoded), then `0`.
+  The next 68 halfword reads return 4 zero bits, then the 64-bit block MSB first.
+- Write request: `10`, the block address, 64 data bits MSB first, then `0`.
+  The part then reports busy (bit 0 clear) for a nominal 108,368 cycles before the block is stored.
+- Idle and ready status reads return 1. Bits 1–15 read as zero; hardware drives only bit 0.
+
+Block bytes are stored in transfer order: the first data bit is byte 0, bit 7, matching common `.sav` layouts.
+Bitstreams must come from DMA (or host setup writes). GBATEK states manual `STRH` transfers do not work, so CPU stores are diagnostics.
+A CPU `LDRH` polls status; a CPU read during a data read-out, byte or word accesses, a missing leading `1`,
+a missing trailing `0`, a request while busy, and a request during a read-out are all diagnostics.
+Bits shift out only inside machine steps, so a failed step rolls back; host reads between steps only inspect.
+An unfinished request, read-out, or write sets `save_write_pending()`, which blocks host persistence.
 
 ## Bus and commands
 

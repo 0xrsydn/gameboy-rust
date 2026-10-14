@@ -51,6 +51,8 @@ The repository is a Cargo workspace with three crates:
 | `crates/gba-core/src/cartridge.rs` | Explicit GPIO/RTC selection, ROM read overlay, pin directions, caller-clock routing, and bounded diagnostics |
 | `crates/gba-core/src/cartridge/flash.rs` | Explicit save devices, Macronix IDs/banks, delayed program/erase, bounded DQ7 polling, and staged mutations |
 | `crates/gba-core/src/cartridge/sram.rs` | 32 KiB byte-wide SRAM, mirrored offsets, one staged byte per step, and its save-state section |
+| `crates/gba-core/src/cartridge/eeprom.rs` | Serial EEPROM request decoding, 68-bit read-out, nominal write busy time, block commits, and its save-state section |
+| `crates/gba-core/tests/eeprom.rs` | DMA3 EEPROM bitstreams, busy polling, 10-bit addressing, large-ROM window, diagnostics, and mid-read-out save states |
 | `crates/gba-core/tests/rom_bus.rs` | Game Pak reads beyond the ROM chip in every window, trimmed-image gaps, strict host/fetch reads, and DMA sources |
 | `crates/gba-core/tests/sram.rs` | SRAM selection, mirroring, byte stores/loads from ROM code, SWPB, width/DMA diagnostics, and save states |
 | `crates/gba-core/tests/flash.rs` | Erased/supplied images, chip IDs, all bank addresses, invalid commands, reset limits, DMA rejection, and RTC independence |

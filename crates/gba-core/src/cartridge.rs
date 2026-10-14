@@ -4,10 +4,13 @@ use crate::memory::MemoryError;
 use crate::snapshot::{Reader, Snapshot, SnapshotError, Writer};
 
 mod calendar;
+mod eeprom;
 mod flash;
 mod rtc;
 mod sram;
 pub use calendar::{RtcDateTime, RtcError};
+use eeprom::Eeprom;
+pub use eeprom::EEPROM_WRITE_CYCLES;
 use flash::Flash;
 pub(crate) use flash::SaveMutation;
 pub use flash::{
@@ -34,6 +37,7 @@ pub(crate) struct Cartridge {
     gpio: Option<Gpio>,
     flash: Option<Flash>,
     sram: Option<Sram>,
+    eeprom: Option<Eeprom>,
 }
 
 impl Cartridge {
@@ -41,16 +45,33 @@ impl Cartridge {
         self.gpio = (hardware == CartridgeHardware::Rtc).then(Gpio::default);
     }
 
-    pub(crate) fn set_save_device(&mut self, device: SaveDevice) {
+    /// The ROM length selects the EEPROM window: carts above 16 MiB decode only its top 256 bytes.
+    pub(crate) fn set_save_device(&mut self, device: SaveDevice, rom_len: usize) {
         self.flash = Flash::new(device);
         self.sram = (device == SaveDevice::Sram).then(Sram::default);
+        self.eeprom = Eeprom::new(device, rom_len);
     }
 
     pub(crate) fn save_device(&self) -> SaveDevice {
         if self.sram.is_some() {
             return SaveDevice::Sram;
         }
+        if let Some(eeprom) = self.eeprom {
+            return eeprom.device();
+        }
         self.flash.map_or(SaveDevice::None, Flash::device)
+    }
+
+    pub(crate) fn eeprom_mapped(&self, address: u32) -> bool {
+        self.eeprom.is_some_and(|eeprom| eeprom.mapped(address))
+    }
+
+    /// One EEPROM halfword read. CPU reads poll status; other reads shift out data.
+    pub(crate) fn read_eeprom16(&mut self, address: u32, cpu: bool) -> Result<u16, MemoryError> {
+        self.eeprom
+            .as_mut()
+            .expect("mapped EEPROM")
+            .read(address, cpu)
     }
 
     pub(crate) fn save_mapped(&self, address: u32) -> bool {
@@ -66,10 +87,20 @@ impl Cartridge {
         if let Some(flash) = self.flash.as_mut() {
             flash.advance(cycles);
         }
+        if let Some(eeprom) = self.eeprom.as_mut() {
+            eeprom.advance(cycles);
+        }
     }
 
     pub(crate) fn save_unfinished(&self) -> bool {
-        self.flash.is_some_and(Flash::unfinished) || self.sram.is_some_and(Sram::unfinished)
+        self.flash.is_some_and(Flash::unfinished)
+            || self.sram.is_some_and(Sram::unfinished)
+            || self.eeprom.is_some_and(Eeprom::unfinished)
+    }
+
+    /// A completed EEPROM write: its first byte offset and the eight block bytes.
+    pub(crate) fn take_save_block(&mut self) -> Option<(usize, [u8; 8])> {
+        self.eeprom.as_mut().and_then(Eeprom::take_block)
     }
 
     pub(crate) fn take_save_mutation(&mut self) -> Option<SaveMutation> {
@@ -111,6 +142,7 @@ impl Cartridge {
 
     pub(crate) fn mapped(&self, address: u32) -> bool {
         self.save_mapped(address)
+            || self.eeprom_mapped(address)
             || (self.gpio.is_some() && (GPIO_DATA..GPIO_CONTROL + 2).contains(&address))
     }
 
@@ -130,14 +162,30 @@ impl Cartridge {
     }
 
     /// Apply one access to a copy first. A rejected second halfword changes nothing.
+    /// `cpu` marks CPU stores, which cannot carry EEPROM bitstreams.
     pub(crate) fn write(
         &mut self,
         address: u32,
         bytes: &[u8],
         image: &[u8],
+        cpu: bool,
     ) -> Result<(), MemoryError> {
         if !self.mapped(address) {
             return Ok(()); // Non-cartridge accesses are validated by the bus.
+        }
+        if self.eeprom_mapped(address) {
+            if bytes.len() != 2 {
+                return Err(MemoryError::UnsupportedCartridgeAccess {
+                    address,
+                    operation: "EEPROM non-halfword write",
+                });
+            }
+            let value = u16::from_le_bytes([bytes[0], bytes[1]]);
+            return self
+                .eeprom
+                .as_mut()
+                .unwrap()
+                .write(address, value, cpu, image);
         }
         if self.save_mapped(address) {
             if bytes.len() != 1 {
@@ -213,6 +261,8 @@ impl Cartridge {
                 SaveDevice::Flash64 => 1,
                 SaveDevice::Flash128 => 2,
                 SaveDevice::Sram => 3,
+                SaveDevice::Eeprom512 => 4,
+                SaveDevice::Eeprom8k => 5,
             },
         ]
     }
@@ -220,7 +270,12 @@ impl Cartridge {
 
 impl Snapshot for Cartridge {
     fn save(&self, writer: &mut Writer) {
-        let Self { gpio, flash, sram } = self;
+        let Self {
+            gpio,
+            flash,
+            sram,
+            eeprom,
+        } = self;
         writer.tag(b"CART");
         writer.raw(&self.setup_identity());
         if let Some(gpio) = gpio {
@@ -232,11 +287,19 @@ impl Snapshot for Cartridge {
         if let Some(sram) = sram {
             sram.save(writer);
         }
+        if let Some(eeprom) = eeprom {
+            eeprom.save(writer);
+        }
     }
 
     fn load(&mut self, reader: &mut Reader<'_>) -> Result<(), SnapshotError> {
         let target_device = self.save_device();
-        let Self { gpio, flash, sram } = self;
+        let Self {
+            gpio,
+            flash,
+            sram,
+            eeprom,
+        } = self;
         reader.tag(b"CART")?;
 
         let hardware = reader.u8()?;
@@ -252,6 +315,8 @@ impl Snapshot for Cartridge {
             1 => SaveDevice::Flash64,
             2 => SaveDevice::Flash128,
             3 => SaveDevice::Sram,
+            4 => SaveDevice::Eeprom512,
+            5 => SaveDevice::Eeprom8k,
             _ => return Err(SnapshotError::Corrupt("save device")),
         };
         if save_device != target_device {
@@ -266,6 +331,9 @@ impl Snapshot for Cartridge {
         }
         if let Some(sram) = sram {
             sram.load(reader)?;
+        }
+        if let Some(eeprom) = eeprom {
+            eeprom.load(reader)?;
         }
         Ok(())
     }
@@ -321,7 +389,7 @@ mod snapshot_tests {
     fn configured_cartridge(hardware: CartridgeHardware, device: SaveDevice) -> Cartridge {
         let mut cartridge = Cartridge::default();
         cartridge.set_hardware(hardware);
-        cartridge.set_save_device(device);
+        cartridge.set_save_device(device, 0);
         cartridge
     }
 

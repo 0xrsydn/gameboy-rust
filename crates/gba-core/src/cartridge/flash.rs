@@ -19,6 +19,10 @@ pub enum SaveDevice {
     Flash128,
     /// 32 KiB battery-backed SRAM, byte addressed and mirrored through the save window.
     Sram,
+    /// 512-byte serial EEPROM with 6-bit block addresses, in the 0x0d window.
+    Eeprom512,
+    /// 8 KiB serial EEPROM with 14-bit block addresses, in the 0x0d window.
+    Eeprom8k,
 }
 
 impl SaveDevice {
@@ -28,6 +32,8 @@ impl SaveDevice {
             Self::Flash64 => 64 * 1024,
             Self::Flash128 => 128 * 1024,
             Self::Sram => 32 * 1024,
+            Self::Eeprom512 => 512,
+            Self::Eeprom8k => 8 * 1024,
         }
     }
 }
@@ -489,7 +495,9 @@ impl Snapshot for Flash {
             SaveDevice::None => 0,
             SaveDevice::Flash64 => 1,
             SaveDevice::Flash128 => 2,
-            SaveDevice::Sram => unreachable!("SRAM has no Flash state"),
+            SaveDevice::Sram | SaveDevice::Eeprom512 | SaveDevice::Eeprom8k => {
+                unreachable!("only Flash devices have Flash state")
+            }
         });
         phase.save(writer);
         writer.bool(*identify);
