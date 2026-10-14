@@ -23,7 +23,7 @@ use gba_core::{
 
 const MAX_STEPS: u64 = 100_000_000;
 const MAX_FRAMES: u64 = 100_000;
-const USAGE: &str = "usage: gameboy-rust --rom PATH [--rtc] [--save-type flash64|flash128] [--save-file PATH] (--steps COUNT | --window [--frames COUNT] [--audio] [--speed MULTIPLIER] [--state-file PATH]); speed: integer 1..=16 (default 1, audio muted above 1); steps: 1..=100000000, frames: 1..=100000; state file (window only): F5 saves and F9 loads a save state, default is the ROM path with a .state extension; do not combine with demo or help options";
+const USAGE: &str = "usage: gameboy-rust --rom PATH [--rtc] [--save-type flash64|flash128|sram] [--save-file PATH] (--steps COUNT | --window [--frames COUNT] [--audio] [--speed MULTIPLIER] [--state-file PATH]); speed: integer 1..=16 (default 1, audio muted above 1); steps: 1..=100000000, frames: 1..=100000; state file (window only): F5 saves and F9 loads a save state, default is the ROM path with a .state extension; do not combine with demo or help options";
 
 #[derive(Debug, PartialEq, Eq)]
 enum Mode {
@@ -69,6 +69,7 @@ pub fn parse_args(args: &[OsString]) -> io::Result<Options> {
             save_device = match args.next().and_then(|value| value.to_str()) {
                 Some("flash64") => SaveDevice::Flash64,
                 Some("flash128") => SaveDevice::Flash128,
+                Some("sram") => SaveDevice::Sram,
                 _ => return Err(invalid()),
             };
         } else if arg == "--save-file" && save_file.is_none() {

@@ -864,7 +864,7 @@ impl Memory {
 
     // Multi-byte reads use this helper to avoid charging each byte as a bus access.
     fn read_byte(&self, address: u32) -> Result<u8, MemoryError> {
-        if self.cartridge_state().save_mapped(address)
+        if self.cartridge_state().flash_mapped(address)
             && self
                 .cpu_access
                 .is_some_and(|access| !matches!(access.pc >> 24, 0x02 | 0x03))
@@ -984,6 +984,8 @@ impl Memory {
                 self.cartridge_step.set(Some(cartridge));
             } else {
                 self.cartridge = cartridge;
+                // Outside a machine step, an SRAM store has no step boundary to commit at.
+                self.commit_save_mutation();
             }
             return Ok(());
         }
@@ -1143,7 +1145,11 @@ impl Memory {
                 if N != 1 {
                     return Err(MemoryError::UnsupportedCartridgeAccess {
                         address,
-                        operation: "Flash non-byte write",
+                        operation: if self.cartridge_state().flash_mapped(address) {
+                            "Flash non-byte write"
+                        } else {
+                            "SRAM non-byte write"
+                        },
                     });
                 }
                 Ok(0)
@@ -1246,10 +1252,15 @@ impl Memory {
     }
 
     fn validate_save_read_width(&self, address: u32) -> Result<(), MemoryError> {
-        if self.cartridge_state().save_mapped(address) {
+        let cartridge = self.cartridge_state();
+        if cartridge.save_mapped(address) {
             return Err(MemoryError::UnsupportedCartridgeAccess {
                 address,
-                operation: "Flash non-byte read",
+                operation: if cartridge.flash_mapped(address) {
+                    "Flash non-byte read"
+                } else {
+                    "SRAM non-byte read"
+                },
             });
         }
         Ok(())

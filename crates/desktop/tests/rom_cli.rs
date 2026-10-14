@@ -383,7 +383,7 @@ fn explicit_flash_selection_runs_ram_byte_reader_and_leaves_files_unchanged() {
 fn invalid_save_type_options_fail_before_file_access() {
     for extra in [
         vec!["--save-type"],
-        vec!["--save-type", "sram"],
+        vec!["--save-type", "eeprom"],
         vec!["--save-type", ""],
         vec!["--save-type", "flash128", "--save-type", "flash64"],
     ] {

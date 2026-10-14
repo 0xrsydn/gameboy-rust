@@ -1,14 +1,15 @@
-# Cartridge Flash and save files
+# Cartridge Flash, SRAM, and save files
 
 The core supports explicit Macronix Flash selection, identification, bank selection, byte programming, and sector/chip erase.
 Operations complete after nominal delays and expose bounded data polling. They do not complete immediately on the command write.
 The desktop can load and persist raw images through explicit `--save-file PATH` selection.
 Original ROM tests verify save/restart/load across processes. Saving in an external game remains unverified.
-SRAM, EEPROM, and other manufacturers' protocols remain separate work.
+The core also supports explicit 32 KiB SRAM; see [SRAM](#sram).
+EEPROM and other manufacturers' Flash protocols remain separate work.
 
 ## Selection and core API
 
-Use `--save-type flash64` or `--save-type flash128` in terminal or window ROM modes.
+Use `--save-type flash64`, `--save-type flash128`, or `--save-type sram` in terminal or window ROM modes.
 Selection is independent of `--rtc`. Omitting the save type leaves save memory unmapped.
 No filename, ROM signature, or first-write detection changes the selected device.
 Without `--save-file`, the selected device starts erased (`0xff`) and all changes remain volatile.
@@ -16,7 +17,7 @@ The ROM suite schema still has no save-selection or save-file field.
 
 Core APIs on `Memory`:
 
-- `set_save_device(SaveDevice)` selects `None`, `Flash64`, or `Flash128` and initializes an erased array.
+- `set_save_device(SaveDevice)` selects `None`, `Flash64`, `Flash128`, or `Sram` and initializes an erased array.
   GPIO/RTC state is preserved.
 - `load_save_image(&[u8])` accepts exactly the selected capacity. It resets commands, pending operations, ID mode, bank, and modification tracking.
   Invalid size or missing hardware changes nothing.
@@ -28,6 +29,16 @@ Core APIs on `Memory`:
 Configuration, loading, and host inspection occur between machine steps.
 The core has no file, clock, window, or host-audio dependency. Frontends supply image bytes and own durable storage.
 A browser frontend can use the same API with browser storage instead of filesystem paths.
+
+## SRAM
+
+`SaveDevice::Sram` is a 32 KiB byte-wide array with no command protocol. It starts erased (`0xff`) like Flash.
+The 32 KiB array repeats twice through the `0x0e000000..0x0e00ffff` save window; higher addresses stay unmapped.
+CPU byte stores take effect when the instruction's step completes. Reads later in the same step already see the new byte.
+Byte stores and loads may execute from ROM; the Flash work-RAM read restriction does not apply.
+Halfword and word reads and writes, and DMA transfers, remain diagnostics until 8-bit bus behavior for those widths is verified.
+SRAM shares the save window's WAITCNT wait states, save-image API, host persistence, and save states with Flash.
+A save state records the selected device. Restoring it into a machine with another save device is rejected as a cartridge setup mismatch.
 
 ## Bus and commands
 

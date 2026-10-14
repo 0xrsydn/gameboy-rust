@@ -224,3 +224,33 @@ fn native_rom_window_save_reloads_in_another_process() {
         .to_string_lossy()
         .contains(".bak.")));
 }
+
+#[test]
+fn sram_bytes_written_and_read_from_rom_code_persist_across_processes() {
+    let f = Fixture::new();
+    let mut code = Vec::new();
+    load(&mut code, 0, 0x0e00_0000);
+    code.extend([0xe3a0_105a, 0xe5c0_1000]); // MOV r1,#0x5a; STRB r1,[r0]
+    load(&mut code, 0, 0x0e00_8001); // Mirror of offset 1.
+    code.extend([0xe3a0_103c, 0xe5c0_1000, 0xeaff_fffe]); // MOV r1,#0x3c; STRB; loop
+    let write = f.rom("sram-writer.gba", &code);
+    let save = f.save();
+    let output = run(&write, &save, "sram");
+    assert!(output.status.success(), "{}", text(&output));
+    assert!(text(&output).contains("Save persisted on clean exit"));
+    let image = fs::read(&save).unwrap();
+    assert_eq!(image.len(), 32768);
+    assert_eq!(&image[..2], &[0x5a, 0x3c]);
+    assert!(image[2..].iter().all(|&v| v == 255));
+
+    // Unlike Flash, SRAM reads need no work-RAM code.
+    let mut code = Vec::new();
+    load(&mut code, 3, 0x0e00_0000);
+    code.extend([0xe5d3_5000, 0xe5d3_6001, 0xeaff_fffe]); // LDRB r5,[r3]; LDRB r6,[r3,#1]
+    let read = f.rom("sram-reader.gba", &code);
+    let output = run(&read, &save, "sram");
+    assert!(output.status.success(), "{}", text(&output));
+    assert!(text(&output).contains("r5=0x0000005a"), "{}", text(&output));
+    assert!(text(&output).contains("r6=0x0000003c"), "{}", text(&output));
+    assert!(text(&output).contains("Save unchanged"));
+}

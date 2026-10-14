@@ -17,6 +17,8 @@ pub enum SaveDevice {
     Flash64,
     /// Macronix ID 09C2h, two 64 KiB banks.
     Flash128,
+    /// 32 KiB battery-backed SRAM, byte addressed and mirrored through the save window.
+    Sram,
 }
 
 impl SaveDevice {
@@ -25,6 +27,7 @@ impl SaveDevice {
             Self::None => 0,
             Self::Flash64 => 64 * 1024,
             Self::Flash128 => 128 * 1024,
+            Self::Sram => 32 * 1024,
         }
     }
 }
@@ -84,7 +87,7 @@ enum Phase {
 
 impl Flash {
     pub(super) fn new(device: SaveDevice) -> Option<Self> {
-        (device != SaveDevice::None).then_some(Self {
+        matches!(device, SaveDevice::Flash64 | SaveDevice::Flash128).then_some(Self {
             device,
             phase: Phase::Ready,
             identify: false,
@@ -486,6 +489,7 @@ impl Snapshot for Flash {
             SaveDevice::None => 0,
             SaveDevice::Flash64 => 1,
             SaveDevice::Flash128 => 2,
+            SaveDevice::Sram => unreachable!("SRAM has no Flash state"),
         });
         phase.save(writer);
         writer.bool(*identify);

@@ -82,6 +82,7 @@ Update this file when a feature lands or a limit is removed.
 - Cartridge GPIO and Flash controller changes participate in CPU/DMA rollback and block-store preflight without modifying ROM bytes.
 - Explicit Macronix Flash64/Flash128 identification, bank selection, delayed byte programming, sector/chip erase, and nominal DQ7 polling.
 - Transactional Flash completion and modification tracking, with exact-size core image loading and inspection.
+- Explicit 32 KiB byte-wide SRAM (`--save-type sram`), mirrored through the save window and readable from ROM code.
 - Optional desktop `--save-file` loading and clean-exit persistence, with exclusive locks, atomic installation, and unique previous-image backups.
 - Original ROM save/restart/load checks across processes, including native-window persistence on Darwin arm64.
 - Whole-machine [save states](hardware/save-states.md): `Machine::save_state`/`load_state` with image and cartridge identity checks, a checksum, and verify-before-mutate loading; ROM windows bind F5 (save) and F9 (load) to a `--state-file` slot.
@@ -155,7 +156,7 @@ Individual fetch timing, hardware-accurate work cutoffs, video-bus contention, a
 ROM windows offer opt-in Darwin audio output with `--audio` and explicit save persistence with `--save-file`.
 The [Flash subset](hardware/saves.md) supports programming and erase with nominal delays and bounded DQ7 polling.
 Flash timing, STOP clocking, and cancellation are not hardware-verified. Wider accesses and unverified busy addresses remain diagnostic.
-SRAM, EEPROM, other manufacturers, autosave, crash recovery, and game-level save transactions remain unsupported.
+EEPROM, other Flash manufacturers, SRAM halfword/word access, autosave, crash recovery, and game-level save transactions remain unsupported.
 Persistence is tested on Darwin arm64 with original programs, not yet with external-game saves.
 The optional [cartridge GPIO/RTC subset](hardware/cartridge-gpio.md) supports calendar/control transfers and explicit clock updates, selected with `--rtc` in ROM modes.
 RTC persistence, interrupts, invalid-date correction, physical subsecond timing, GPIO aliases, and byte writes remain unsupported or unverified.

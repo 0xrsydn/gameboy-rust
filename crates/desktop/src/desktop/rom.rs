@@ -18,7 +18,7 @@ pub struct Playback {
     pub speed: u32,
 }
 
-/// Host files for one ROM window: the optional Flash save and the save-state slot.
+/// Host files for one ROM window: the optional cartridge save and the save-state slot.
 pub struct Persistence<'a> {
     pub save_file: Option<&'a mut crate::cartridge::save_file::SaveFile>,
     pub state_path: PathBuf,

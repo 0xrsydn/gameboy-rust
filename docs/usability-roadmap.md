@@ -69,7 +69,7 @@ Next implementation steps:
    Use original regressions for any hardware correction; do not invent connected serial devices.
 2. Validate an external game's completed save/restart/load cycle using a disposable `--save-file` path.
    Refine nominal Flash timing and polling only with independent evidence and original regressions.
-3. Add SRAM separately when the independent candidate requires it; verify widths, mirroring, and waits first.
+3. Byte-wide 32 KiB SRAM is now available with `--save-type sram`. Halfword/word SRAM access stays diagnostic until verified.
 4. Resume the second-game run and implement demonstrated audio requirements rather than accepting writes without behavior.
 
 ## Development loop

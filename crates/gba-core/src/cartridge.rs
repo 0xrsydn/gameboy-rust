@@ -6,6 +6,7 @@ use crate::snapshot::{Reader, Snapshot, SnapshotError, Writer};
 mod calendar;
 mod flash;
 mod rtc;
+mod sram;
 pub use calendar::{RtcDateTime, RtcError};
 use flash::Flash;
 pub(crate) use flash::SaveMutation;
@@ -13,6 +14,7 @@ pub use flash::{
     SaveDevice, SaveError, FLASH_ERASE_CYCLES, FLASH_PROGRAM_CYCLES, SAVE_END, SAVE_START,
 };
 use rtc::Rtc;
+use sram::Sram;
 
 pub const GPIO_DATA: u32 = 0x0800_00c4;
 pub const GPIO_DIRECTION: u32 = 0x0800_00c6;
@@ -31,6 +33,7 @@ pub enum CartridgeHardware {
 pub(crate) struct Cartridge {
     gpio: Option<Gpio>,
     flash: Option<Flash>,
+    sram: Option<Sram>,
 }
 
 impl Cartridge {
@@ -40,14 +43,23 @@ impl Cartridge {
 
     pub(crate) fn set_save_device(&mut self, device: SaveDevice) {
         self.flash = Flash::new(device);
+        self.sram = (device == SaveDevice::Sram).then(Sram::default);
     }
 
     pub(crate) fn save_device(&self) -> SaveDevice {
+        if self.sram.is_some() {
+            return SaveDevice::Sram;
+        }
         self.flash.map_or(SaveDevice::None, Flash::device)
     }
 
     pub(crate) fn save_mapped(&self, address: u32) -> bool {
-        self.flash.is_some() && (SAVE_START..=SAVE_END).contains(&address)
+        (self.flash.is_some() || self.sram.is_some()) && (SAVE_START..=SAVE_END).contains(&address)
+    }
+
+    /// Flash reads are restricted to work-RAM code; SRAM has no such limit.
+    pub(crate) fn flash_mapped(&self, address: u32) -> bool {
+        self.flash.is_some() && self.save_mapped(address)
     }
 
     pub(crate) fn advance(&mut self, cycles: u32) {
@@ -57,14 +69,20 @@ impl Cartridge {
     }
 
     pub(crate) fn save_unfinished(&self) -> bool {
-        self.flash.is_some_and(Flash::unfinished)
+        self.flash.is_some_and(Flash::unfinished) || self.sram.is_some_and(Sram::unfinished)
     }
 
     pub(crate) fn take_save_mutation(&mut self) -> Option<SaveMutation> {
+        if let Some(sram) = self.sram.as_mut() {
+            return sram.take_mutation();
+        }
         self.flash.as_mut().and_then(Flash::take_mutation)
     }
 
     pub(crate) fn read_save8(&self, address: u32, image: &[u8]) -> Result<u8, MemoryError> {
+        if let Some(sram) = self.sram {
+            return Ok(sram.read(address, image));
+        }
         self.flash.expect("mapped save device").read(address, image)
     }
 
@@ -125,8 +143,15 @@ impl Cartridge {
             if bytes.len() != 1 {
                 return Err(MemoryError::UnsupportedCartridgeAccess {
                     address,
-                    operation: "Flash non-byte write",
+                    operation: if self.sram.is_some() {
+                        "SRAM non-byte write"
+                    } else {
+                        "Flash non-byte write"
+                    },
                 });
+            }
+            if let Some(sram) = self.sram.as_mut() {
+                return sram.write(address, bytes[0]);
             }
             return self.flash.as_mut().unwrap().write(address, bytes[0], image);
         }
@@ -180,16 +205,14 @@ impl Gpio {
 impl Cartridge {
     /// Host configuration, not state: cartridge hardware then save device, one byte each.
     pub(crate) fn setup_identity(&self) -> [u8; 2] {
-        let device = self
-            .flash
-            .as_ref()
-            .map_or(SaveDevice::None, |flash| flash.device());
+        let device = self.save_device();
         [
             u8::from(self.gpio.is_some()),
             match device {
                 SaveDevice::None => 0,
                 SaveDevice::Flash64 => 1,
                 SaveDevice::Flash128 => 2,
+                SaveDevice::Sram => 3,
             },
         ]
     }
@@ -197,7 +220,7 @@ impl Cartridge {
 
 impl Snapshot for Cartridge {
     fn save(&self, writer: &mut Writer) {
-        let Self { gpio, flash } = self;
+        let Self { gpio, flash, sram } = self;
         writer.tag(b"CART");
         writer.raw(&self.setup_identity());
         if let Some(gpio) = gpio {
@@ -206,10 +229,14 @@ impl Snapshot for Cartridge {
         if let Some(flash) = flash {
             flash.save(writer);
         }
+        if let Some(sram) = sram {
+            sram.save(writer);
+        }
     }
 
     fn load(&mut self, reader: &mut Reader<'_>) -> Result<(), SnapshotError> {
-        let Self { gpio, flash } = self;
+        let target_device = self.save_device();
+        let Self { gpio, flash, sram } = self;
         reader.tag(b"CART")?;
 
         let hardware = reader.u8()?;
@@ -224,11 +251,9 @@ impl Snapshot for Cartridge {
             0 => SaveDevice::None,
             1 => SaveDevice::Flash64,
             2 => SaveDevice::Flash128,
+            3 => SaveDevice::Sram,
             _ => return Err(SnapshotError::Corrupt("save device")),
         };
-        let target_device = flash
-            .as_ref()
-            .map_or(SaveDevice::None, |flash| flash.device());
         if save_device != target_device {
             return Err(SnapshotError::ConfigMismatch("save device"));
         }
@@ -238,6 +263,9 @@ impl Snapshot for Cartridge {
         }
         if let Some(flash) = flash {
             flash.load(reader)?;
+        }
+        if let Some(sram) = sram {
+            sram.load(reader)?;
         }
         Ok(())
     }
