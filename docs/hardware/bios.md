@@ -98,10 +98,10 @@ Div, Sqrt, ArcTan, and CpuFastSet are shaped and padded to the firmware cycle co
 - ArcTan and CpuFastSet match the measured cost for the tested inputs. ArcTan's multiply costs follow the CPU's
   early-termination rule, so other inputs may differ by a few cycles.
 
-Div and ArcTan return through a shorter exit that keeps r0, r1, and r3 in registers. Sqrt and CpuFastSet match every
-measured case except ROM callers with the GamePak prefetch buffer enabled (one cycle slow, from the prefetch model).
-With the firmware-style frame, Div's fixed part is 4 cycles over the measurements and ArcTan's 3. Other services keep
-their functional timing.
+Div and ArcTan return r0, r1, and r3 in registers and drop the service frame without reading it. Their scratch values
+live in r11 and r12, which the Supervisor exit restores, so the caller's r2 is never written; ArcTan reloads only the
+caller's lr after its internal call. With that exit and their padding, all four services match every measured case,
+including ROM callers with the Game Pak prefetch buffer enabled. Other services keep their functional timing.
 
 **IRQ callback contract:** install a word-aligned ARM callback address at `0x03007ffc` after boot.
 The dispatcher saves r0–r3, r12, and lr on the IRQ stack, then calls it with r0 equal to `0x04000000`.

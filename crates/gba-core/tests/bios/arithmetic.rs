@@ -232,6 +232,6 @@ fn service_costs_follow_the_firmware_measurements() {
     assert_eq!(service_cycles(8, [0xff, 0, 0]) - sqrt_zero, 115);
     // 1137 - 104 on hardware, less 2 for the test's LDR r0,= in place of MOV r0,#.
     assert_eq!(service_cycles(8, [0x1234_5678, 0, 0]) - sqrt_zero, 1031);
-    // Hardware: equal. This firmware's ArcTan fixed part is 3 cycles longer.
-    assert_eq!(service_cycles(9, [0xff, 0, 0]), sqrt_zero + 3);
+    // Hardware: ArcTan of 0xff costs the same as Sqrt of zero.
+    assert_eq!(service_cycles(9, [0xff, 0, 0]), sqrt_zero);
 }

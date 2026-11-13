@@ -11,9 +11,10 @@ pub(super) const ARCTAN2_R3: u32 = 0x170;
 pub(super) fn emit(a: &mut ArmImage) {
     // Any 32-bit input is accepted; products keep their low 32 bits as on hardware.
     a.label("arctan");
-    a.call("atan_polynomial");
-    a.emit(0xe1a0_3002); // MOV r3,r2 (r1 = negated squared ratio, r3 = polynomial sum)
-    super::emit_return_results(a);
+    a.call("atan_polynomial"); // r1 = negated squared ratio, r3 = polynomial sum
+    super::pad(a, 1); // Measured firmware cost; see docs/hardware/bios.md.
+    a.emit(0xe59d_e014); // LDR lr,[sp,#20] (the call replaced the caller's lr)
+    super::emit_return_registers(a);
 
     a.label("arctan2");
     a.emit(0xe92d_0070); // STMDB sp!,{r4-r6} (40 bytes total SVC stack use)
@@ -112,23 +113,24 @@ pub(super) fn emit(a: &mut ArmImage) {
     a.emit(0xe8bd_0070); // LDMIA sp!,{r4-r6}
     a.branch(14, "return");
 
-    // Shared leaf kernel: r0 is signed Q2.14. Returns r1 = -(r0*r0 >> 14) and r2 = the
-    // polynomial sum; r3 is scratch. Every multiply keeps its low 32 bits before the shift.
+    // Shared leaf kernel: r0 is signed Q2.14. Returns r1 = -(r0*r0 >> 14) and r3 = the
+    // polynomial sum. r12 is scratch; the Supervisor exit restores it, so the caller's r2
+    // is never touched. Every multiply keeps its low 32 bits before the shift.
     a.label("atan_polynomial");
     a.emit(0xe001_0090); // MUL r1,r0,r0
     a.emit(0xe1a0_1741); // MOV r1,r1,ASR #14
     a.emit(0xe261_1000); // RSB r1,r1,#0 (negative squared ratio)
-    a.emit(0xe3a0_20a9); // MOV r2,#0xa9
+    a.emit(0xe3a0_30a9); // MOV r3,#0xa9
     for coefficient in [0x390, 0x91c, 0xfb6, 0x16aa, 0x2081, 0x3651, 0xa2f9] {
-        a.emit(0xe003_0192); // MUL r3,r2,r1
-        a.emit(0xe1a0_2743); // MOV r2,r3,ASR #14
-                             // ADD r2,r2,#coefficient, as immediates of at most eight significant bits.
+        a.emit(0xe00c_0193); // MUL r12,r3,r1
+        a.emit(0xe1a0_374c); // MOV r3,r12,ASR #14
+                             // ADD r3,r3,#coefficient, as immediates of at most eight significant bits.
         for chunk in immediate_chunks(coefficient) {
-            a.emit(0xe282_2000 | chunk);
+            a.emit(0xe283_3000 | chunk);
         }
     }
-    a.emit(0xe003_0290); // MUL r3,r0,r2
-    a.emit(0xe1a0_0843); // MOV r0,r3,ASR #16 (signed angle)
+    a.emit(0xe00c_0390); // MUL r12,r0,r3
+    a.emit(0xe1a0_084c); // MOV r0,r12,ASR #16 (signed angle)
     a.emit(0xe12f_ff1e); // BX lr
 }
 

@@ -1,12 +1,12 @@
 //! Original integer algorithms emitted as ARM instructions, not host calculations.
 
-use super::{emit_return, emit_return_results, pad, ArmImage};
+use super::{emit_return, emit_return_registers, pad, ArmImage};
 
 pub(super) fn emit(a: &mut ArmImage) {
     a.label("div_arm");
-    a.emit(0xe1a0_2000); // MOV r2,r0
+    a.emit(0xe1a0_b000); // MOV r11,r0
     a.emit(0xe1a0_0001); // MOV r0,r1
-    a.emit(0xe1a0_1002); // MOV r1,r2 (exchange input operands)
+    a.emit(0xe1a0_100b); // MOV r1,r11 (exchange input operands)
     a.label("div");
     a.emit(0xe351_0000); // CMP r1,#0
     a.branch(0, "div_zero");
@@ -19,18 +19,20 @@ pub(super) fn emit(a: &mut ArmImage) {
     a.emit(0x2260_0000); // RSBCS r0,r0,#0
                          // Shift-subtract division. Each divisor doubling costs 5 cycles and each quotient bit 8,
                          // so a quotient of k+1 bits costs 13 cycles per bit, the firmware's measured rate.
-    a.emit(0xe1a0_2001); // MOV r2,r1 (shifted divisor; return_results restores r2)
+                         // The shifted divisor lives in r11, which the Supervisor exit restores, so the
+                         // caller's r2 is never touched and the exit has nothing to reload.
+    a.emit(0xe1a0_b001); // MOV r11,r1
     a.label("div_double");
-    a.emit(0xe152_00a0); // CMP r2,r0,LSR #1
-    a.emit(0x91a0_2082); // MOVLS r2,r2,LSL #1
+    a.emit(0xe15b_00a0); // CMP r11,r0,LSR #1
+    a.emit(0x91a0_b08b); // MOVLS r11,r11,LSL #1
     a.branch(9, "div_double"); // BLS
     a.emit(0xe3a0_3000); // MOV r3,#0 (quotient magnitude, also the r3 output)
     a.label("div_bit");
-    a.emit(0xe150_0002); // CMP r0,r2
-    a.emit(0x2040_0002); // SUBCS r0,r0,r2 (remainder magnitude)
+    a.emit(0xe150_000b); // CMP r0,r11
+    a.emit(0x2040_000b); // SUBCS r0,r0,r11 (remainder magnitude)
     a.emit(0xe0a3_3003); // ADC r3,r3,r3 (quotient * 2 + comparison carry)
-    a.emit(0xe1a0_20a2); // MOV r2,r2,LSR #1
-    a.emit(0xe152_0001); // CMP r2,r1
+    a.emit(0xe1a0_b0ab); // MOV r11,r11,LSR #1
+    a.emit(0xe15b_0001); // CMP r11,r1
     a.branch(2, "div_bit"); // BHS
                             // N = numerator sign (bit 30), C = quotient sign (bit 31).
     a.emit(0xe1b0_c08c); // MOVS r12,r12,LSL #1
@@ -38,7 +40,7 @@ pub(super) fn emit(a: &mut ArmImage) {
     a.emit(0x51a0_1000); // MOVPL r1,r0
     a.emit(0x2263_0000); // RSBCS r0,r3,#0 (signed quotient)
     a.emit(0x31a0_0003); // MOVCC r0,r3
-    emit_return_results(a);
+    emit_return_registers(a);
     a.label("div_zero");
     // Hardware returns from a zero divisor only for numerators -1, 0, and 1; other numerators
     // hang the firmware, which stays a diagnostic here.
@@ -97,6 +99,6 @@ pub(super) fn emit(a: &mut ArmImage) {
     emit_return(a); // The saved r0 already holds the zero result.
 }
 
-const DIV_PAD: usize = 0;
+const DIV_PAD: usize = 2;
 const SQRT_PAD: usize = 0;
 const SQRT_ZERO_PAD: usize = 42;

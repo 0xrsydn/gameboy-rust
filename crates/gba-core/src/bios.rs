@@ -290,10 +290,6 @@ pub fn image() -> Vec<u8> {
     a.label("return");
     emit_return(&mut a);
 
-    // Shorter exit for services that return r0, r1, and r3 in registers.
-    // It restores r2 and the caller's lr from the frame.
-    a.label("return_results");
-    emit_return_results(&mut a);
     a.label("unsupported");
     a.emit(UNSUPPORTED_TRAP);
     a.label("invalid_argument");
@@ -315,6 +311,14 @@ fn emit_return_results(a: &mut ArmImage) {
     a.emit(0xe28d_d008); // ADD sp,sp,#8 (saved r0-r1)
                          // r11 takes the saved r3 as a dummy; the exit restores the caller's r11.
     a.emit(0xe8bd_5804); // LDMIA sp!,{r2,r11,r12,lr}
+    emit_supervisor_exit(a);
+}
+
+/// Return r0, r1, and r3 in registers and drop the service frame unread. The service must
+/// have left r2 and the System-mode lr as the caller had them; the Supervisor exit restores
+/// r11 and r12.
+fn emit_return_registers(a: &mut ArmImage) {
+    a.emit(0xe28d_d018); // ADD sp,sp,#24 (saved r0-r3, r12, lr)
     emit_supervisor_exit(a);
 }
 
