@@ -1,5 +1,5 @@
 //! Original Joybus transaction, CPU access, and preflight regressions.
-use super::{timing_event_tests::prepared, *};
+use super::timing_event_tests::prepared;
 use crate::{
     io::{IF, JOYCNT, JOYSTAT, JOY_RECV, JOY_TRANS, RCNT, SIOCNT},
     machine::Machine,
@@ -17,7 +17,8 @@ fn arm_and_thumb_transmit_stores_commit_pending_status_once() {
         memory.write16(JOYCNT, 0x40).unwrap();
         let mut machine = Machine::new(cpu, memory);
         machine.step().unwrap();
-        assert_eq!(machine.memory().read32(JOY_TRANS).unwrap(), 0x12345678);
+        // The latch is not readable back; JOYSTAT reports it pending.
+        assert_eq!(machine.memory().read32(JOY_TRANS).unwrap(), 0);
         assert_eq!(machine.memory().read16(JOYSTAT).unwrap(), 2);
         assert_eq!(machine.memory().read16(IF).unwrap(), 0);
         assert_eq!(machine.memory().io.serial.next_event_cycles(), None);
@@ -61,8 +62,9 @@ fn block_store_over_joystat_padding_commits_data_pending_status_and_writeback() 
     let mut machine = Machine::new(cpu, memory);
     machine.step().unwrap();
     assert_eq!(machine.cpu().registers()[0], JOY_RECV + 12);
-    assert_eq!(machine.memory().read32(JOY_RECV).unwrap(), 0x12345678);
-    assert_eq!(machine.memory().read32(JOY_TRANS).unwrap(), 0xabcdef90);
+    // JOY_RECV ignores CPU writes; JOY_TRANS reads zero, as the mGBA suite measured.
+    assert_eq!(machine.memory().read32(JOY_RECV).unwrap(), 0);
+    assert_eq!(machine.memory().read32(JOY_TRANS).unwrap(), 0);
     // Software flags from the store, plus transmit pending from the JOY_TRANS write.
     assert_eq!(machine.memory().read16(JOYSTAT).unwrap(), 0x32);
 }
@@ -77,11 +79,12 @@ fn staged_reads_see_transmit_pending_before_commit_and_discard_restores_every_la
     memory.write32(JOY_TRANS, 0x12345678).unwrap();
     memory.write32(JOY_RECV, 0xabcdef90).unwrap();
     memory.write16(JOYSTAT, 0x30).unwrap();
-    assert_eq!(memory.read32(JOY_TRANS).unwrap(), 0x12345678);
-    assert_eq!(memory.read32(JOY_RECV).unwrap(), 0xabcdef90);
+    assert_eq!(memory.read32(JOY_TRANS).unwrap(), 0);
+    assert_eq!(memory.read32(JOY_RECV).unwrap(), 0);
     assert_eq!(memory.read16(JOYSTAT).unwrap(), 0x32);
     assert_eq!(memory.read16(JOYCNT).unwrap(), 0x40);
-    assert_eq!(memory.read8(RCNT), Err(MemoryError::Unmapped(RCNT)));
+    // Joybus pins without a cable: SC and SD low, SI and SO high.
+    assert_eq!(memory.read16(RCNT).unwrap(), 0xc10c);
     assert_eq!(memory.io.serial, serial);
     memory.discard_timer_step();
     assert_eq!(memory.io.serial, serial);

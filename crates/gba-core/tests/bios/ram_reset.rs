@@ -259,7 +259,6 @@ fn serial_sound_reset_flags_are_selective_and_all_devices_return() {
             complete(&mut m, pc);
             check_samples(&m, flags);
             let bus = m.memory();
-            assert_eq!(bus.read32(SIODATA32).unwrap(), MARKER & 0xffff0000); // Unconditional low-halfword clear.
             assert_eq!(
                 bus.read16(SIODATA8).unwrap(),
                 if flags & 0x20 != 0 { 0 } else { 0x55 }
@@ -287,6 +286,11 @@ fn serial_sound_reset_flags_are_selective_and_all_devices_return() {
                     if flags & 0x40 != 0 { 0 } else { 0x5a }
                 );
             }
+            // SIODATA32 reads only in normal 32-bit mode. Its low halfword clear is unconditional.
+            let bus = m.memory_mut();
+            bus.write16(RCNT, 0).unwrap();
+            bus.write16(SIOCNT, 0x1000).unwrap();
+            assert_eq!(bus.read32(SIODATA32).unwrap(), MARKER & 0xffff0000);
         }
     }
 }
@@ -304,11 +308,9 @@ fn serial_reset_clears_joybus_data_and_irq_enable_without_fabricating_a_master()
             m.memory_mut().write16(JOYSTAT, 0x30).unwrap();
             complete(&mut m, pc);
             let selected = flags & 0x20 != 0;
+            // JOY_RECV ignores CPU writes and JOY_TRANS reads zero either way.
             for address in [JOY_RECV, JOY_TRANS] {
-                assert_eq!(
-                    m.memory().read32(address).unwrap(),
-                    if selected { 0 } else { MARKER }
-                );
+                assert_eq!(m.memory().read32(address).unwrap(), 0);
             }
             assert_eq!(
                 m.memory().read16(JOYCNT).unwrap(),

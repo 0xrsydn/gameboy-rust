@@ -51,21 +51,22 @@ fn disconnected_gpio_inputs_pull_high_and_outputs_follow_latches() {
     bus.write8(RCNT, 0x22).unwrap();
     assert_eq!(bus.read16(RCNT).unwrap(), 0x802f);
     bus.write16(RCNT, 0).unwrap();
-    assert!(bus.read8(RCNT).is_err()); // Unsupported normal-mode pin readback is not guessed.
-    assert_eq!(bus.read8(RCNT + 1).unwrap(), 0);
+    // Idle normal mode, as the mGBA suite measured: SC and SI high, SD and SO low.
+    assert_eq!(bus.read16(RCNT).unwrap(), 0x0005);
 }
 
 #[test]
 fn idle_normal_serial_data_and_control_have_distinct_widths() {
     let mut bus = memory();
     bus.write32(SIODATA32, 0x12345678).unwrap();
+    assert_eq!(bus.read32(SIODATA32).unwrap(), 0); // Readable only in 32-bit mode.
+    bus.write16(SIODATA8, 0xabcd).unwrap();
+    assert_eq!(bus.read16(SIODATA8).unwrap(), 0xabcd);
+    bus.write16(SIOCNT, 0x500b).unwrap();
+    assert_eq!(bus.read16(SIOCNT).unwrap(), 0x500f); // Disconnected SI is high.
     assert_eq!(bus.read32(SIODATA32).unwrap(), 0x12345678);
     bus.write16(SIODATA32, 0).unwrap();
     assert_eq!(bus.read32(SIODATA32).unwrap(), 0x12340000);
-    bus.write16(SIODATA8, 0xabcd).unwrap();
-    assert_eq!(bus.read16(SIODATA8).unwrap(), 0xcd);
-    bus.write16(SIOCNT, 0x500b).unwrap();
-    assert_eq!(bus.read16(SIOCNT).unwrap(), 0x500f); // Disconnected SI is high.
     bus.advance_cycles(1000000);
     assert_eq!(bus.read16(SIOCNT).unwrap(), 0x500f); // No fabricated completion or IRQ.
     assert_eq!(bus.read16(0x04000202).unwrap() & 0x80, 0);
@@ -76,20 +77,33 @@ fn idle_normal_serial_data_and_control_have_distinct_widths() {
 #[test]
 fn unsupported_operations_have_specific_retryable_diagnostics() {
     let mut bus = memory();
-    for (address, value, description) in [
-        (SIOCNT + 1, 0x30, "UART serial mode"),
-        (RCNT + 1, 0x81, "GPIO serial interrupt"),
+    // UART and GPIO-interrupt configuration alone is accepted.
+    for (setup, address, value, description) in [
+        ((SIOCNT, 0x3400), SIODATA8, 0x55, "UART transmission"),
+        // SI input pulled high: no edge until it is driven low.
+        (
+            (RCNT, 0x8100),
+            RCNT,
+            0x40,
+            "GPIO serial interrupt with SI low",
+        ),
     ] {
+        bus.write16(setup.0, setup.1).unwrap();
+        if setup.0 == SIOCNT {
+            assert_eq!(bus.read16(SIOCNT).unwrap(), 0x3420); // Receive buffer empty.
+        }
         let error = bus.write8(address, value).unwrap_err();
         assert!(matches!(error, MemoryError::UnsupportedIo { .. }));
         assert!(error.to_string().contains(description));
         assert_eq!(bus.write8(address, value), Err(error));
+        bus.write16(setup.0, 0).unwrap();
     }
     bus.write16(RCNT, 0x8055).unwrap();
-    assert!(bus.write16(RCNT, 0x81aa).is_err());
+    assert!(bus.write16(RCNT, 0x8140).is_err());
     assert_eq!(bus.read16(RCNT).unwrap(), 0x805f); // Low byte was not committed.
+    bus.write16(RCNT, 0).unwrap(); // RCNT bit 15 would override the UART selection.
     bus.write16(SIOCNT, 0x4008).unwrap();
-    assert!(bus.write32(SIOCNT, 0xaabb3080).is_err());
+    assert!(bus.write32(SIOCNT, 0xaabb3480).is_err());
     assert_eq!(bus.read16(SIOCNT).unwrap(), 0x400c);
     assert_eq!(bus.read16(SIODATA8).unwrap(), 0);
 }

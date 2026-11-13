@@ -195,7 +195,7 @@ fn diagnostics_do_not_advance_timers_or_clock() {
 #[test]
 fn late_block_store_error_does_not_change_timer_reload_or_enable() {
     let mut machine = prepared(
-        0xe8a0_07fe,
+        0xe8a0_0ffe,
         &[
             (0, TIMER_BASE),
             (1, 0x00c0_ffff),
@@ -203,8 +203,9 @@ fn late_block_store_error_does_not_change_timer_reload_or_enable() {
             (3, 0x00c0_ffff),
             (4, 0x00c0_ffff),
             (5, 123),
+            (11, 0x3400),
         ],
-    ); // STMIA r0!, {r1-r10}; unused words are ignored, and r10 reaches SIOMULTI2
+    ); // STMIA r0!, {r1-r11}; unused words are ignored, and r11 starts a UART send
     let before = machine.cpu().clone();
     assert!(machine.step().is_err());
     assert_eq!(machine.cpu(), &before);

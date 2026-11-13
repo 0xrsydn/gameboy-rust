@@ -58,7 +58,11 @@ fn every_shift_edge_samples_high_and_completion_occurs_after_exactly_eight_or_th
                     if wide {
                         assert_eq!(bus.read8(SIODATA8).unwrap(), seed as u8);
                     } else {
+                        // 8-bit mode reads SIODATA32 as zero; its latch is unchanged.
+                        assert_eq!(bus.read32(SIODATA32).unwrap(), 0);
+                        bus.write16(SIOCNT, 0x1000).unwrap();
                         assert_eq!(bus.read32(SIODATA32).unwrap(), seed);
+                        bus.write16(SIOCNT, control & !0x80).unwrap();
                     }
                     bus.write16(IF, 0x80).unwrap();
                     bus.advance_cycles(u32::MAX);

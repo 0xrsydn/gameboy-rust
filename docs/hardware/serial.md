@@ -2,25 +2,33 @@
 
 The core supports disconnected normal-mode transfers, external-clock waiting, idle multiplayer, local Joybus registers, and general-purpose pins.
 Internal clocks shift pulled-high input at nominal GBA rates. No link partner is emulated.
-External clock edges, connected multiplayer transfers, UART, Joybus communication, and GPIO interrupts remain unsupported.
+External clock edges, connected multiplayer transfers, UART transfers, Joybus communication, and GPIO interrupt edges remain unsupported.
 Unsupported activity remains diagnostic rather than reporting a fabricated completion.
 
 ## Registers
 
 - `SIODATA32` at `0x04000120` holds the 32-bit shift register. Byte lanes and halfword accesses are supported.
-- `SIODATA8` at `0x0400012a` holds the 8-bit shift register; its upper byte reads zero.
+  It reads back only in normal 32-bit mode, and as SIOMULTI0–1 in multiplayer. Other modes read zero, but writes
+  outside multiplayer still reach the latch.
+- `SIODATA8` at `0x0400012a` holds the 8-bit shift register. Both bytes are readable and writable, and transfers shift
+  only the low byte. In UART mode it reads zero, an empty receive buffer.
   Each transfer shifts only its selected data register. The other register retains its value.
 - `SIOCNT` at `0x04000128` retains normal 8/32-bit mode, IRQ configuration, clock selection, and the output-data bit.
-  The retained mask is `0x508b`. The disconnected serial input is high, except when a general-purpose output drives it low.
+  The retained mask is `0x5f8b`, including unused bits 8–11. The disconnected serial input is high, except when a general-purpose output drives it low.
   Start bit 7 requests a transfer. Bit 0 selects external or internal clock; bit 1 selects the internal rate.
-  Completion or software cancellation clears start. Multiplayer uses the separate format described below; UART remains diagnostic.
+  Completion or software cancellation clears start. Multiplayer uses the separate format described below.
+  UART format retains `0x7f8f` and reads bit 5 set (receive buffer empty). A SIODATA8 write while UART sending is
+  enabled (bit 10) is diagnostic, because no partner receives it.
 - `RCNT` at `0x04000134` retains mode bits, interrupt configuration, output latches, and pin directions with mask `0xc1ff`.
   With bit 15 clear, bits 8 and 14 are writable latches without GPIO interrupt or Joybus effects.
   With bit 15 set, bit 14 selects Joybus; bit 8 is unused in that mode.
-  With bit 15 set and bit 14 clear, bit 8 enables GPIO interrupts, which remain diagnostic.
+  With bit 15 set and bit 14 clear, bit 8 enables GPIO interrupts on a falling SI edge. With SI an input, it stays
+  high and no interrupt occurs. Driving SI low with the interrupt enabled is diagnostic; the edge timing is unverified.
   In general-purpose mode, each input reads high through its pull-up. Each output reads its output latch.
   `RCNT=0x8000` therefore reads back as `0x800f`, not `0x8000`.
-  Normal, multiplayer, and Joybus low-byte pin readback remains unmapped rather than guessed.
+  Outside GPIO mode, bits 0–3 read the disconnected pins that the [mGBA test suite](../public-mgba-suite.md) measured:
+  `0x5` in idle normal mode (SC and SI high), plus SO from SIOCNT bit 3; `0xf` in multiplayer and UART; `0xc` in Joybus.
+  During a normal transfer the low byte stays unmapped, because the SC/SO waveform is not modeled.
 - `JOYCNT`, `JOY_RECV`, `JOY_TRANS`, and `JOYSTAT` support the disconnected configuration described below.
 
 GPIO means general-purpose input/output. UART means universal asynchronous receiver/transmitter.
@@ -97,36 +105,35 @@ Original tests cover individual shifts, batching, cancellation, IRQ gating, HALT
 ## Disconnected multiplayer configuration
 
 With RCNT bit 15 clear, SIOCNT mode bits 12–13 equal to `2` select multiplayer format.
-The retained control mask is `0x6f03`: baud selection, unused writable bits 8–11, mode, and IRQ enable.
+The retained control mask is `0x6f83`: baud selection, start, unused writable bits 8–11, mode, and IRQ enable.
 This subset models an idle unit without a cable, not a parent with missing players.
 
 - SI reads high in status bit 2, identifying a child rather than a parent.
 - SD reads high in bit 3 because the local idle output is high. This does not establish connected peers.
 - ID bits 4–5 read a deterministic zero placeholder. Hardware does not define the ID before a completed transfer.
   Zero must not be interpreted as an assigned parent role; SI determines that role.
-- Error bit 6 and busy bit 7 remain clear. No parent supplies the clock that starts a child transfer.
-- Start is read-only for a child. Writing it cannot start a transfer, reset receive data, or request an IRQ.
+- Error bit 6 stays clear. Start bit 7 reads back as written, as the suite measured (`0x6f8f` after writing `0xefff`).
+  No parent supplies the clock that starts a child transfer, so writing start cannot start a transfer, reset receive
+  data, or request an IRQ.
 
 All baud settings retain this idle behavior. Elapsed cycles, DMA, and repeated start writes cannot create a linked transfer.
 No multiplayer event can wake HALT. STOP retains the configuration without advancing clocks.
 When GPIO is selected, SI/SD status follows the existing GPIO pin model; multiplayer transfers still cannot run.
-RCNT low-byte samples remain unmapped outside GPIO mode. Floating clock-pin timing is not guessed.
+Without GPIO, RCNT bits 0–3 read `0xf`.
 
 ### Multiplayer data registers
 
 `SIOMLT_SEND` at `0x0400012a` is a 16-bit latch in multiplayer format.
-It shares its low byte with normal-mode SIODATA8. Normal upper-byte reads return zero and writes are ignored.
-Normal 8-bit shifts change only the low byte. The hidden upper byte survives mode changes in this bounded model.
+It is the same 16-bit register as normal-mode SIODATA8. Normal 8-bit shifts change only the low byte.
 A word write to SIOCNT selects the final format before applying both SEND lanes.
 
 `SIOMULTI0` through `SIOMULTI3` occupy halfwords at `0x04000120`, `0x04000122`, `0x04000124`, and `0x04000126`.
-The first two alias SIODATA32. The last two are accessible only with multiplayer format selected, including under GPIO.
-Byte, halfword, and word accesses preserve independent lanes.
-Receive latches start at zero under the synthetic reset policy and retain data across mode changes.
+The first two alias SIODATA32. Only a transfer writes them: CPU and DMA writes are ignored in multiplayer, and
+SIOMULTI2–3 read zero in every mode, as the suite measured.
 Selecting multiplayer or writing child start does not replace them with `0xffff`, local SEND data, or invented peer data.
 
-Receive writes follow GBATEK's R/W register description. The pinned mGBA implementation instead leaves these writes unhandled.
-Physical receive-write behavior, reset values, and hidden upper-byte retention have not been independently measured.
+GBATEK describes these registers as R/W; the suite's hardware results show that CPU writes do not reach them.
+Reset values have not been independently measured.
 These are bounded register-model choices, not evidence of successful reception or full firmware-reset accuracy.
 
 ### Validation and limits
@@ -145,15 +152,14 @@ There is no parent, cable topology, external clock input, multiplayer timeout, o
 RCNT bits 14–15 both set select Joybus. The GBA is a slave; an external master must initiate communication.
 This subset has no master, cable, commands, or external clock input. Selecting the mode does not start communication.
 RCNT bit 8 remains a writable inactive latch, not a GPIO interrupt enable.
-RCNT low-byte pin samples remain unmapped: GPIO output latches must not substitute for unverified Joybus pin levels.
-SIOCNT is unused in Joybus. Its existing format latches remain readable without synthetic SI/SD status or internal shifting.
-UART-format writes still return the existing diagnostic, including while Joybus is selected.
+RCNT bits 0–3 read `0xc` without a cable (SC and SD low, SI and SO high), as the suite measured.
+SIOCNT is unused in Joybus. Its latches remain readable with SI high in bit 2, and nothing shifts.
 
 - `JOYCNT` at `0x04000140` retains interrupt enable in bit 6. Unused bits read zero.
   Reset, receive-complete, and send-complete flags in bits 0–2 are write-one-to-clear.
   They remain zero because no master can produce those events. Enabling interrupts cannot itself request IF bit 7.
-- `JOY_RECV` at `0x04000150` and `JOY_TRANS` at `0x04000154` retain independent 32-bit data latches.
-  Byte, halfword, and word accesses preserve other lanes. Synthetic initial data is zero, not received peer data.
+- `JOY_RECV` at `0x04000150` and `JOY_TRANS` at `0x04000154` read zero in every mode, as the suite measured.
+  CPU writes to JOY_RECV are ignored. JOY_TRANS writes are latched for a master but do not read back.
   Local receive writes do not set receive status or a completion flag.
 - `JOYSTAT` at `0x04000158` retains software flags in bits 4–5.
   Every local transmit-data write sets bit 1, including a zero write or a write to an upper lane.
@@ -168,10 +174,9 @@ A normal completion at the write's bus phase remains pending in IF after the mod
 Registers participate in serial transactions, including failed CPU/DMA access rollback and block-store preflight.
 Word accesses to JOYCNT and JOYSTAT reject unmapped upper padding without partial writes.
 
-Local Joybus registers remain accessible in other modes under this bounded latch model.
-Receive writes follow GBATEK's R/W description; the pinned mGBA implementation leaves them unhandled rather than storing them.
+Local Joybus registers remain accessible in other modes.
 mGBA corroborates JOYCNT/JOYSTAT masks in Joybus and sets transmit pending from either halfword outside mode dispatch.
-Cross-mode masks, CPU receive writes, synthetic reset values, and byte-lane behavior lack physical-hardware validation.
+Synthetic reset values and transmit-latch byte lanes lack physical-hardware validation.
 These choices do not establish GameCube communication, hardware reset accuracy, or linked-game compatibility.
 
 Original tests cover masks, lanes, pending status, mode gating, inactive IRQ bits, HALT/STOP, and ARM/Thumb/DMA accesses.
@@ -188,7 +193,7 @@ Its zero write to JOY_TRANS sets transmit pending. It does not write JOYSTAT; so
 This is the replacement's functional sequence, not a claim about complete hardware BIOS reset side effects.
 It uses ordinary ARM bus stores, not a host-side reset bypass.
 Clearing SIOCNT cancels a pending external-clock request. Unselected serial reset leaves that request pending.
-The firmware writes SIODATA8 after selecting normal format. This does not clear the retained upper multiplayer SEND byte.
+The firmware writes a zero halfword to SIODATA8 after selecting normal format, clearing both bytes.
 Full multiplayer reset side effects remain unverified; this increment does not extend the firmware reset sequence.
 
 Original tests cover independent byte lanes, input pull-ups, output directions, reset flag selection, and explicit unsupported operations.

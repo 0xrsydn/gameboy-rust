@@ -250,10 +250,6 @@ impl Io {
         address >> 24 == 0x04 && !Self::mapped(address) && address & 0xfffc != 0x0800
     }
 
-    pub(crate) fn unsupported_write(address: u32, value: u8) -> Option<&'static str> {
-        Serial::unsupported(address, value)
-    }
-
     pub(crate) fn read8(&self, address: u32) -> Option<u8> {
         if Audio::mapped(address) {
             return self.audio.read8(address);

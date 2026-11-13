@@ -46,7 +46,9 @@ fn disconnected_external_requests_wait_at_both_widths_and_rates_until_software_c
         for cycles in [1, 63, 64, 512, 2048, 1000000, u32::MAX] {
             bus.advance_cycles(cycles);
             assert_eq!(bus.read16(SIOCNT).unwrap(), control | 4);
-            assert_eq!(bus.read32(SIODATA32).unwrap(), 0x12345678);
+            // SIODATA32 reads back only in 32-bit mode.
+            let data = if control & 0x1000 != 0 { 0x12345678 } else { 0 };
+            assert_eq!(bus.read32(SIODATA32).unwrap(), data);
             assert_eq!(bus.read16(SIODATA8).unwrap(), 0xab);
             assert_eq!(bus.read16(IF).unwrap() & 0x80, 0);
             assert!(!bus.irq_pending());
@@ -55,7 +57,8 @@ fn disconnected_external_requests_wait_at_both_widths_and_rates_until_software_c
         bus.write16(SIOCNT, control).unwrap();
         bus.write8(SIOCNT, 8).unwrap(); // Explicit software cancellation; SO high.
         assert_eq!(bus.read16(SIOCNT).unwrap(), (control & 0x5000) | 12);
-        assert_eq!(bus.read32(SIODATA32).unwrap(), 0x12345678);
+        let data = if control & 0x1000 != 0 { 0x12345678 } else { 0 };
+        assert_eq!(bus.read32(SIODATA32).unwrap(), data);
         assert_eq!(bus.read16(SIODATA8).unwrap(), 0xab);
     }
 }
@@ -145,12 +148,12 @@ fn arm_and_thumb_external_starts_complete_as_instructions_not_as_serial_transfer
                 assert_eq!(machine.memory().read16(SIOCNT).unwrap(), 0x5084);
                 assert_eq!(machine.memory().read16(IF).unwrap() & 0x80, 0);
             } else {
-                let error = machine.step().unwrap_err();
-                assert!(error.to_string().contains("UART serial mode"));
-                assert_eq!(machine.cpu(), &cpu);
-                assert_eq!(machine.cycles(), 0);
-                assert_eq!(machine.memory().read16(SIOCNT).unwrap(), 0x1007);
-                assert_eq!(machine.step(), Err(error));
+                // UART selection alone is accepted; nothing is sent, and the receive buffer
+                // stays empty.
+                assert_eq!(machine.step().unwrap(), StepKind::Instruction);
+                assert_ne!(machine.cpu(), &cpu);
+                assert_eq!(machine.memory().read16(SIOCNT).unwrap(), 0x70a0);
+                assert_eq!(machine.memory().read16(IF).unwrap() & 0x80, 0);
             }
         }
     }
@@ -161,14 +164,15 @@ fn invalid_word_and_block_writes_do_not_leave_a_partial_external_start() {
     let mut bus = memory();
     bus.write16(SIOCNT, 0x5000).unwrap();
     bus.write16(SIODATA8, 0x12).unwrap();
-    assert!(bus.write32(SIOCNT, 0x00ab3080).is_err());
+    assert!(bus.write32(SIOCNT, 0x00ab3480).is_err()); // A UART send.
     assert_eq!(bus.read16(SIOCNT).unwrap(), 0x5004);
     assert_eq!(bus.read16(SIODATA8).unwrap(), 0x12);
     bus.write32(SIOCNT, 0x00ab5080).unwrap();
     assert_eq!(bus.read16(SIOCNT).unwrap(), 0x5084);
     assert_eq!(bus.read16(SIODATA8).unwrap(), 0xab);
 
-    // STMIA r0!,{r1-r4}: SIOCNT, ignored padding, KEYCNT, then RCNT enabling a GPIO serial IRQ.
+    // STMIA r0!,{r1-r4}: SIOCNT, ignored padding, KEYCNT, then RCNT enabling a GPIO serial IRQ
+    // while driving SI low.
     let code = [
         0xe59f_000c_u32,
         0xe59f_100c,
@@ -177,7 +181,7 @@ fn invalid_word_and_block_writes_do_not_leave_a_partial_external_start() {
         0xeaff_fffe,
         SIOCNT,
         0x00ab_5080,
-        0x0000_8100,
+        0x0000_8140,
     ];
     let mut bus = Memory::new(code.into_iter().flat_map(u32::to_le_bytes).collect()).unwrap();
     let mut cpu = Cpu::new(ROM_START);
@@ -188,7 +192,10 @@ fn invalid_word_and_block_writes_do_not_leave_a_partial_external_start() {
     let mut machine = Machine::new(cpu, bus);
     let before = machine.cpu().clone();
     let error = machine.step().unwrap_err();
-    assert!(error.to_string().contains("0x04000135"), "{error}");
+    assert!(
+        error.to_string().contains("GPIO serial interrupt"),
+        "{error}"
+    );
     assert_eq!(machine.cpu(), &before);
     assert_eq!(machine.cycles(), 0);
     assert_eq!(machine.memory().read16(SIOCNT).unwrap(), 0x1007);
@@ -199,13 +206,13 @@ fn invalid_word_and_block_writes_do_not_leave_a_partial_external_start() {
 #[test]
 fn dma_start_preserves_serial_wait_and_reports_only_dma_completion() {
     let mut bus = memory();
-    bus.write32(0x02000000, 0x00ab7080).unwrap();
+    bus.write32(0x02000000, 0x00ab7480).unwrap(); // A UART send.
     bus.write32(DMA_BASE, 0x02000000).unwrap();
     bus.write32(DMA_BASE + 4, SIOCNT).unwrap();
     bus.write32(DMA_BASE + 8, 0xc4000001).unwrap();
     let mut machine = Machine::new(Cpu::new(ROM_START), bus);
     let error = machine.step().unwrap_err();
-    assert!(error.to_string().contains("UART serial mode"));
+    assert!(error.to_string().contains("UART transmission"));
     assert_eq!(machine.step(), Err(error));
     assert_eq!(machine.cycles(), 0);
     assert_eq!(machine.memory().read16(SIOCNT).unwrap(), 4);

@@ -256,7 +256,7 @@ fn original_joybus_program_reports_pending_data_without_a_remote_completion() {
     for expected in [
         "r2=0x00000002",
         "r3=0x00000040",
-        "r4=0x000000a5",
+        "r4=0x00000000", // JOY_TRANS reads zero on hardware.
         "IRQ entries: 0",
     ] {
         assert!(stdout(&output).contains(expected), "{}", stdout(&output));
@@ -687,7 +687,7 @@ fn native_rom_window_presents_file_bytes_and_reports_stop_cpu_and_video_errors()
         "Captured ROM frames: 3",
         "r2=0x00000002",
         "r3=0x00000040",
-        "r4=0x000000a5",
+        "r4=0x00000000", // JOY_TRANS reads zero on hardware.
         "IRQ entries: 0",
     ] {
         assert!(

@@ -31,8 +31,9 @@ fn local_register_masks_do_not_fabricate_remote_events_in_any_mode() {
     }
 }
 
+// The mGBA suite measured JOY_RECV and JOY_TRANS reading zero after CPU writes in every mode.
 #[test]
-fn data_lanes_retain_words_and_transmit_writes_set_pending_not_completion() {
+fn data_words_read_zero_and_transmit_writes_set_pending_not_completion() {
     for mode in [0, 0x8000, 0xc000] {
         for base in [JOY_RECV, JOY_TRANS] {
             let mut bus = memory();
@@ -40,12 +41,10 @@ fn data_lanes_retain_words_and_transmit_writes_set_pending_not_completion() {
             for lane in 0..4 {
                 bus.write8(base + lane, (0x12 + lane * 0x22) as u8).unwrap();
             }
-            assert_eq!(bus.read32(base).unwrap(), 0x78563412);
             bus.write16(base + 2, 0xabcd).unwrap();
-            assert_eq!(bus.read32(base).unwrap(), 0xabcd3412);
             bus.write32(base, 0x98765432).unwrap();
-            assert_eq!(bus.read16(base).unwrap(), 0x5432);
-            assert_eq!(bus.read16(base + 2).unwrap(), 0x9876);
+            assert_eq!(bus.read32(base).unwrap(), 0);
+            assert_eq!(bus.read16(base + 2).unwrap(), 0);
             let pending = if base == JOY_TRANS { 2 } else { 0 };
             assert_eq!(bus.read16(JOYSTAT).unwrap(), pending);
             bus.write16(JOYSTAT, 0xffff).unwrap();
@@ -59,7 +58,6 @@ fn data_lanes_retain_words_and_transmit_writes_set_pending_not_completion() {
             assert_eq!(bus.read16(IF).unwrap(), 0);
             bus.write16(RCNT, 0x8000).unwrap();
             bus.write16(RCNT, 0xc100).unwrap();
-            assert_eq!(bus.read32(base).unwrap(), 0x98765432);
             assert_eq!(bus.read16(JOYSTAT).unwrap(), pending);
         }
     }
@@ -85,11 +83,12 @@ fn joybus_does_not_run_normal_clocks_or_wake_halt_or_stop() {
         assert_eq!(bus.stopped(), stop);
         assert_eq!(bus.halted(), !stop);
         assert_eq!(bus.read8(SIODATA8).unwrap(), 0x12);
-        assert_eq!(bus.read16(SIOCNT).unwrap(), 0x4083);
+        assert_eq!(bus.read16(SIOCNT).unwrap(), 0x4087); // SI pulled high.
         assert_eq!(bus.read16(JOYCNT).unwrap(), 0x40);
         assert_eq!(bus.read16(JOYSTAT).unwrap(), 2);
         assert_eq!(bus.read16(IF).unwrap(), 0);
-        assert_eq!(bus.read8(RCNT), Err(MemoryError::Unmapped(RCNT)));
+        // Joybus pins without a cable: SC and SD low, SI and SO high.
+        assert_eq!(bus.read8(RCNT).unwrap(), 0x0c);
     }
 }
 
@@ -134,7 +133,7 @@ fn dma_transmit_write_has_only_dma_completion_irq() {
     bus.write32(DMA_BASE + 8, 0xc4000001).unwrap();
     let mut machine = Machine::new(Cpu::new(ROM_START), bus);
     assert_eq!(machine.step().unwrap(), StepKind::Dma { channel: 0 });
-    assert_eq!(machine.memory().read32(JOY_TRANS).unwrap(), 0x12345678);
+    assert_eq!(machine.memory().read32(JOY_TRANS).unwrap(), 0);
     assert_eq!(machine.memory().read16(JOYSTAT).unwrap(), 2);
     assert_eq!(machine.memory().read16(IF).unwrap(), 0x100);
     machine.memory_mut().advance_cycles(1000000);

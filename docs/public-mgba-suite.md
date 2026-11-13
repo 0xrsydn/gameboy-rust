@@ -59,7 +59,7 @@ Each sub-suite started from a fresh boot. Repository tooling for this run does n
 | 7 | Multiply long | 52 / 72 | 52 / 72 | — |
 | 8 | BIOS math | 20 / 30 so far | 615 / 615 | — |
 | 9 | DMA | 12 / 12 so far | 1244 / 1244 | — |
-| 10 | SIO read | 1 / 6 so far | 1 / 6 so far | CPU read of unmodeled `RCNT` at `0x04000134` |
+| 10 | SIO read | 1 / 6 so far | 90 / 90 | — |
 | 11 | SIO timing | 4 / 4 | 0 / 4 | — |
 | 12 | Misc. edge | 4 / 12 | 4 / 12 | — |
 | 13 | Video | visual only | visual only | — |

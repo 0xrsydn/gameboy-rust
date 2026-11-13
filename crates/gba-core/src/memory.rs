@@ -1228,9 +1228,7 @@ impl Memory {
         if address >> 24 == 0x04 {
             for (offset, &value) in bytes.iter().enumerate() {
                 let address = address + offset as u32;
-                if let Some(operation) = Io::unsupported_write(address, value)
-                    .or_else(|| audio.unsupported(address, value))
-                {
+                if let Some(operation) = audio.unsupported(address, value) {
                     return Err(MemoryError::UnsupportedIo {
                         address,
                         value,

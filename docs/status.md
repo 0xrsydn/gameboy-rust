@@ -172,10 +172,11 @@ PSG timing and signed mixing are nominal; hardware startup edges and analog beha
 The [serial subset](hardware/serial.md) supports disconnected normal 8/32-bit transfers, external-clock waiting, idle multiplayer configuration, and general-purpose pins.
 Internal clocks shift high input at nominal rates, clear busy, and request completion IRQs. External requests retain busy without clock edges.
 Disconnected multiplayer exposes child/ready status and 16-bit send/receive registers without inventing transfers or completion IRQs.
-Pre-transfer ID is a zero placeholder; receive-write behavior and reset/alias details lack physical-hardware validation.
-Joybus supports local configuration, data latches, and transmit-pending status, without an external master or completion IRQs.
-Connected links, multiplayer transfers, UART, Joybus commands, GPIO interrupts, and unverified mid-transfer reconfiguration remain unsupported.
-RCNT retains inactive bits 8/14 in normal mode and bit 8 in Joybus. Effective GPIO interrupt enable remains diagnostic.
+Register reads in every mode, including UART and the disconnected RCNT pin states, match the mGBA test suite's hardware results.
+Pre-transfer ID is a zero placeholder; reset details lack physical-hardware validation.
+Joybus supports local configuration and transmit-pending status, without an external master or completion IRQs.
+Connected links, multiplayer transfers, UART transfers, Joybus commands, GPIO interrupt edges, and unverified mid-transfer reconfiguration remain unsupported.
+RCNT retains inactive bits 8/14 in normal mode and bit 8 in Joybus. A GPIO interrupt enable with SI driven low remains diagnostic.
 Mapped I/O covers DMA, timers, interrupts, WAITCNT, display control/status, background control/scroll/affine registers, window/effect registers, KEYINPUT/KEYCNT, POSTFLG, and HALTCNT.
 Keypad IRQs use a documented polling model; hardware retrigger edges and asynchronous input timing remain unverified.
 STOP implements keypad wake only. Serial/Game Pak wake sources, oscillator restart delays, and exact wake timing remain unimplemented or unverified.

@@ -124,7 +124,7 @@ fn later_block_diagnostic_discards_an_earlier_calendar_commit() {
         .write_words(&[
             (GPIO_DATA, 0x00070005),
             (0x02000000, 0x12345678),
-            (crate::io::SIOCNT, 0x3000)
+            (0x0400_0800, 0) // Unmodeled memory control.
         ])
         .is_err());
     assert_eq!(memory.cartridge, before);

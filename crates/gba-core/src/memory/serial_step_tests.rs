@@ -95,9 +95,10 @@ fn single_and_block_store_validation_uses_completion_phase_and_does_not_double_a
 fn later_block_failure_restores_completion_and_partial_serial_writes() {
     let (cpu, mut memory) = prepared(
         false,
-        // STMIA r1!,{r0,r2-r4}: SIOCNT, ignored padding, KEYCNT, then an unsupported RCNT.
+        // STMIA r1!,{r0,r2-r4}: SIOCNT, ignored padding, KEYCNT, then an unsupported RCNT:
+        // a GPIO interrupt with SI driven low.
         &[0xe8a1001d],
-        &[(0, 0x00204081), (1, SIOCNT), (2, 0), (3, 0), (4, 0x8100)],
+        &[(0, 0x00204081), (1, SIOCNT), (2, 0), (3, 0), (4, 0x8140)],
     );
     start(&mut memory, 57);
     let serial = memory.io.serial;
@@ -108,7 +109,7 @@ fn later_block_failure_restores_completion_and_partial_serial_writes() {
             .step()
             .unwrap_err()
             .to_string()
-            .contains("0x04000135"));
+            .contains("GPIO serial interrupt"));
         assert_eq!(machine.memory().io.serial, serial);
         assert_eq!(machine.memory().read16(IF).unwrap(), 0);
         assert_eq!(machine.cpu(), &cpu);
@@ -184,11 +185,17 @@ fn batch_validation_carries_control_changes_without_committing_earlier_ram_on_er
 }
 
 #[test]
-fn staged_unmapped_pin_reads_do_not_fall_back_to_old_committed_gpio_state() {
+fn staged_pin_reads_do_not_fall_back_to_old_committed_gpio_state() {
     let (_, mut memory) = prepared(false, &[0xe1a00000], &[]);
     memory.write16(RCNT, 0x8000).unwrap();
     memory.begin_timer_step();
     memory.write16(RCNT, 0).unwrap();
+    // Idle normal mode: SC and SI high, SD low, SO from SIOCNT bit 3.
+    assert_eq!(memory.read16(RCNT).unwrap(), 0x0005);
+    memory.write16(SIOCNT, 0x0008).unwrap();
+    assert_eq!(memory.read16(RCNT).unwrap(), 0x000d);
+    // Pin waveforms during a transfer are not modeled.
+    memory.write16(SIOCNT, 0x0089).unwrap();
     assert_eq!(memory.read8(RCNT), Err(MemoryError::Unmapped(RCNT)));
     memory.discard_timer_step();
     assert_eq!(memory.read16(RCNT).unwrap(), 0x800f);

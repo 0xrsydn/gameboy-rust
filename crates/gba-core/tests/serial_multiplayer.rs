@@ -7,7 +7,7 @@ use gba_core::{
         SIOMULTI2, SIOMULTI3,
     },
     machine::{Machine, StepKind},
-    memory::{Memory, MemoryError, ROM_START},
+    memory::{Memory, ROM_START},
 };
 
 fn memory() -> Memory {
@@ -24,37 +24,37 @@ fn all_multiplayer_control_values_mask_status_and_cannot_start_a_disconnected_ch
             continue;
         }
         bus.write16(SIOCNT, value).unwrap();
-        // SI high (child), SD high (local idle drive); no valid assigned ID yet.
-        assert_eq!(bus.read16(SIOCNT).unwrap(), (value & 0x6f03) | 12);
-        assert_eq!(bus.read8(SIOCNT).unwrap() & 0xf0, 0); // ID placeholder, no error or busy.
+        // SI high (child), SD high (local idle drive); no valid assigned ID yet. Start stays
+        // set without a parent's clock, as the mGBA suite measured (0x6f8f).
+        assert_eq!(bus.read16(SIOCNT).unwrap(), (value & 0x6f83) | 12);
+        assert_eq!(bus.read8(SIOCNT).unwrap() & 0x70, 0); // ID placeholder, no error.
         assert_eq!(bus.read16(IF).unwrap(), 0);
     }
     bus.advance_cycles(u32::MAX);
     assert_eq!(bus.read16(IF).unwrap(), 0);
     assert!(!bus.irq_pending());
-    assert_eq!(bus.read16(SIOCNT).unwrap(), 0x6f0f);
+    assert_eq!(bus.read16(SIOCNT).unwrap(), 0x6f8f);
 }
 
 #[test]
-fn receive_latches_have_independent_lanes_and_do_not_become_received_peer_data() {
+fn receive_registers_ignore_cpu_writes_and_do_not_become_received_peer_data() {
     let mut bus = memory();
     bus.write16(SIOCNT, 0x2000).unwrap();
-    for address in [SIOMULTI0, SIOMULTI1, SIOMULTI2, SIOMULTI3] {
-        assert_eq!(bus.read16(address).unwrap(), 0); // Synthetic reset latches, not completed receives.
-    }
     bus.write32(SIOMULTI0, 0x12345678).unwrap();
     bus.write32(SIOMULTI2, 0x9abcdef0).unwrap();
     bus.write8(SIOMULTI1 + 1, 0x55).unwrap();
     bus.write16(SIOMULTI3, 0xaabb).unwrap();
-    assert_eq!(bus.read16(SIOMULTI0).unwrap(), 0x5678);
-    assert_eq!(bus.read16(SIOMULTI1).unwrap(), 0x5534);
-    assert_eq!(bus.read32(SIOMULTI2).unwrap(), 0xaabbdef0);
+    // Only a transfer fills these, as the mGBA suite measured.
+    for address in [SIOMULTI0, SIOMULTI1, SIOMULTI2, SIOMULTI3] {
+        assert_eq!(bus.read16(address).unwrap(), 0);
+    }
     bus.write16(SIOMLT_SEND, 0xcdef).unwrap();
     for rate in 0..4 {
-        bus.write16(SIOCNT, 0x6080 | rate).unwrap(); // Start is read-only for this disconnected child.
+        bus.write16(SIOCNT, 0x6080 | rate).unwrap(); // A disconnected child never starts.
         bus.advance_cycles(1000000);
-        assert_eq!(bus.read32(SIOMULTI0).unwrap(), 0x55345678);
-        assert_eq!(bus.read32(SIOMULTI2).unwrap(), 0xaabbdef0);
+        assert_eq!(bus.read16(SIOCNT).unwrap(), 0x608c | rate);
+        assert_eq!(bus.read32(SIOMULTI0).unwrap(), 0);
+        assert_eq!(bus.read32(SIOMULTI2).unwrap(), 0);
         assert_eq!(bus.read16(SIOMLT_SEND).unwrap(), 0xcdef);
         assert_eq!(bus.read16(IF).unwrap(), 0);
     }
@@ -68,25 +68,22 @@ fn send_width_and_receive_aliases_follow_the_selected_format() {
     bus.write8(SIOMLT_SEND, 0x12).unwrap();
     bus.write8(SIOMLT_SEND + 1, 0x34).unwrap();
     assert_eq!(bus.read16(SIOMLT_SEND).unwrap(), 0x3412);
-    bus.write32(SIOMULTI0, 0x12345678).unwrap();
-    bus.write32(SIOMULTI2, 0x9abcdef0).unwrap();
     bus.write16(SIOCNT, 0x1000).unwrap();
+    // SIODATA8 keeps both bytes in normal mode too.
+    assert_eq!(bus.read16(SIODATA8).unwrap(), 0x3412);
+    bus.write32(SIODATA32, 0x12345678).unwrap();
+    bus.write32(SIOMULTI2, 0x9abcdef0).unwrap(); // Ignored outside multiplayer as well.
     assert_eq!(bus.read32(SIODATA32).unwrap(), 0x12345678);
-    assert_eq!(bus.read16(SIODATA8).unwrap(), 0x12);
-    assert_eq!(bus.read32(SIOMULTI2), Err(MemoryError::Unmapped(SIOMULTI2)));
-    assert!(bus
-        .write32(SIOMULTI2, 0)
-        .unwrap_err()
-        .to_string()
-        .contains("outside multiplayer mode"));
-    bus.write16(SIODATA8, 0xee56).unwrap(); // Existing normal mode ignores the upper write lane.
-    assert_eq!(bus.read16(SIODATA8).unwrap(), 0x56);
+    assert_eq!(bus.read32(SIOMULTI2).unwrap(), 0);
+    bus.write16(SIODATA8, 0xee56).unwrap();
+    assert_eq!(bus.read16(SIODATA8).unwrap(), 0xee56);
     bus.write16(SIOCNT, 0x83).unwrap();
-    bus.advance_cycles(64); // Only the normal 8-bit register shifts.
+    bus.advance_cycles(64); // Only the low byte of the 8-bit register shifts.
     bus.write16(SIOCNT, 0x2000).unwrap();
-    assert_eq!(bus.read16(SIOMLT_SEND).unwrap(), 0x34ff);
+    assert_eq!(bus.read16(SIOMLT_SEND).unwrap(), 0xeeff);
+    // SIOMULTI0-1 share SIODATA32's latch.
     assert_eq!(bus.read32(SIOMULTI0).unwrap(), 0x12345678);
-    assert_eq!(bus.read32(SIOMULTI2).unwrap(), 0x9abcdef0);
+    assert_eq!(bus.read32(SIOMULTI2).unwrap(), 0);
 }
 
 #[test]
@@ -111,7 +108,7 @@ fn idle_multiplayer_neither_wakes_halt_nor_advances_stop() {
         assert_eq!(machine.halted(), !stop);
         assert_eq!(machine.stopped(), stop);
         assert_eq!(machine.cycles() == 0, stop);
-        assert_eq!(machine.memory().read16(SIOCNT).unwrap(), 0x600f);
+        assert_eq!(machine.memory().read16(SIOCNT).unwrap(), 0x608f);
         assert_eq!(machine.memory().read16(IF).unwrap(), 0);
     }
 }
@@ -121,12 +118,13 @@ fn gpio_status_uses_pin_latches_but_cannot_create_a_multiplayer_parent_transfer(
     let mut bus = memory();
     bus.write16(RCNT, 0x80f0).unwrap(); // All GPIO outputs low.
     bus.write16(SIOCNT, 0x2083).unwrap();
-    assert_eq!(bus.read16(SIOCNT).unwrap(), 0x2003);
+    assert_eq!(bus.read16(SIOCNT).unwrap(), 0x2083);
     bus.write16(RCNT, 0x80f6).unwrap(); // SI and SD high.
-    assert_eq!(bus.read16(SIOCNT).unwrap(), 0x200f);
+    assert_eq!(bus.read16(SIOCNT).unwrap(), 0x208f);
     bus.write16(RCNT, 0).unwrap();
-    assert_eq!(bus.read16(SIOCNT).unwrap(), 0x200f);
-    assert_eq!(bus.read8(RCNT), Err(MemoryError::Unmapped(RCNT))); // Do not guess SC pin samples.
+    assert_eq!(bus.read16(SIOCNT).unwrap(), 0x208f);
+    // Multiplayer pins without a cable all read high, as the mGBA suite measured.
+    assert_eq!(bus.read8(RCNT).unwrap(), 0x0f);
     bus.advance_cycles(1000000);
     assert_eq!(bus.read16(IF).unwrap(), 0);
 }
@@ -153,12 +151,12 @@ fn active_normal_mode_cannot_be_silently_cancelled_by_read_only_multiplayer_busy
 }
 
 #[test]
-fn uart_rejection_preserves_multiplayer_control_and_send_lanes() {
+fn uart_send_rejection_preserves_multiplayer_control_and_send_lanes() {
     let mut bus = memory();
     bus.write32(SIOCNT, 0xabcd6001).unwrap();
-    let error = bus.write32(SIOCNT, 0x12343083).unwrap_err();
-    assert!(error.to_string().contains("UART serial mode"));
-    assert_eq!(bus.write32(SIOCNT, 0x12343083), Err(error));
+    let error = bus.write32(SIOCNT, 0x12343483).unwrap_err();
+    assert!(error.to_string().contains("UART transmission"));
+    assert_eq!(bus.write32(SIOCNT, 0x12343483), Err(error));
     assert_eq!(bus.read16(SIOCNT).unwrap(), 0x600d);
     assert_eq!(bus.read16(SIOMLT_SEND).unwrap(), 0xabcd);
 }
@@ -183,7 +181,7 @@ fn original_arm_and_thumb_word_stores_select_multiplayer_and_write_full_send_dat
         }
         let mut machine = Machine::new(cpu, bus);
         assert_eq!(machine.step().unwrap(), StepKind::Instruction);
-        assert_eq!(machine.memory().read16(SIOCNT).unwrap(), 0x600f);
+        assert_eq!(machine.memory().read16(SIOCNT).unwrap(), 0x608f);
         assert_eq!(machine.memory().read16(SIOMLT_SEND).unwrap(), 0xabcd);
         machine.memory_mut().advance_cycles(1000000);
         assert_eq!(machine.memory().read16(IF).unwrap(), 0);
@@ -199,7 +197,7 @@ fn dma_mode_and_send_write_only_requests_its_own_completion_irq() {
     bus.write32(DMA_BASE + 8, 0xc4000001).unwrap();
     let mut machine = Machine::new(Cpu::new(ROM_START), bus);
     assert_eq!(machine.step().unwrap(), StepKind::Dma { channel: 0 });
-    assert_eq!(machine.memory().read16(SIOCNT).unwrap(), 0x600f);
+    assert_eq!(machine.memory().read16(SIOCNT).unwrap(), 0x608f);
     assert_eq!(machine.memory().read16(SIOMLT_SEND).unwrap(), 0xabcd);
     assert_eq!(machine.memory().read16(IF).unwrap(), 0x100);
     machine.memory_mut().advance_cycles(1000000);
