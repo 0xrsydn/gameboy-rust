@@ -75,9 +75,28 @@ Only User/System callers are supported. Calls from exception modes return a diag
 Returning services preserve CPSR and every caller register except the documented arithmetic outputs.
 SoftReset instead initializes CPU registers and status as described below.
 This is deterministic behavior, not a claim about undocumented firmware outputs.
-Supervisor stack use is 28 bytes normally, including ArcTan and RegisterRamReset. Division and ArcTan2 use 40 bytes.
+Supervisor stack use is 28 bytes normally, including Div, ArcTan, and RegisterRamReset. ArcTan2 uses 40 bytes.
 CpuFastSet, affine-matrix services, BitUnPack, all three decompression formats, and differential filters use 60 bytes.
-They do not reproduce the original firmware's internal stack layout or cycle counts.
+They do not reproduce the original firmware's internal stack layout.
+
+### Service timing
+
+The dispatcher reads the SWI number with one `LDRB r12,[lr,#-2]` (the Thumb immediate, or bits 16–23 of the ARM
+comment) and jumps through a table, so every service pays the same entry cost, as on the firmware. The firmware's
+protected-read word `0xe55ec002` is this same instruction.
+Div, Sqrt, ArcTan, and CpuFastSet are shaped and padded to the firmware cycle counts that the
+[mGBA test suite](../public-mgba-suite.md)'s timing tests measured, using original code:
+
+- Div costs 13 cycles per quotient bit (a shift-subtract divide: 5 per divisor doubling, 8 per quotient bit), plus a
+  fixed part. Its quotient length matches mGBA's hardware-fitted `max(1, clz(d) - clz(n))` in the measured cases.
+- Sqrt runs a Newton iteration with mGBA's hardware-fitted loop costs: 6 cycles per scaling step and per refinement,
+  5 per divisor raise, 8 per quotient bit; zero takes a separate fixed path.
+- ArcTan and CpuFastSet match the measured cost for the tested inputs. ArcTan's multiply costs follow the CPU's
+  early-termination rule, so other inputs may differ by a few cycles.
+
+Div and ArcTan return through a shorter exit that keeps r0, r1, and r3 in registers. Every measured case matches
+except ROM callers with the GamePak prefetch buffer enabled, which are one cycle slow. That comes from the prefetch
+model, not the BIOS. Other services keep their functional timing.
 
 **IRQ callback contract:** install a word-aligned ARM callback address at `0x03007ffc` after boot.
 The dispatcher saves r0–r3, r12, and lr on the IRQ stack, then calls it with r0 equal to `0x04000000`.
@@ -316,16 +335,16 @@ Div truncates the signed quotient toward zero. The remainder has the numerator's
 DivArm takes the denominator in r0 and numerator in r1, then returns the same outputs as Div.
 Both return the unsigned absolute quotient in r3 and preserve r2 and r4–r14.
 `INT_MIN / -1` returns `0x80000000` in r0 and r3, with a zero remainder.
-Division uses a fixed 32-iteration integer algorithm. It does not use host arithmetic to calculate results.
+Division uses a shift-subtract integer algorithm with firmware-matched cost; see [service timing](#service-timing). It does not use host arithmetic to calculate results.
 Division by zero returns for numerators -1, 0, and 1, as the [mGBA test suite](../public-mgba-suite.md) measured on
 hardware: r0 is -1 for a negative numerator and 1 otherwise, r1 is the numerator, and r3 is 1.
 Other numerators hang the firmware; here they reach `bios::INVALID_ARGUMENT_TRAP` instead.
 
 Sqrt treats r0 as an unsigned 32-bit number and returns an unsigned result in `0..65535`.
 The result satisfies `root² <= input < (root + 1)²`. Other registers are preserved.
-Its integer algorithm uses 16 iterations without floating-point calculations.
+Its integer Newton iteration has firmware-matched cost, without floating-point calculations.
 Arithmetic services keep IRQ delivery masked until return, without changing IME.
-Device clocks and DMA continue. Instruction costs do not reproduce the original BIOS algorithms' timing.
+Device clocks and DMA continue. See [service timing](#service-timing) for which costs match the firmware.
 
 ## Fixed-point angles
 

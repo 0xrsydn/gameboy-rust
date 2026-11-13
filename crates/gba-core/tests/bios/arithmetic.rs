@@ -206,10 +206,32 @@ fn arithmetic_executes_real_instructions_and_keeps_device_clocks_running() {
         }
         assert!(steps < 1000);
     }
-    assert!(steps >= 32 * 7);
+    assert!(steps >= 7 * 2); // At least two loop instructions per quotient bit.
     assert!(machine.cycles() > start + 16);
     assert_eq!(machine.memory().read16(IF).unwrap(), 8);
     assert_eq!(machine.cpu().registers()[0], 123);
     assert_eq!(machine.cpu().registers()[1], 4);
     assert_eq!(machine.step().unwrap(), StepKind::IrqEntry); // Delivery deferred until service return.
+}
+
+/// Cycles from the SWI instruction until the caller's next instruction.
+fn service_cycles(service: u8, operands: [u32; 3]) -> u64 {
+    let (mut machine, return_pc) = call(service, false, operands);
+    let start = machine.cycles();
+    finish(&mut machine, return_pc);
+    machine.cycles() - start
+}
+
+// Relative costs measured on hardware by the mGBA test suite's timing tests ("BIOS Division",
+// "BIOS Sqrt", "BIOS ArcTan"), where both calls share the same caller code.
+#[test]
+fn service_costs_follow_the_firmware_measurements() {
+    let div = service_cycles(6, [0x1234_5678, 0xff, 0]);
+    let div_small = service_cycles(6, [0xff, 0x1234_5678, 0]);
+    assert_eq!(div - div_small, 260); // 13 cycles per extra quotient bit.
+    let sqrt_zero = service_cycles(8, [0, 0, 0]);
+    assert_eq!(service_cycles(8, [0xff, 0, 0]) - sqrt_zero, 115);
+    // 1137 - 104 on hardware, less 2 for the test's LDR r0,= in place of MOV r0,#.
+    assert_eq!(service_cycles(8, [0x1234_5678, 0, 0]) - sqrt_zero, 1031);
+    assert_eq!(service_cycles(9, [0xff, 0, 0]), sqrt_zero);
 }

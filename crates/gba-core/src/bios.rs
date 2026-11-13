@@ -135,47 +135,46 @@ pub fn image() -> Vec<u8> {
     a.emit(0xe92d_0008); // STMDB sp!,{r3} (save caller status across IRQs)
                          // Keep stack usage bounded within the default 64-byte Supervisor area.
                          // In particular, reject a nested SWI from an IRQ callback during a wait.
-    a.emit(0xe203_c01f); // AND r12,r3,#mode mask
-    a.emit(0xe35c_0010); // CMP r12,#User
-    a.branch(0, "decode_swi");
-    a.emit(0xe35c_001f); // CMP r12,#System
+                         // User (0x10) and System (0x1f) are the only modes whose low mode bits are 0 or 0xf.
+    a.emit(0xe203_c00f); // AND r12,r3,#0xf
+    a.emit(0xe35c_000f); // CMP r12,#0xf (System)
+    a.emit(0x135c_0000); // CMPNE r12,#0 (User)
     a.branch(1, "unsupported");
-    a.label("decode_swi");
-    a.emit(0xe313_0020); // TST r3,#Thumb
-    a.emit(0x115e_c0b2); // LDRHNE r12,[lr,#-2]
-    a.emit(0x051e_c004); // LDREQ r12,[lr,#-4]
-    a.emit(0x01a0_c82c); // MOVEQ r12,r12,LSR #16
-    a.emit(0xe20c_c0ff); // AND r12,r12,#0xff
-    for (number, target) in [
-        (0, "soft_reset"),
-        (1, "register_ram_reset"),
-        (2, "halt"),
-        (3, "stop"),
-        (4, "intr_wait"),
-        (5, "vblank_wait"),
-        (6, "div"),
-        (7, "div_arm"),
-        (8, "sqrt"),
-        (9, "arctan"),
-        (0x0a, "arctan2"),
-        (0x0b, "cpu_set"),
-        (0x0c, "cpu_fast_set"),
-        (0x0e, "bg_affine"),
-        (0x0f, "obj_affine"),
-        (0x10, "bit_unpack"),
-        (0x11, "lz_wram"),
-        (0x12, "lz_vram"),
-        (0x13, "huffman"),
-        (0x14, "rl_wram"),
-        (0x15, "rl_vram"),
-        (0x16, "diff8_wram"),
-        (0x17, "diff8_vram"),
-        (0x18, "diff16"),
-    ] {
-        a.emit(0xe35c_0000 | number); // CMP r12,#service
-        a.branch(0, target);
-    }
+    // One byte read serves both states: the Thumb immediate, or bits 16-23 of the ARM comment.
+    a.emit(0xe55e_c002); // LDRB r12,[lr,#-2]
+                         // Constant-cost dispatch, like the firmware's table: every service pays the same entry cost.
+    a.emit(0xe35c_0018); // CMP r12,#last service
+    a.emit(0x979f_f10c); // LDRLS pc,[pc,r12,LSL #2] (table follows the next instruction)
     a.branch(14, "unsupported");
+    for target in [
+        "soft_reset",
+        "register_ram_reset",
+        "halt",
+        "stop",
+        "intr_wait",
+        "vblank_wait",
+        "div",
+        "div_arm",
+        "sqrt",
+        "arctan",
+        "arctan2",
+        "cpu_set",
+        "cpu_fast_set",
+        "unsupported",
+        "bg_affine",
+        "obj_affine",
+        "bit_unpack",
+        "lz_wram",
+        "lz_vram",
+        "huffman",
+        "rl_wram",
+        "rl_vram",
+        "diff8_wram",
+        "diff8_vram",
+        "diff16",
+    ] {
+        a.address(target);
+    }
 
     a.label("stop");
     a.literal(1, HALTCNT);
@@ -233,6 +232,7 @@ pub fn image() -> Vec<u8> {
     a.branch(1, "copy_word");
     a.branch(14, "copy_halfword");
     a.label("cpu_fast_set");
+    pad(&mut a, 11); // Measured firmware cost; see docs/hardware/bios.md.
     emit_count(&mut a);
     a.emit(0xe283_3007); // ADD r3,r3,#7
     a.emit(0xe3c3_3007); // BIC r3,r3,#7 (round up to eight words)
@@ -293,6 +293,17 @@ pub fn image() -> Vec<u8> {
     a.emit(0xe8bd_500f); // LDMIA sp!,{r0-r3,r12,lr}
     a.emit(0xe1b0_f00e); // MOVS pc,lr
     a.prefetch_tail(0xe3a0_2004); // SWI return protected-read word.
+
+    // Shorter exit for services that never unmask IRQs and return r0, r1, and r3 in registers.
+    // It restores r2, r12, lr, and the caller's status from the frame.
+    a.label("return_results");
+    a.emit(0xe8bd_1000); // LDMIA sp!,{r12} (saved SPSR)
+    a.emit(0xe169_f00c); // MSR SPSR_fc,r12
+    a.emit(0xe59d_2008); // LDR r2,[sp,#8] (saved r2)
+    a.emit(0xe28d_d010); // ADD sp,sp,#16 (drop saved r0-r3)
+    a.emit(0xe8bd_5000); // LDMIA sp!,{r12,lr}
+    a.emit(0xe1b0_f00e); // MOVS pc,lr
+    a.prefetch_tail(0xe3a0_2004); // SWI return protected-read word.
     a.label("unsupported");
     a.emit(UNSUPPORTED_TRAP);
     a.label("invalid_argument");
@@ -300,6 +311,13 @@ pub fn image() -> Vec<u8> {
     let mut image = a.finish(affine::TABLE_ADDRESS as usize);
     affine::write_table(&mut image);
     image
+}
+
+/// Single-cycle `MOV r0,r0` padding that matches the firmware's measured fixed costs.
+fn pad(a: &mut ArmImage, cycles: usize) {
+    for _ in 0..cycles {
+        a.emit(0xe1a0_0000);
+    }
 }
 
 fn emit_count(a: &mut ArmImage) {
@@ -348,6 +366,7 @@ struct ArmImage {
     code: Vec<u32>,
     labels: BTreeMap<&'static str, usize>,
     branches: Vec<(usize, u32, &'static str, bool)>,
+    addresses: Vec<(usize, &'static str)>,
     literals: Vec<(usize, u32, u32)>,
 }
 
@@ -382,6 +401,12 @@ impl ArmImage {
         self.emit(0);
     }
 
+    /// A data word holding a label's address; the image is mapped at address zero.
+    fn address(&mut self, target: &'static str) {
+        self.addresses.push((self.code.len(), target));
+        self.emit(0);
+    }
+
     fn literal(&mut self, register: u32, value: u32) {
         self.literals.push((self.code.len(), register, value));
         self.emit(0);
@@ -408,6 +433,9 @@ impl ArmImage {
                 | 0x0a00_0000
                 | (u32::from(link) << 24)
                 | (offset as u32 & 0x00ff_ffff);
+        }
+        for (index, target) in self.addresses {
+            self.code[index] = self.labels[target] as u32 * 4;
         }
         let mut bytes: Vec<u8> = self.code.into_iter().flat_map(u32::to_le_bytes).collect();
         assert!(

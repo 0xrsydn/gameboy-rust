@@ -268,6 +268,10 @@ Optional classifier-assisted debugging:
 - [What is Codemode](https://lucumr.pocoo.org/2026/10/6/codemode/), for bounded harness-side orchestration and game-debugging examples.
 - Installed Pi documentation for Codemode, classifiers, skills, prompt templates, settings, configuration, providers, and project trust. See [the local workflow](jev-debugging.md).
 
+BIOS service timing:
+
+- [mGBA BIOS at 0.10.5](https://github.com/mgba-emu/mgba/blob/0.10.5/src/gba/bios.c), for its hardware-fitted cycle formulas for Div (`4 + 13 × loops + 7`) and Sqrt (per-loop costs), and the SWI entry/exit overhead. The replacement BIOS uses original code shaped to these costs.
+
 Multiply carry flag:
 
 - [Solving the Mystery of ARM7TDMI Multiply Carry Flag](https://bmchtech.github.io/post/multiply/), zaydlang (2024), for the Booth/carry-save multiplier model.

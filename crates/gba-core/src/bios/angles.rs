@@ -11,11 +11,10 @@ pub(super) const ARCTAN2_R3: u32 = 0x170;
 pub(super) fn emit(a: &mut ArmImage) {
     // Any 32-bit input is accepted; products keep their low 32 bits as on hardware.
     a.label("arctan");
+    super::pad(a, 2); // Measured firmware cost; see docs/hardware/bios.md.
     a.call("atan_polynomial");
-    a.emit(0xe58d_0004); // STR r0,[sp,#4] (saved caller r0)
-    a.emit(0xe58d_1008); // STR r1,[sp,#8] (r1 = negated squared ratio)
-    a.emit(0xe58d_2010); // STR r2,[sp,#16] (r3 = polynomial sum)
-    a.branch(14, "return");
+    a.emit(0xe1a0_3002); // MOV r3,r2 (r1 = negated squared ratio, r3 = polynomial sum)
+    a.branch(14, "return_results");
 
     a.label("arctan2");
     a.emit(0xe92d_0070); // STMDB sp!,{r4-r6} (40 bytes total SVC stack use)
@@ -124,10 +123,43 @@ pub(super) fn emit(a: &mut ArmImage) {
     for coefficient in [0x390, 0x91c, 0xfb6, 0x16aa, 0x2081, 0x3651, 0xa2f9] {
         a.emit(0xe003_0192); // MUL r3,r2,r1
         a.emit(0xe1a0_2743); // MOV r2,r3,ASR #14
-        a.literal(3, coefficient);
-        a.emit(0xe082_2003); // ADD r2,r2,r3
+                             // ADD r2,r2,#coefficient, as immediates of at most eight significant bits.
+        for chunk in immediate_chunks(coefficient) {
+            a.emit(0xe282_2000 | chunk);
+        }
     }
     a.emit(0xe003_0290); // MUL r3,r0,r2
     a.emit(0xe1a0_0843); // MOV r0,r3,ASR #16 (signed angle)
     a.emit(0xe12f_ff1e); // BX lr
+}
+
+/// Split a value into ARM rotated 8-bit immediate operand fields that sum to it.
+fn immediate_chunks(mut value: u32) -> Vec<u32> {
+    let mut chunks = Vec::new();
+    while value != 0 {
+        // Take the eight bits starting at the lowest set bit, rounded down to an even position.
+        let shift = value.trailing_zeros() & !1;
+        let part = value & (0xff << shift);
+        let rotate = (32 - shift) % 32 / 2;
+        chunks.push(rotate << 8 | part >> shift);
+        value -= part;
+    }
+    chunks
+}
+
+#[cfg(test)]
+mod tests {
+    use super::immediate_chunks;
+
+    #[test]
+    fn immediate_chunks_rebuild_each_coefficient() {
+        for value in [0xa9, 0x390, 0x91c, 0xfb6, 0x16aa, 0x2081, 0x3651, 0xa2f9] {
+            let sum: u32 = immediate_chunks(value)
+                .into_iter()
+                .map(|field| (field & 0xff).rotate_right((field >> 8) * 2))
+                .sum();
+            assert_eq!(sum, value);
+            assert!(immediate_chunks(value).len() <= 2);
+        }
+    }
 }
