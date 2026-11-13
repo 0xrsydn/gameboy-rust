@@ -92,7 +92,7 @@ Re-measured 2026-11-13 after the BIOS service, register-reset, and DMA start-del
 
 - Frame comparison with `--ignore 0x03007c00-0x03007fff`: FireRed and Emerald differ in `DMA1CNT_H` and
   `DMA2CNT_H`, the sound-FIFO channels whose destination-control bits mGBA sets itself, plus 1–3 IWRAM bytes per
-  frame. Those bytes are outside the ignored band; locating them needs a diagnostic `gba-diff` does not have yet.
+  frame. Those bytes are outside the ignored band. `--detail-frame` now lists them; they have not been attributed yet.
 - Instruction lockstep stops at the same instruction 1021 in both games: the immediate DMA3 readback below.
   Cumulative drift is +947,772 cycles, about 945,000 of it the `RegisterRamReset` call.
 

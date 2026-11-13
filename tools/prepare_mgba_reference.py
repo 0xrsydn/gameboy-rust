@@ -86,6 +86,16 @@ def run(command, log):
         raise RuntimeError(f"command failed ({result.returncode}); see {log}")
 
 
+def compiler_is_gcc():
+    """Whether `cc` is GCC; Clang (including Apple's) needs no archive wrappers."""
+    try:
+        version = subprocess.run(["cc", "--version"], capture_output=True, text=True,
+                                 check=False).stdout
+    except OSError:
+        return False
+    return "Free Software Foundation" in version
+
+
 def link_flags():
     if platform.system() == "Darwin":
         return ["-lpthread", "-framework", "Foundation"]
@@ -123,7 +133,7 @@ def prepare(output, tarball=None, download=fetch, build=True):
     # mGBA builds with LTO. GCC's LTO objects are only usable from an archive made
     # by its own wrappers; plain ar leaves the archive without a symbol index.
     wrappers = {"AR": shutil.which("gcc-ar"), "RANLIB": shutil.which("gcc-ranlib")}
-    if sys.platform != "darwin" and all(wrappers.values()):
+    if compiler_is_gcc() and all(wrappers.values()):
         options += [f"-DCMAKE_{name}={path}" for name, path in wrappers.items()]
     run(["cmake", "-S", str(source), "-B", str(objects), f"-DCMAKE_C_FLAGS={flags}"]
         + options, output / "cmake-configure.log")

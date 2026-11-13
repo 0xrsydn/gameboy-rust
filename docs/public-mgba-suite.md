@@ -32,7 +32,8 @@ A different revision or image can produce a different ROM; the addresses below t
 The ROM shows a menu of 14 sub-suites. Down moves the cursor, and A runs the selected sub-suite.
 It needs `--save-type sram`: at startup it clears SRAM, then writes a plain-text log of failures there (`savprintf`).
 Passing tests are not logged. The suite writes a `<sub-suite> test: <test name>` header before each test and one
-`<configuration>: Got <actual> vs <expected>: FAIL` line per failing result.
+`<configuration>: Got <actual> vs <expected>: FAIL` line per failing result. The Misc. edge sub-suite passes the
+two values the other way round, so its lines read `Got <expected> vs <actual>`.
 
 Pass counts come from memory. At this revision, the `suites` table of 14 `struct TestSuite` pointers is at ROM `0x0803d868`.
 Each struct holds `passes` and `totalResults` pointers at offsets 20 and 24.
@@ -101,7 +102,8 @@ handler in this emulator's replacement BIOS, whose IRQ dispatch is already known
 read `0x56` where hardware reads `0x51`). Its earlier exact match therefore combined offsetting errors. With the
 minimal dispatch, Timer IRQ reads `0x4e` and SIO timing is ten cycles low: interrupts are now taken too early. Hardware
 delays IRQ entry after a request; mGBA models seven cycles (`GBA_IRQ_DELAY`). A [delay sweep](research/irq-delay.md)
-found no clear optimum yet, because the replacement BIOS's IntrWait and Halt paths also differ from hardware.
+found no clear optimum at that point, because the replacement BIOS's IntrWait and Halt paths also differed from
+hardware. This paragraph is history: the delay was adopted later, as described under the re-run below.
 
 "So far" means a core diagnostic stopped the sub-suite before it finished; later tests did not run.
 Treat these numbers as a dated snapshot, not a claim about any game.
@@ -155,16 +157,20 @@ Every sub-suite now runs to completion. Every counted sub-suite except Misc. edg
   paths read 1,235 cycles apart, not the expected 1,232. The polling loops behind "Flip" 3, 4, and 5 share one
   8-cycle period and identical code between them, so those results must agree modulo 8; the expected values are 5, 3,
   and 3 modulo 8, which no fixed instruction timing of this binary produces. The expectations were presumably recorded from a
-  different build. "Flip" 4 to 6 pass. mGBA 0.10.5 running the same ROM also reads `0x4D3` for "Hblank".
+  different build: the pinned history includes upstream's "Update hblankBit test with modern gcc values". "Flip" 4
+  to 6 pass. mGBA 0.10.5 running the same ROM also reads `0x4D3` for "Hblank". None of this is a hardware run of
+  this exact ROM, so it remains an inference.
 - Video: six of seven screens are pixel-identical to their expected pictures, after the
   [delayed background enable](hardware/video.md). "Layer toggle 2" differs in 16 pixels: on two lines hardware
   starts the background partway along the row, and rows here are composed whole.
 
 ## mGBA 0.10.5 on the same ROM
 
-Measured 2026-11-13 on Linux x86_64 with the pinned [reference build](mgba-reference.md), driving `mgba-ref` through
-the same menu presses and reading the same counters. mGBA is a reference, not ground truth; the suite's expectations
-are. Its current development version scores differently from this release.
+Measured 2026-11-13 on Linux x86_64 with the pinned [reference build](mgba-reference.md).
+`tools/score_mgba_suite_reference.py MGBA_REF ROM` drives `mgba-ref` through the same menu presses and reads the same
+counters. The video row came from `gba-diff --images`, which writes both emulators' frames for the actual and
+expected pictures of each screen. mGBA is a reference, not ground truth; the suite's expectations are. This is the
+0.10.5 release; later mGBA versions were not measured.
 
 | # | Sub-suite | This emulator | mGBA 0.10.5 |
 | ---: | --- | ---: | ---: |

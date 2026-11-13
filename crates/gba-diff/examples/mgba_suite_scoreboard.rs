@@ -285,11 +285,16 @@ fn score_video(rom: &[u8], index: usize, test: u32) -> Result<usize, String> {
     for _ in 0..test {
         tap(&mut machine, Button::Down)?;
     }
+    let list = capture(&machine)?;
     tap(&mut machine, Button::A)?;
     frames(&mut machine, VIDEO_SETTLE_FRAMES)?;
     tap(&mut machine, Button::Start)?; // Hide the "actual"/"expected" label sprite.
     frames(&mut machine, VIDEO_SETTLE_FRAMES)?;
     let actual = capture(&machine)?;
+    // Two captures of the test list would compare equal; that is not a pass.
+    if actual.pixels() == list.pixels() {
+        return Err("the screen did not open".to_owned());
+    }
     tap(&mut machine, Button::Right)?;
     frames(&mut machine, VIDEO_SETTLE_FRAMES)?;
     let expected = capture(&machine)?;
