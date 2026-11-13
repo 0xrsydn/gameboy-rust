@@ -27,7 +27,7 @@ const DISPCNT: u32 = 0x0400_0000;
 /// Machine steps allowed between VBlanks before the run is reported as stuck.
 const FRAME_STEP_LIMIT: usize = 2_000_000;
 
-const USAGE: &str = "usage: gba-diff --reference MGBA_REF --rom ROM [--frames N] [--save-type sram|flash64|flash128|eeprom512|eeprom8k] [--input FRAME:BUTTON:HOLD[,...]] [--ignore START-END[,...]] [--max-report N] [--out DIR] [--images FRAME[,...]] [--no-align] [--trace INSTRUCTIONS]";
+const USAGE: &str = "usage: gba-diff --reference MGBA_REF --rom ROM [--frames N] [--save-type sram|flash64|flash128|eeprom512|eeprom8k] [--input FRAME:BUTTON:HOLD[,...]] [--ignore START-END[,...]] [--max-report N] [--out DIR] [--images FRAME[,...]] [--detail-frame FRAME[,...]] [--no-align] [--trace INSTRUCTIONS]";
 
 /// Memory compared every frame. Video memory is compared after both frames render.
 const REGIONS: [(&str, u32, usize); 5] = [
@@ -37,6 +37,11 @@ const REGIONS: [(&str, u32, usize); 5] = [
     ("VRAM", 0x0600_0000, 0x1_8000),
     ("OAM", 0x0700_0000, 0x400),
 ];
+
+/// Differing addresses listed per region for an ordinary report.
+const SAMPLES: usize = 6;
+/// Differing addresses listed per region for a `--detail-frame` frame.
+const DETAIL_SAMPLES: usize = 256;
 
 /// Readable I/O halfwords compared every frame.
 const IO: [(&str, u32); 30] = [
@@ -89,6 +94,7 @@ struct Options {
     max_report: usize,
     out: Option<PathBuf>,
     images: Vec<u64>,
+    detail: Vec<u64>,
     align: bool,
     trace: Option<u64>,
 }
@@ -128,6 +134,7 @@ fn parse(args: &[String]) -> Result<Options, String> {
         max_report: 8,
         out: None,
         images: Vec::new(),
+        detail: Vec::new(),
         align: true,
         trace: None,
     };
@@ -178,6 +185,11 @@ fn parse(args: &[String]) -> Result<Options, String> {
             "--images" => {
                 for frame in value()?.split(',').filter(|frame| !frame.is_empty()) {
                     options.images.push(number(frame)?);
+                }
+            }
+            "--detail-frame" => {
+                for frame in value()?.split(',').filter(|frame| !frame.is_empty()) {
+                    options.detail.push(number(frame)?);
                 }
             }
             "--no-align" => options.align = false,
@@ -296,6 +308,7 @@ fn compare_region(
     ours: &[Option<u8>],
     theirs: &[u8],
     ignore: &[(u32, u32)],
+    samples: usize,
 ) -> Option<RegionDiff> {
     let mut diff = RegionDiff {
         name,
@@ -319,7 +332,7 @@ fn compare_region(
         } else {
             diff.differing += 1;
         }
-        if diff.samples.len() < 6 {
+        if diff.samples.len() < samples {
             diff.samples.push((address, *ours, *theirs));
         }
     }
@@ -367,6 +380,10 @@ impl FrameReport {
                 let ours = ours.map_or("--".to_owned(), |value| format!("{value:02x}"));
                 writeln!(out, "    {address:#010x}: ours {ours} mGBA {theirs:02x}")?;
             }
+            let listed = region.samples.len();
+            if listed < region.differing + region.unreadable {
+                writeln!(out, "    (first {listed} listed)")?;
+            }
         }
         for (name, ours, theirs) in &self.io {
             let ours = ours.map_or("unreadable".to_owned(), |value| format!("{value:#06x}"));
@@ -388,12 +405,13 @@ fn compare_frame(
     local: &Local,
     reference: &mut Reference,
     ignore: &[(u32, u32)],
+    samples: usize,
 ) -> io::Result<(FrameReport, Vec<u16>, Vec<u16>)> {
     let mut regions = Vec::new();
     for (name, base, length) in REGIONS {
         let theirs = reference.read(base, length)?;
         let ours = local.read(base, length);
-        regions.extend(compare_region(name, base, &ours, &theirs, ignore));
+        regions.extend(compare_region(name, base, &ours, &theirs, ignore, samples));
     }
     let mut io = Vec::new();
     for (name, address) in IO {
@@ -617,18 +635,27 @@ fn run(options: Options) -> Result<bool, String> {
             .map_err(report)?;
             return Ok(false);
         }
+        let detailed = options.detail.contains(&frame);
+        let samples = if detailed { DETAIL_SAMPLES } else { SAMPLES };
         let (report_frame, ours, theirs) =
-            compare_frame(&local, &mut reference, &options.ignore).map_err(report)?;
+            compare_frame(&local, &mut reference, &options.ignore, samples).map_err(report)?;
         if let (Some(dir), true) = (&options.out, options.images.contains(&frame)) {
             write_images(dir, frame, &ours, &theirs).map_err(report)?;
         }
         if report_frame.clean() {
+            if detailed {
+                writeln!(out, "frame {frame}: no divergence").map_err(report)?;
+            }
             continue;
         }
         divergent += 1;
-        if first.is_none() {
-            first = Some(frame);
-            writeln!(out, "first divergence at frame {frame}:").map_err(report)?;
+        if first.is_none() || detailed {
+            if first.is_none() {
+                first = Some(frame);
+                writeln!(out, "first divergence at frame {frame}:").map_err(report)?;
+            } else {
+                writeln!(out, "frame {frame}:").map_err(report)?;
+            }
             report_frame.details(&mut out).map_err(report)?;
             writeln!(out, "{}", registers_line("ours", &local.registers())).map_err(report)?;
             writeln!(
@@ -637,7 +664,7 @@ fn run(options: Options) -> Result<bool, String> {
                 registers_line("mGBA", &reference.registers().map_err(report)?)
             )
             .map_err(report)?;
-            if let Some(dir) = &options.out {
+            if let (Some(dir), true) = (&options.out, first == Some(frame)) {
                 write_images(dir, frame, &ours, &theirs).map_err(report)?;
                 writeln!(out, "  images: {}", dir.display()).map_err(report)?;
             }
@@ -689,7 +716,8 @@ mod tests {
     fn options_parse_inputs_ranges_and_numbers() {
         let options = parse(&args(
             "--reference ref --rom game.gba --frames 0x10 --save-type sram \
-             --input 5:a:2,9:start:1 --ignore 0x03007f00-0x03007fff --no-align --trace 100",
+             --input 5:a:2,9:start:1 --ignore 0x03007f00-0x03007fff --no-align --trace 100 \
+             --detail-frame 7,0x20",
         ))
         .unwrap();
         assert_eq!(options.frames, 16);
@@ -701,11 +729,13 @@ mod tests {
         assert_eq!(options.ignore, vec![(0x0300_7f00, 0x0300_7fff)]);
         assert!(!options.align);
         assert_eq!(options.trace, Some(100));
+        assert_eq!(options.detail, vec![7, 32]);
         for bad in [
             "--rom game.gba",
             "--reference ref --rom game.gba --input 5:x:1",
             "--reference ref --rom game.gba --ignore 5",
             "--reference ref --rom game.gba --frames ten",
+            "--reference ref --rom game.gba --detail-frame last",
             "--reference ref --rom game.gba --save-type tape",
         ] {
             assert!(parse(&args(bad)).is_err(), "{bad}");
@@ -728,11 +758,19 @@ mod tests {
     fn regions_count_differences_unreadable_bytes_and_skip_ignored_ranges() {
         let ours = [Some(1), Some(2), None, Some(4)];
         let theirs = [1, 9, 3, 8];
-        let diff = compare_region("test", 0x100, &ours, &theirs, &[]).unwrap();
+        let diff = compare_region("test", 0x100, &ours, &theirs, &[], SAMPLES).unwrap();
         assert_eq!((diff.differing, diff.unreadable), (2, 1));
         assert_eq!(diff.samples[0], (0x101, Some(2), 9));
-        let diff = compare_region("test", 0x100, &ours, &theirs, &[(0x101, 0x102)]).unwrap();
+        assert_eq!(diff.samples.len(), 3);
+        // A sample limit shortens the address list, never the counts.
+        let diff = compare_region("test", 0x100, &ours, &theirs, &[], 1).unwrap();
+        assert_eq!((diff.differing, diff.unreadable), (2, 1));
+        assert_eq!(diff.samples, vec![(0x101, Some(2), 9)]);
+        let diff =
+            compare_region("test", 0x100, &ours, &theirs, &[(0x101, 0x102)], SAMPLES).unwrap();
         assert_eq!((diff.differing, diff.unreadable), (1, 0));
-        assert!(compare_region("test", 0x100, &ours, &theirs, &[(0x100, 0x103)]).is_none());
+        assert!(
+            compare_region("test", 0x100, &ours, &theirs, &[(0x100, 0x103)], SAMPLES).is_none()
+        );
     }
 }

@@ -37,6 +37,9 @@ After every frame (each VBlank), it compares EWRAM, IWRAM, palette RAM, VRAM, OA
 pixels at 5 bits per channel. It prints the first divergent frame in detail, then one summary line per later divergent
 frame (`--max-report`). `--out` writes this emulator's frame, mGBA's frame, and a red difference mask as PPM files,
 for the first divergent frame and for any frames listed with `--images`.
+`--detail-frame FRAME[,...]` prints the same detail for later frames, listing up to 256 differing addresses per region
+instead of the first six, so a residual byte on a late frame can be attributed. A listed frame without a difference
+is reported as such.
 `--ignore START-END[,...]` skips address ranges. Inputs use `FRAME:BUTTON:HOLD`, counted from frame 0.
 Exit status is 0 without divergence, 1 with one, and 2 for usage or setup errors.
 

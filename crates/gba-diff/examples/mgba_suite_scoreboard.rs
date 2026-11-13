@@ -175,13 +175,22 @@ fn sram_failures(machine: &Machine) -> Result<Vec<String>, String> {
         text.push(byte);
     }
     let text = String::from_utf8_lossy(&text);
-    Ok(text
-        .lines()
-        .skip(2)
-        .map(str::trim_end)
-        .filter(|line| line.contains(": FAIL"))
-        .map(str::to_owned)
-        .collect())
+    // The suite logs a "<sub-suite> test: <name>" header before each test's failures.
+    // Carry the name onto every failure line; a bare line names only the configuration.
+    let mut test = "";
+    let mut failures = Vec::new();
+    for line in text.lines().skip(2).map(str::trim_end) {
+        if line.contains(": FAIL") {
+            failures.push(if test.is_empty() {
+                line.to_owned()
+            } else {
+                format!("{test} | {line}")
+            });
+        } else if let Some((_, name)) = line.split_once(" test: ") {
+            test = name;
+        }
+    }
+    Ok(failures)
 }
 
 struct Score {
