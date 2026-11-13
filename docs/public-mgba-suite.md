@@ -57,7 +57,7 @@ Each sub-suite started from a fresh boot. Repository tooling for this run does n
 | 5 | Shifter | 140 / 140 | 140 / 140 | — |
 | 6 | Carry | 93 / 93 | 93 / 93 | — |
 | 7 | Multiply long | 52 / 72 | 52 / 72 | — |
-| 8 | BIOS math | 20 / 30 so far | 20 / 30 so far | Undefined instruction in the BIOS replacement's argument trap |
+| 8 | BIOS math | 20 / 30 so far | 615 / 615 | — |
 | 9 | DMA | 12 / 12 so far | 1244 / 1244 | — |
 | 10 | SIO read | 1 / 6 so far | 1 / 6 so far | CPU read of unmodeled `RCNT` at `0x04000134` |
 | 11 | SIO timing | 4 / 4 | 0 / 4 | — |

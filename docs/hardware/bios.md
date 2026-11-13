@@ -317,7 +317,9 @@ DivArm takes the denominator in r0 and numerator in r1, then returns the same ou
 Both return the unsigned absolute quotient in r3 and preserve r2 and r4–r14.
 `INT_MIN / -1` returns `0x80000000` in r0 and r3, with a zero remainder.
 Division uses a fixed 32-iteration integer algorithm. It does not use host arithmetic to calculate results.
-Division by zero reaches `bios::INVALID_ARGUMENT_TRAP` instead of reproducing the firmware's possible endless loop.
+Division by zero returns for numerators -1, 0, and 1, as the [mGBA test suite](../public-mgba-suite.md) measured on
+hardware: r0 is -1 for a negative numerator and 1 otherwise, r1 is the numerator, and r3 is 1.
+Other numerators hang the firmware; here they reach `bios::INVALID_ARGUMENT_TRAP` instead.
 
 Sqrt treats r0 as an unsigned 32-bit number and returns an unsigned result in `0..65535`.
 The result satisfies `root² <= input < (root + 1)²`. Other registers are preserved.
@@ -327,10 +329,10 @@ Device clocks and DMA continue. Instruction costs do not reproduce the original 
 
 ## Fixed-point angles
 
-`ArcTan` (`SWI 0x09`) and `ArcTan2` (`SWI 0x0a`) accept signed 16-bit fixed-point inputs with 14 fractional bits.
+`ArcTan` (`SWI 0x09`) and `ArcTan2` (`SWI 0x0a`) take signed fixed-point inputs with 14 fractional bits.
 An input value of `0x4000` represents 1.0. This format is also called signed Q2.14.
-Inputs must be sign-extended into their 32-bit registers. For example, -1 uses `0xffffffff`, not `0x0000ffff`.
-This subset rejects values outside `-32768..32767` through `bios::INVALID_ARGUMENT_TRAP`, rather than interpreting undocumented wider inputs.
+Inputs are full signed 32-bit registers; -1 is `0xffffffff`, and `0x0000ffff` is +65535.
+Every intermediate product and shift keeps its low 32 bits, so out-of-range inputs give the firmware's wrapped results.
 
 Angles use 65,536 units per full turn. A quarter turn is `0x4000`; a half turn is `0x8000`.
 ArcTan reads the tangent from r0 and returns a sign-extended signed angle in r0.
@@ -340,12 +342,15 @@ Negative intermediate results round down. The implementation does not substitute
 The polynomial has poor accuracy for tangent magnitudes above 1.0; this known limitation is retained.
 
 ArcTan2 reads X from r0 and Y from r1. It returns an unsigned angle in `0..65535` in r0.
-It divides the smaller coordinate magnitude by the larger, then applies the shared polynomial and quadrant correction.
-The signed ratio truncates toward zero and stays within `[-1.0, 1.0]` before polynomial evaluation.
-Axes return exact quarter-turn angles. The zero vector returns zero without division.
+Signed comparisons choose one of eight sectors. It then divides `(Y << 14) / X` or `(X << 14) / Y`, truncating toward
+zero with 32-bit wrapping, and applies the shared polynomial and quadrant correction. In the third quadrant, equal
+magnitudes take the `X / Y` sector; elsewhere they take `Y / X`. Axes return exact quarter-turn angles, and the zero
+vector returns zero without division.
 Use ArcTan2 for direction calculations that require all four quadrants.
 
-Both services preserve r1–r14 and the caller's status. Undocumented BIOS scratch-register outputs are not reproduced.
+Both services also return the firmware's scratch registers, as the [mGBA test suite](../public-mgba-suite.md) measured:
+ArcTan leaves the negated squared ratio `-(r0² >> 14)` in r1 and the polynomial sum in r3. ArcTan2 leaves the inner
+ArcTan's r1 (Y unchanged on an axis) and the constant `0x170` in r3. Other registers and the caller's status are preserved.
 They execute original ARM instructions and keep CPU IRQ delivery masked until return, without changing IME.
 Device clocks and DMA continue. Exact firmware timing and full hardware compatibility remain unverified.
 

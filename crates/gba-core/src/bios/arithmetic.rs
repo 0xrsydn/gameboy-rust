@@ -9,7 +9,21 @@ pub(super) fn emit(a: &mut ArmImage) {
     a.emit(0xe1a0_1002); // MOV r1,r2 (exchange input operands)
     a.label("div");
     a.emit(0xe351_0000); // CMP r1,#0
-    a.branch(0, "invalid_argument"); // Diagnostic instead of firmware's divide-by-zero hang.
+    a.branch(1, "div_nonzero");
+    // Hardware returns from a zero divisor only for numerators -1, 0, and 1; other numerators
+    // hang the firmware, which stays a diagnostic here.
+    a.emit(0xe280_2001); // ADD r2,r0,#1
+    a.emit(0xe352_0002); // CMP r2,#2
+    a.branch(8, "invalid_argument"); // BHI
+    a.emit(0xe350_0000); // CMP r0,#0
+    a.emit(0xa3a0_2001); // MOVGE r2,#1
+    a.emit(0xb3e0_2000); // MVNLT r2,#0
+    a.emit(0xe58d_2004); // STR r2,[sp,#4] (saved r0 = sign, or 1)
+    a.emit(0xe58d_0008); // STR r0,[sp,#8] (saved r1 = numerator)
+    a.emit(0xe3a0_2001); // MOV r2,#1
+    a.emit(0xe58d_2010); // STR r2,[sp,#16] (saved r3)
+    a.branch(14, "return");
+    a.label("div_nonzero");
     a.emit(0xe92d_0070); // STMDB sp!,{r4-r6} (40 bytes total SVC stack use)
     a.emit(0xe1a0_4fc0); // MOV r4,r0,ASR #31 (numerator sign)
     a.emit(0xe020_5001); // EOR r5,r0,r1

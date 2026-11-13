@@ -69,11 +69,35 @@ fn division_matches_wide_integer_reference_for_seeded_inputs() {
     }
 }
 
+// Hardware results from the mGBA test suite's BIOS math tests: a zero divisor returns only
+// for numerators -1, 0, and 1. Other numerators hang the firmware; here they are diagnostics.
 #[test]
-fn division_by_zero_is_a_repeatable_diagnostic_not_an_endless_loop() {
+fn division_by_zero_returns_for_unit_numerators() {
     for service in [6, 7] {
         for thumb in [false, true] {
-            for number in [0, 1, u32::MAX, 0x8000_0000] {
+            for (number, quotient) in [(0, 1), (1, 1), (u32::MAX, u32::MAX)] {
+                let operands = if service == 6 {
+                    [number, 0, 0xabcd_ef01]
+                } else {
+                    [0, number, 0xabcd_ef01]
+                };
+                let (mut machine, return_pc) = call(service, thumb, operands);
+                finish(&mut machine, return_pc);
+                let registers = machine.cpu().registers();
+                assert_eq!(registers[0], quotient);
+                assert_eq!(registers[1], number);
+                assert_eq!(registers[2], 0xabcd_ef01);
+                assert_eq!(registers[3], 1);
+            }
+        }
+    }
+}
+
+#[test]
+fn division_by_zero_of_larger_numerators_is_a_repeatable_diagnostic_not_an_endless_loop() {
+    for service in [6, 7] {
+        for thumb in [false, true] {
+            for number in [2, 0xffff_fffe, 0x7fff_ffff, 0x8000_0000] {
                 let operands = if service == 6 {
                     [number, 0, 0]
                 } else {

@@ -1,5 +1,5 @@
 use super::*;
-use gba_core::{bios::INVALID_ARGUMENT_TRAP, dma::DMA_BASE};
+use gba_core::dma::DMA_BASE;
 
 /// Wide-integer reference for signed low-word multiplication and floor division.
 /// This avoids both host signed overflow and the emitted instruction sequence.
@@ -12,40 +12,71 @@ fn low_signed(value: i64) -> i64 {
     }
 }
 
-fn atan_reference(tangent: i32) -> i32 {
-    let a = -low_signed(i64::from(tangent).pow(2)).div_euclid(16384);
+/// ArcTan's result, then its r1 (negated squared ratio) and r3 (polynomial sum).
+fn atan_parts(tangent: i32) -> (i32, u32, u32) {
+    let a = low_signed(-low_signed(i64::from(tangent).pow(2)).div_euclid(16384));
     let mut polynomial = 0xa9i64;
     for coefficient in [0x390, 0x91c, 0xfb6, 0x16aa, 0x2081, 0x3651, 0xa2f9] {
         polynomial = low_signed(low_signed(polynomial * a).div_euclid(16384) + coefficient);
     }
-    low_signed(i64::from(tangent) * polynomial).div_euclid(65536) as i32
+    let result = low_signed(i64::from(tangent) * polynomial).div_euclid(65536) as i32;
+    (result, a as u32, polynomial as u32)
 }
 
-/// Eight-sector signed-coordinate reference; production uses absolute magnitudes.
-fn atan2_reference(x: i32, y: i32) -> u32 {
+fn atan_reference(tangent: i32) -> i32 {
+    atan_parts(tangent).0
+}
+
+/// Eight-sector signed-coordinate reference with 32-bit wrapping ratios, and the r1 of the
+/// inner ArcTan (`None` on an axis, where r1 keeps Y).
+fn atan2_parts(x: i32, y: i32) -> (u32, Option<u32>) {
     if y == 0 {
-        return if x < 0 { 0x8000 } else { 0 };
+        return (if x < 0 { 0x8000 } else { 0 }, None);
     }
     if x == 0 {
-        return if y < 0 { 0xc000 } else { 0x4000 };
+        return (if y < 0 { 0xc000 } else { 0x4000 }, None);
     }
-    let ratio = |n: i32, d: i32| atan_reference((i64::from(n) * 16384 / i64::from(d)) as i32);
-    let angle = if y > 0 {
+    let ratio = |n: i32, d: i32| atan_parts(n.wrapping_shl(14).wrapping_div(d));
+    let (base, sign, (angle, a, _)) = if y > 0 {
         if x > 0 && x >= y {
-            ratio(y, x)
-        } else if x < 0 && -x >= y {
-            0x8000 + ratio(y, x)
+            (0, 1, ratio(y, x))
+        } else if x < 0 && x.wrapping_neg() >= y {
+            (0x8000, 1, ratio(y, x))
         } else {
-            0x4000 - ratio(x, y)
+            (0x4000, -1, ratio(x, y))
         }
-    } else if x < 0 && -x > -y {
-        0x8000 + ratio(y, x)
-    } else if x > 0 && x >= -y {
-        0x10000 + ratio(y, x)
+    } else if x < 0 && x.wrapping_neg() > y.wrapping_neg() {
+        (0x8000, 1, ratio(y, x))
+    } else if x > 0 && x >= y.wrapping_neg() {
+        (0x10000, 1, ratio(y, x))
     } else {
-        0xc000 - ratio(x, y)
+        (0xc000, -1, ratio(x, y))
     };
-    (angle & 0xffff) as u32
+    (((base + sign * angle) & 0xffff) as u32, Some(a))
+}
+
+fn atan2_reference(x: i32, y: i32) -> u32 {
+    atan2_parts(x, y).0
+}
+
+/// ArcTan2 leaves this constant in r3 on hardware.
+const ATAN2_R3: u32 = 0x170;
+
+/// Registers after the call: r0, r1, and r3 are outputs; every other register is preserved.
+fn expected_registers(service: u8, x: i32, y: i32, before: &[u32]) -> Vec<u32> {
+    let mut registers = before[..15].to_vec();
+    if service == 9 {
+        let (result, a, b) = atan_parts(x);
+        registers[0] = result as u32;
+        registers[1] = a;
+        registers[3] = b;
+    } else {
+        let (result, a) = atan2_parts(x, y);
+        registers[0] = result;
+        registers[1] = a.unwrap_or(y as u32);
+        registers[3] = ATAN2_R3;
+    }
+    registers
 }
 
 fn run(service: u8, x: i32, y: i32, thumb: bool) -> u32 {
@@ -54,17 +85,14 @@ fn run(service: u8, x: i32, y: i32, thumb: bool) -> u32 {
     let guard = bios::SVC_STACK - if service == 9 { 32 } else { 44 };
     m.memory_mut().write32(guard, 0xa55a_1234).unwrap();
     finish(&mut m, pc);
-    assert_eq!(&m.cpu().registers()[1..15], &before.registers()[1..15]);
+    assert_eq!(
+        &m.cpu().registers()[..15],
+        &expected_registers(service, x, y, before.registers())[..],
+        "service={service}, x={x}, y={y}"
+    );
     assert_eq!(m.cpu().cpsr(), before.cpsr());
     assert_eq!(m.memory().read32(guard).unwrap(), 0xa55a_1234);
-    let actual = m.cpu().registers()[0];
-    let expected = if service == 9 {
-        atan_reference(x) as u32
-    } else {
-        atan2_reference(x, y)
-    };
-    assert_eq!(actual, expected, "service={service}, x={x}, y={y}");
-    actual
+    m.cpu().registers()[0]
 }
 
 fn check_direction(x: i32, y: i32, thumb: bool) {
@@ -225,7 +253,10 @@ fn user_system_modes_masks_and_all_nonresult_registers_are_preserved() {
                 );
                 let before = m.cpu().clone();
                 finish(&mut m, pc);
-                assert_eq!(&m.cpu().registers()[1..15], &before.registers()[1..15]);
+                assert_eq!(
+                    &m.cpu().registers()[..15],
+                    &expected_registers(service, -1234, 2345, before.registers())[..]
+                );
                 assert_eq!(m.cpu().cpsr(), before.cpsr());
             }
         }
@@ -249,58 +280,76 @@ fn every_caller_flag_combination_survives_angle_calculation() {
             let before = m.cpu().clone();
             finish(&mut m, ROM_START + 16);
             assert_eq!(m.cpu().cpsr(), before.cpsr());
-            assert_eq!(&m.cpu().registers()[1..15], &before.registers()[1..15]);
             assert_eq!(
-                m.cpu().registers()[0],
-                if service == 9 {
-                    atan_reference(8192) as u32
-                } else {
-                    atan2_reference(8192, 16384)
-                }
+                &m.cpu().registers()[..15],
+                &expected_registers(service as u8, 8192, 16384, before.registers())[..]
+            );
+        }
+    }
+}
+
+// Hardware results from the mGBA test suite's BIOS math tests, including inputs outside
+// the signed 16-bit range: (service, r0, r1) -> (r0, r1, r3).
+#[test]
+fn full_word_arguments_match_hardware_results_and_side_effects() {
+    for (service, input, expected) in [
+        (9, [0, 0], [0, 0, 0xa2f9]),
+        (9, [0x3fff, 0], [0x1fff, 0xffff_c002, 0x8001]),
+        (9, [0x7fff, 0], [0x16d8, 0xffff_0004, 0x2_2db6]),
+        (9, [0xc000, 0], [0xffff_c360, 0x1_c000, 0x1_0480]),
+        (9, [0xffff, 0], [0xffff_a2fe, 8, 0xa2ff]),
+        (9, [0xffff_0001, 0], [0x5d01, 8, 0xa2ff]),
+        (9, [0xffff_8000, 0], [0xffff_e95d, 0xffff_0000, 0x2_2d45]),
+        (0x0a, [0, 0], [0, 0, ATAN2_R3]),
+        (0x0a, [0xffff_0000, 0], [0x8000, 0, ATAN2_R3]),
+        (0x0a, [0, 1], [0x4000, 1, ATAN2_R3]),
+        (0x0a, [0xffff_ffff, 1], [0x6000, 0xffff_c000, ATAN2_R3]),
+        (0x0a, [0xffff_c000, 1], [0x7fff, 0, ATAN2_R3]),
+        (0x0a, [0xffff_0000, 0x4000], [0x7604, 0xffff_fc00, ATAN2_R3]),
+        (0x0a, [0xffff, 0x1_0000], [0x2001, 0xffff_c002, ATAN2_R3]),
+        (0x0a, [0xffff, 0xffff_0000], [0xe000, 0xffff_c002, ATAN2_R3]),
+        (
+            0x0a,
+            [0xffff_0000, 0xffff_0000],
+            [0xa000, 0xffff_c000, ATAN2_R3],
+        ),
+        (
+            0x0a,
+            [0xffff_0001, 0xffff_0000],
+            [0xa001, 0xffff_c002, ATAN2_R3],
+        ),
+    ] {
+        for thumb in [false, true] {
+            let (mut m, pc) = call(service, thumb, [input[0], input[1], 0xcafe_babe]);
+            finish(&mut m, pc);
+            let registers = m.cpu().registers();
+            assert_eq!(
+                [registers[0], registers[1], registers[3]],
+                expected,
+                "service={service:#x} input={input:x?}"
+            );
+            assert_eq!(registers[2], 0xcafe_babe);
+            // The reference agrees with every hardware vector.
+            assert_eq!(
+                expected_registers(service, input[0] as i32, input[1] as i32, registers),
+                registers[..15]
             );
         }
     }
 }
 
 #[test]
-fn noncanonical_signed_sixteen_bit_arguments_are_repeatable_diagnostics() {
-    for value in [
-        0x8000,
-        0xffff,
-        0x10000,
-        0xffff_7fff,
-        0x7fff_ffff,
-        0x8000_0000,
-    ] {
-        for (service, args) in [
-            (9, [value, 0, 0]),
-            (0x0a, [value, 1, 0]),
-            (0x0a, [1, value, 0]),
-        ] {
-            let (mut m, _) = call(service, false, args);
-            let mut failed = false;
-            for _ in 0..150 {
-                let before = m.cpu().clone();
-                let cycles = m.cycles();
-                let timing = m.last_timing();
-                if let Err(error) = m.step() {
-                    assert!(matches!(
-                        error,
-                        MachineError::Cpu(CpuError::UnsupportedInstruction {
-                            instruction: INVALID_ARGUMENT_TRAP,
-                            ..
-                        })
-                    ));
-                    assert_eq!(m.cpu(), &before);
-                    assert_eq!(m.cycles(), cycles);
-                    assert_eq!(m.last_timing(), timing);
-                    assert_eq!(m.step(), Err(error));
-                    failed = true;
-                    break;
-                }
-            }
-            assert!(failed);
-        }
+fn seeded_full_word_arguments_match_wrapping_references() {
+    let mut seed = 0x2468_ace1u32;
+    for index in 0..512 {
+        seed = seed.wrapping_mul(1664525).wrapping_add(1013904223);
+        let x = seed as i32;
+        seed = seed.wrapping_mul(1664525).wrapping_add(1013904223);
+        let y = seed as i32;
+        run(9, x, 0, index % 2 == 0);
+        run(0x0a, x, y, index % 2 != 0);
+        // Scaled-down coordinates exercise every sector without overflowing the ratio.
+        run(0x0a, x >> 12, y >> 12, index % 2 == 0);
     }
 }
 
