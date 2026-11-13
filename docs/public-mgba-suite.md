@@ -41,11 +41,28 @@ The video sub-suite is visual only and reports no counts.
 The suite also probes mGBA's debug port at `0x04fff780`. On hardware that address is unused I/O, read as open bus.
 This emulator does not implement mGBA's debug port, so the suite runs in its hardware mode.
 
+## Scoreboard tool
+
+`crates/gba-diff/examples/mgba_suite_scoreboard.rs` reads those counters without a local probe.
+It boots the ROM once per sub-suite, presses Down to reach it, presses A, and polls `totalResults` until it stops
+changing for `--settle` frames (default 240):
+
+```sh
+direnv exec . cargo run --locked --release -p gba-diff --example mgba_suite_scoreboard -- \
+  --rom roms/mgba-suite/suite.gba
+```
+
+It prints one row per sub-suite and the `: FAIL` lines the suite wrote to SRAM.
+It exits 0 when every counted sub-suite settled.
+`--frame-cap` (default 18000) bounds a sub-suite that never settles; that case exits 1, because a timeout is never a pass.
+The tool reports the suite's own counters and adds no verdict of its own.
+
 ## Baseline on Darwin arm64
 
 Measured 2026-11-13 in a release build, after the [SRAM wide-access](hardware/saves.md#sram) and
 [unused-I/O open-bus](hardware/cpu.md#arm-unused-memory-data-reads) fixes that the suite first exposed.
-Each sub-suite started from a fresh boot. Repository tooling for this run does not exist yet; the results came from a local probe.
+Each sub-suite started from a fresh boot. These results came from a local probe written before the
+[scoreboard tool](#scoreboard-tool) existed; the re-run below reproduces them.
 
 | # | Sub-suite | Passed / results | Current | Stopped by |
 | ---: | --- | ---: | ---: | --- |
@@ -83,6 +100,32 @@ found no clear optimum yet, because the replacement BIOS's IntrWait and Halt pat
 
 "So far" means a core diagnostic stopped the sub-suite before it finished; later tests did not run.
 Treat these numbers as a dated snapshot, not a claim about any game.
+
+## Scoreboard re-run with repository tooling
+
+Measured 2026-11-13 in a release build with the scoreboard tool above, a 240-frame settle window, and one fresh boot
+per sub-suite. It reproduces the Current column exactly:
+
+| # | Sub-suite | Passed / results |
+| ---: | --- | ---: |
+| 0 | Memory | 1552 / 1552 |
+| 1 | I/O read | 130 / 130 |
+| 2 | Timing | 1824 / 2020 |
+| 3 | Timer count-up | 587 / 936 |
+| 4 | Timer IRQ | 44 / 90 |
+| 5 | Shifter | 140 / 140 |
+| 6 | Carry | 93 / 93 |
+| 7 | Multiply long | 72 / 72 |
+| 8 | BIOS math | 615 / 615 |
+| 9 | DMA | 1244 / 1244 |
+| 10 | SIO register R/W | 90 / 90 |
+| 11 | SIO timing | 0 / 4 |
+| 12 | Misc. edge | 6 / 12 |
+| 13 | Video | visual only |
+
+The recorded `: FAIL` lines list the remaining mismatches by test name. The visible timing lines read 4 cycles above
+the expected totals, the timer count-up lines show one-low and one-high values, and the Timer IRQ lines read `0x4e`
+where hardware reads `0x51`. The numbers no longer depend on an uncommitted local probe.
 
 ## Remaining failures
 

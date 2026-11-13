@@ -24,6 +24,20 @@ file target/release/gameboy-rust
 ```
 
 All ten demo window smoke tests need an active desktop session. Ordinary tests do not open windows.
+
+Measure headless emulation speed with `--bench-frames COUNT` in a release build:
+
+```sh
+./target/release/gameboy-rust --rom roms/game.gba --bench-frames 600
+```
+
+It boots the ROM, runs COUNT whole frames without frame capture, and prints the frame count, host seconds,
+frames per second, the multiple of 60 frames per second, machine steps per second, and nominal cycles per second.
+The window starts before boot, so it covers boot execution, like a reset-to-frame run in mGBA's `mgba-perf`.
+A STOP, a diagnostic, or a missing VBlank ends the run without a timing result.
+`--bench-frames` rejects `--rtc`, `--audio`, `--speed`, `--state-file`, `--steps`, `--window`, and `--frames`.
+Timing depends on the host and its current load. Treat the output as a measurement, never as a test verdict.
+The [mGBA reference](mgba-reference.md) has the comparable `mgba-perf` command.
 Run the additional file-backed ROM-window test explicitly in that desktop session:
 
 ```sh

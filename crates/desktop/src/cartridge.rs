@@ -12,6 +12,7 @@ use std::{
     fs::{self, File},
     io::{self, Read, Write},
     path::{Path, PathBuf},
+    time::{Duration, Instant},
 };
 
 use gba_core::{
@@ -23,12 +24,22 @@ use gba_core::{
 
 const MAX_STEPS: u64 = 100_000_000;
 const MAX_FRAMES: u64 = 100_000;
-const USAGE: &str = "usage: gameboy-rust --rom PATH [--rtc] [--save-type flash64|flash128|sram|eeprom512|eeprom8k] [--save-file PATH] (--steps COUNT | --window [--frames COUNT] [--audio] [--speed MULTIPLIER] [--state-file PATH]); speed: integer 1..=16 (default 1, audio muted above 1); steps: 1..=100000000, frames: 1..=100000; state file (window only): F5 saves and F9 loads a save state, default is the ROM path with a .state extension; do not combine with demo or help options";
+/// Machine steps allowed between VBlanks before a benchmark frame fails.
+const FRAME_STEP_LIMIT: usize = 2_000_000;
+const USAGE: &str = "usage: gameboy-rust --rom PATH [--rtc] [--save-type flash64|flash128|sram|eeprom512|eeprom8k] [--save-file PATH] (--steps COUNT | --bench-frames COUNT | --window [--frames COUNT] [--audio] [--speed MULTIPLIER] [--state-file PATH]); speed: integer 1..=16 (default 1, audio muted above 1); steps: 1..=100000000, frames: 1..=100000; bench frames: 1..=100000 without --rtc, audio, speed, or a state file; state file (window only): F5 saves and F9 loads a save state, default is the ROM path with a .state extension; do not combine with demo or help options";
 
 #[derive(Debug, PartialEq, Eq)]
 enum Mode {
     Terminal { steps: u64 },
+    Bench { frames: u64 },
     Window { frames: Option<u64> },
+}
+
+/// What the machine runs after the shared cartridge setup.
+#[derive(Clone, Copy)]
+enum Work {
+    Steps(u64),
+    Bench(u64),
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -48,6 +59,7 @@ pub fn parse_args(args: &[OsString]) -> io::Result<Options> {
     let mut path = None;
     let mut steps = None;
     let mut frames = None;
+    let mut bench_frames = None;
     let mut window = false;
     let mut audio = false;
     let mut speed = None;
@@ -99,7 +111,10 @@ pub fn parse_args(args: &[OsString]) -> io::Result<Options> {
             audio = true;
         } else if arg == "--window" && !window {
             window = true;
-        } else if (arg == "--steps" && steps.is_none()) || (arg == "--frames" && frames.is_none()) {
+        } else if (arg == "--steps" && steps.is_none())
+            || (arg == "--frames" && frames.is_none())
+            || (arg == "--bench-frames" && bench_frames.is_none())
+        {
             let value = args
                 .next()
                 .and_then(|value| value.to_str())
@@ -118,8 +133,10 @@ pub fn parse_args(args: &[OsString]) -> io::Result<Options> {
             }
             if arg == "--steps" {
                 steps = Some(count);
-            } else {
+            } else if arg == "--frames" {
                 frames = Some(count);
+            } else {
+                bench_frames = Some(count);
             }
         } else {
             return Err(invalid());
@@ -131,9 +148,13 @@ pub fn parse_args(args: &[OsString]) -> io::Result<Options> {
     if (audio || speed.is_some() || state_file.is_some()) && !window {
         return Err(invalid());
     }
-    let mode = match (window, steps, frames) {
-        (false, Some(steps), None) => Mode::Terminal { steps },
-        (true, None, frames) => Mode::Window { frames },
+    if bench_frames.is_some() && hardware == CartridgeHardware::Rtc {
+        return Err(invalid());
+    }
+    let mode = match (window, steps, frames, bench_frames) {
+        (false, Some(steps), None, None) => Mode::Terminal { steps },
+        (false, None, None, Some(frames)) => Mode::Bench { frames },
+        (true, None, frames, None) => Mode::Window { frames },
         _ => return Err(invalid()),
     };
     Ok(Options {
@@ -279,6 +300,57 @@ fn write_report(writer: &mut impl Write, machine: &Machine, report: &Report) -> 
     write_state(writer, machine, &report.stats)
 }
 
+/// Run whole frames and return the machine steps they consumed. Frame capture stays
+/// disabled, so the measurement covers CPU, DMA, and device clocks only.
+/// A STOP, diagnostic, or missing VBlank ends the run without a timing result.
+fn run_bench(machine: &mut Machine, frames: u64) -> Result<u64, Box<dyn Error>> {
+    let mut steps = 0u64;
+    for _ in 0..frames {
+        steps += machine.run_until_vblank(FRAME_STEP_LIMIT)? as u64;
+    }
+    Ok(steps)
+}
+
+/// Report host and emulated work for one benchmark. The real-time multiple uses
+/// 60 frames per second so it compares with mGBA's `mgba-perf` output.
+fn write_bench(
+    writer: &mut impl Write,
+    machine: &Machine,
+    frames: u64,
+    steps: u64,
+    elapsed: Duration,
+) -> io::Result<()> {
+    let seconds = elapsed.as_secs_f64();
+    // A benchmark always runs at least one frame. Clamp anyway so a degenerate
+    // host timer cannot print NaN or infinity.
+    let fps = if seconds > 0.0 {
+        frames as f64 / seconds
+    } else {
+        0.0
+    };
+    writeln!(writer, "Frames: {frames} in {seconds:.3} s")?;
+    writeln!(writer, "Speed: {fps:.1} fps ({:.2}x real time)", fps / 60.0)?;
+    writeln!(
+        writer,
+        "Machine steps: {steps} ({:.0} per second)",
+        if seconds > 0.0 {
+            steps as f64 / seconds
+        } else {
+            0.0
+        }
+    )?;
+    writeln!(
+        writer,
+        "Nominal cycles: {} ({:.2} M per second)",
+        machine.cycles(),
+        if seconds > 0.0 {
+            machine.cycles() as f64 / seconds / 1e6
+        } else {
+            0.0
+        }
+    )
+}
+
 fn write_state(writer: &mut impl Write, machine: &Machine, stats: &Stats) -> io::Result<()> {
     writeln!(
         writer,
@@ -339,8 +411,9 @@ pub fn execute(options: Options, writer: &mut impl Write) -> Result<(), Box<dyn 
             "Save storage is volatile; use --save-file PATH for persistence."
         )?;
     }
-    let steps = match options.mode {
-        Mode::Terminal { steps } => steps,
+    let work = match options.mode {
+        Mode::Terminal { steps } => Work::Steps(steps),
+        Mode::Bench { frames } => Work::Bench(frames),
         Mode::Window { frames } => {
             return crate::desktop::run_rom(
                 bytes,
@@ -361,7 +434,13 @@ pub fn execute(options: Options, writer: &mut impl Write) -> Result<(), Box<dyn 
             )
         }
     };
-    writeln!(writer, "Machine-step limit: {steps} (includes boot)")?;
+    match work {
+        Work::Steps(steps) => writeln!(writer, "Machine-step limit: {steps} (includes boot)")?,
+        Work::Bench(frames) => writeln!(writer, "Benchmark frames: {frames} (after boot)")?,
+    }
+    // The benchmark window starts before boot so it covers the same work as a
+    // reset-to-frame run in mGBA's perf harness.
+    let started = Instant::now();
     let mut machine = bios::boot(bytes)?;
     machine
         .memory_mut()
@@ -375,11 +454,19 @@ pub fn execute(options: Options, writer: &mut impl Write) -> Result<(), Box<dyn 
     } else {
         None
     };
-    let report = run_bounded_with_clock(&mut machine, steps, clock.as_mut())?;
-    write_report(writer, &machine, &report)?;
-    writer.flush()?;
-    if let Reason::Diagnostic(error) = report.reason {
-        return Err(Box::new(error));
+    match work {
+        Work::Steps(steps) => {
+            let report = run_bounded_with_clock(&mut machine, steps, clock.as_mut())?;
+            write_report(writer, &machine, &report)?;
+            writer.flush()?;
+            if let Reason::Diagnostic(error) = report.reason {
+                return Err(Box::new(error));
+            }
+        }
+        Work::Bench(frames) => {
+            let steps = run_bench(&mut machine, frames)?;
+            write_bench(writer, &machine, frames, steps, started.elapsed())?;
+        }
     }
     if let Some(save) = save_file.as_mut() {
         persist_save(save, machine.memory(), writer)?;

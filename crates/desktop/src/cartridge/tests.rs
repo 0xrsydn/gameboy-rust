@@ -529,3 +529,77 @@ fn report_shows_state_and_propagates_write_errors() {
         io::ErrorKind::BrokenPipe
     );
 }
+
+#[test]
+fn bench_frames_selects_the_benchmark_mode() {
+    for count in [1, MAX_FRAMES] {
+        let count_text = count.to_string();
+        let options =
+            parse_args(&args(&["--rom", "test.gba", "--bench-frames", &count_text])).unwrap();
+        assert_eq!(options.mode, Mode::Bench { frames: count });
+        assert_eq!(options.speed, 1);
+        assert!(!options.audio);
+    }
+}
+
+#[test]
+fn bench_frames_rejects_conflicting_or_window_only_options() {
+    let base = args(&["--rom", "test.gba", "--bench-frames", "60"]);
+    for tail in [
+        vec!["--steps", "100"],
+        vec!["--window"],
+        vec!["--frames", "60"],
+        vec!["--rtc"],
+        vec!["--speed", "2"],
+        vec!["--audio"],
+        vec!["--state-file", "test.state"],
+    ] {
+        let mut arguments = base.clone();
+        arguments.extend(args(&tail));
+        assert!(parse_args(&arguments).is_err(), "{tail:?}");
+    }
+}
+
+#[test]
+fn bench_frames_rejects_out_of_range_and_duplicate_counts() {
+    for tail in [
+        vec!["--bench-frames", "0"],
+        vec!["--bench-frames", "100001"],
+        vec!["--bench-frames", "60", "--bench-frames", "60"],
+        vec!["--bench-frames"],
+    ] {
+        let mut arguments = args(&["--rom", "test.gba"]);
+        arguments.extend(args(&tail));
+        assert!(parse_args(&arguments).is_err(), "{tail:?}");
+    }
+}
+
+#[test]
+fn run_bench_advances_whole_frames_or_reports_stop() {
+    let mut machine = boot(&[0xeaff_fffe]);
+    let steps = run_bench(&mut machine, 1).unwrap();
+    assert!(steps > 0);
+    assert!(machine.cycles() > 0);
+    assert!(machine.memory().display_position().vblanks > 0);
+
+    let mut stopped = Machine::new(Cpu::new(ROM_START), Memory::new(vec![]).unwrap());
+    stopped.memory_mut().write8(HALTCNT, 0x80).unwrap();
+    let error = run_bench(&mut stopped, 1).unwrap_err();
+    assert!(error.to_string().contains("STOP"), "{error}");
+}
+
+#[test]
+fn write_bench_reports_speed_and_cycles() {
+    let machine = Machine::new(Cpu::new(ROM_START), Memory::new(vec![]).unwrap());
+    let mut output = Vec::new();
+    write_bench(&mut output, &machine, 6, 1200, Duration::from_millis(100)).unwrap();
+    let output = String::from_utf8(output).unwrap();
+    for expected in [
+        "Frames: 6 in 0.100 s",
+        "Speed: 60.0 fps (1.00x real time)",
+        "Machine steps: 1200 (12000 per second)",
+        "Nominal cycles: 0 (0.00 M per second)",
+    ] {
+        assert!(output.contains(expected), "{output}");
+    }
+}

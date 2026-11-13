@@ -51,6 +51,7 @@ fn parse_args(args: &[OsString]) -> Result<RunMode, io::Error> {
         [
             "--rom",
             "--steps",
+            "--bench-frames",
             "--window",
             "--frames",
             "--rtc",
@@ -91,7 +92,7 @@ fn parse_args(args: &[OsString]) -> Result<RunMode, io::Error> {
         [arg] if arg == "--help" || arg == "-h" => Ok(RunMode::Help),
         _ => Err(io::Error::new(
             io::ErrorKind::InvalidInput,
-            "usage: gameboy-rust [--cpu-demo | --timer-demo | --graphics-demo | --smoke-test | --graphics-smoke-test | --raster-demo | --raster-smoke-test | --mosaic-demo | --mosaic-smoke-test | --effects-demo | --effects-smoke-test | --tile-demo | --tile-smoke-test | --affine-demo | --affine-smoke-test | --affine-raster-demo | --affine-raster-smoke-test | --bitmap4-demo | --bitmap5-demo | --bitmap4-smoke-test | --bitmap5-smoke-test | --help]; or gameboy-rust --rom PATH [--rtc] [--save-type flash64|flash128|sram|eeprom512|eeprom8k] [--save-file PATH] (--steps COUNT | --window [--frames COUNT] [--audio] [--speed MULTIPLIER] [--state-file PATH]); or gameboy-rust --test-suite PATH.json",
+            "usage: gameboy-rust [--cpu-demo | --timer-demo | --graphics-demo | --smoke-test | --graphics-smoke-test | --raster-demo | --raster-smoke-test | --mosaic-demo | --mosaic-smoke-test | --effects-demo | --effects-smoke-test | --tile-demo | --tile-smoke-test | --affine-demo | --affine-smoke-test | --affine-raster-demo | --affine-raster-smoke-test | --bitmap4-demo | --bitmap5-demo | --bitmap4-smoke-test | --bitmap5-smoke-test | --help]; or gameboy-rust --rom PATH [--rtc] [--save-type flash64|flash128|sram|eeprom512|eeprom8k] [--save-file PATH] (--steps COUNT | --bench-frames COUNT | --window [--frames COUNT] [--audio] [--speed MULTIPLIER] [--state-file PATH]); or gameboy-rust --test-suite PATH.json",
         )),
     }
 }
@@ -135,6 +136,7 @@ fn run() -> Result<(), Box<dyn Error>> {
                 "GBA Rust — emulator foundation, not game-compatible yet\n\
                 No arguments   Open the native 240x160 display test at 4x scale\n\
                 --rom PATH --steps COUNT  Run a raw ROM in the terminal (1..=100000000 steps)\n\
+                --rom PATH --bench-frames COUNT  Time COUNT frames headlessly (1..=100000)\n\
                 --rom PATH --window       Open a raw ROM with keyboard input\n\
                 --frames COUNT            Exit ROM window after 1..=100000 captured frames\n\
                 --speed MULTIPLIER       ROM-window speed: integer 1..=16 (default: 1); mutes audio above 1x\n\

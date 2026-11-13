@@ -22,7 +22,7 @@ direnv exec . nix shell --inputs-from . nixpkgs#cmake -c \
 The destination must be new, and outside the repository or inside the ignored `roms/`.
 The script downloads mGBA 0.10.5 (`tools/mgba-reference.lock.json` pins its size and SHA-256), extracts it with path checks,
 and builds a static library without frontends, OpenGL, scripting, debuggers, or optional libraries.
-It writes `mgba-ref`, plus `mgba-perf` for later benchmarking. Use `--tarball PATH` for an offline copy of the same tarball.
+It writes `mgba-ref`, plus `mgba-perf` for speed comparison with this emulator's `--bench-frames` mode. Use `--tarball PATH` for an offline copy of the same tarball.
 Build logs stay in the destination. Verified on Darwin arm64 with Nix cmake 4.4.
 
 ## Frame comparison
@@ -84,7 +84,15 @@ rounds differently from hardware's 5-bit blending by one step in some fades; the
 
 ## Findings so far
 
-Measured 2026-11-13 on Darwin arm64 with the [pinned suite ROM](public-mgba-suite.md), before any timing changes:
+Re-measured 2026-11-13 after the BIOS service, register-reset, and DMA start-delay changes, on the same host:
+
+- Frame comparison with `--ignore 0x03007c00-0x03007fff`: FireRed and Emerald differ in `DMA1CNT_H` and
+  `DMA2CNT_H`, the sound-FIFO channels whose destination-control bits mGBA sets itself, plus 1–3 IWRAM bytes per
+  frame. Those bytes are outside the ignored band; locating them needs a diagnostic `gba-diff` does not have yet.
+- Instruction lockstep stops at the same instruction 1021 in both games: the immediate DMA3 readback below.
+  Cumulative drift is +947,772 cycles, about 945,000 of it the `RegisterRamReset` call.
+
+The earlier measurements, kept for history, were made 2026-11-13 before any timing changes:
 
 - After start alignment, the first six frames match exactly: all RAM regions, compared I/O, and every pixel.
   Before alignment, every frame differed (start scanline 0 versus 126, `DISPCNT`, `SOUNDBIAS`, and leftover boot registers).
@@ -110,6 +118,33 @@ With a local Pokémon FireRed dump (not distributed), lockstep matches 1,021 ins
   [modeled](hardware/dma.md) and raised the suite's timing results. FireRed's readback still differs, because mGBA
   charges a store's following ROM fetch to the next instruction (store 2 cycles, load 11) while this emulator charges it
   to the store (5 and 8). Adopting mGBA's attribution lowered the suite's memory and timing results, so it was not.
+
+## Speed comparison
+
+`mgba-perf` is built with the reference. Compare it with the emulator's own headless benchmark on the same ROM and
+frame count, both without video rendering:
+
+```sh
+./roms/mgba-reference/mgba-perf -N -P -F 600 roms/game.gba
+./target/release/gameboy-rust --rom roms/game.gba --bench-frames 600
+```
+
+With `-N`, `mgba-perf` prints `GAMECODE,FRAMES,MICROSECONDS,none`. Frames per second is `FRAMES / (MICROSECONDS / 1e6)`;
+the real-time multiple divides that by 60. `--bench-frames` reports the same two values directly, plus machine steps and
+nominal cycles per second. Both timings include emulated boot. They are host measurements, not accuracy results, and a
+higher frame rate does not make one emulator more correct than the other.
+
+Measured 2026-11-13 on Darwin arm64 in a release build, 600 frames each, with video rendering disabled on both sides:
+
+| ROM | This emulator | mGBA (`mgba-perf -N -P`) |
+| --- | ---: | ---: |
+| Pokémon FireRed (flash128) | 55.3 fps (0.92×) | 5321 fps (88.7×) |
+| Pokémon Emerald (flash128) | 54.6 fps (0.91×) | 5243 fps (87.4×) |
+| mGBA test suite (SRAM) | 191 fps (3.18×) | 8228 fps (137×) |
+
+Three runs varied by about 1%. mGBA is about 96 times faster on the two games and 43 times faster on the suite ROM.
+`mgba-perf` enables idle-loop detection, which skips idle work that this emulator executes host-side instruction by
+instruction. Part of the gap is therefore idle time, not pure interpretation cost.
 
 ## Limits
 
