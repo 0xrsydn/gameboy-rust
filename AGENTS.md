@@ -36,6 +36,7 @@ Window smoke tests (`--*-smoke-test`) need a logged-in desktop session. Details 
 | ARM/Thumb instructions, modes, exceptions, timing | [docs/hardware/cpu.md](docs/hardware/cpu.md) |
 | Pinned public ARM/Thumb tests and compatibility results | [docs/public-arm-tests.md](docs/public-arm-tests.md), [docs/public-thumb-tests.md](docs/public-thumb-tests.md) |
 | Pinned public memory tests and video-byte coverage limits | [docs/public-memory-tests.md](docs/public-memory-tests.md) |
+| mGBA test suite build, result reading, and baseline scoreboard | [docs/public-mgba-suite.md](docs/public-mgba-suite.md) |
 | ROM test suites, assertions, and JSON reports | [docs/rom-tests.md](docs/rom-tests.md) |
 | Jev-assisted diagnostic review and `/jev-gb-debug` | [docs/jev-debugging.md](docs/jev-debugging.md) |
 | ROM files, window execution, and terminal diagnostics | [docs/hardware/cartridge.md](docs/hardware/cartridge.md) |

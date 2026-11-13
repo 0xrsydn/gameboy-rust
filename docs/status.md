@@ -210,6 +210,7 @@ The [ROM suite runner](rom-tests.md) has original regressions and a [pinned publ
 The pinned public ARM ROM passes its result checkpoint in debug and release builds.
 The [pinned public Thumb ROM](public-thumb-tests.md) also passes after correcting its empty-list store PC value.
 The [pinned public memory ROM](public-memory-tests.md) passes without a core change; its video-byte assertions have documented limits.
+The [mGBA test suite](public-mgba-suite.md) builds reproducibly at a pinned revision and has a dated baseline scoreboard; automated preparation and running are not in the repository yet.
 The [pinned BIOS read-protection ROM](public-bios-tests.md) passes after correcting the replacement firmware's exit layout.
 The bus still derives retained words from the actual image; no test-specific override or ROM patch is used.
 Other public suites remain unverified. These results do not establish full CPU or memory compatibility.
