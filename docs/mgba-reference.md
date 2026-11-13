@@ -71,6 +71,8 @@ Both emulators approximate the real BIOS exit, and neither start is hardware-ver
 By default `gba-diff` moves mGBA to this emulator's start: the same scanline and line cycle, and the same `DISPCNT`.
 It prints both original values first. `--no-align` keeps mGBA's own start (scanline 126 with forced blank).
 
+The boot replacement already matches mGBA's SOUNDBIAS (`0x0200`) and its cleared r0–r12 and flags; see [BIOS](hardware/bios.md).
+
 ## Findings so far
 
 Measured 2026-11-13 on Darwin arm64 with the [pinned suite ROM](public-mgba-suite.md), before any timing changes:

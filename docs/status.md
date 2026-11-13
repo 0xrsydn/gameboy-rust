@@ -212,6 +212,7 @@ The [pinned public Thumb ROM](public-thumb-tests.md) also passes after correctin
 The [pinned public memory ROM](public-memory-tests.md) passes without a core change; its video-byte assertions have documented limits.
 The [mGBA test suite](public-mgba-suite.md) builds reproducibly at a pinned revision and has a dated baseline scoreboard; automated preparation and running are not in the repository yet.
 [`gba-diff`](mgba-reference.md) compares ROM execution against a locally built mGBA 0.10.5, per frame (memory, I/O, pixels) or per instruction (registers, control flow, cycle drift).
+Boot leaves SOUNDBIAS at `0x0200` and r0–r12 and flags cleared, matching mGBA's cartridge-entry state; forced blank and the entry scanline are not copied.
 The [pinned BIOS read-protection ROM](public-bios-tests.md) passes after correcting the replacement firmware's exit layout.
 The bus still derives retained words from the actual image; no test-specific override or ROM patch is used.
 Other public suites remain unverified. These results do not establish full CPU or memory compatibility.

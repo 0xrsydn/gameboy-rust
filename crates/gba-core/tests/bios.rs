@@ -157,6 +157,19 @@ fn original_image_is_deterministic_and_boot_enters_arm_system_mode() {
 }
 
 #[test]
+fn boot_exit_matches_the_reference_cartridge_entry_state() {
+    // mGBA's I/O init and skip-BIOS start: SOUNDBIAS 0x200 and cleared r0-r12/flags.
+    let mut machine = bios::boot(words(&[0xeaff_fffe])).unwrap();
+    reach(&mut machine, ROM_START, 100);
+    assert_eq!(&machine.cpu().registers()[..13], &[0; 13]);
+    assert_eq!(machine.cpu().registers()[14], 0);
+    assert_eq!(machine.cpu().cpsr(), 0x1f);
+    assert_eq!(machine.memory().read16(0x0400_0088).unwrap(), 0x0200);
+    // Forced blank is not copied: ROMs that never write DISPCNT still show the backdrop.
+    assert_eq!(machine.memory().read16(0x0400_0000).unwrap(), 0);
+}
+
+#[test]
 fn cpu_set_copies_both_widths_from_arm_and_thumb_and_preserves_caller() {
     for thumb in [false, true] {
         for word in [false, true] {

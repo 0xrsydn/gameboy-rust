@@ -30,7 +30,13 @@ This prevents bitmap and affine ROMs from sampling one pixel across the screen w
 Original regressions verify bitmap coordinates, both affine backgrounds, and scanline capture without ROM-side matrix writes.
 See the [boot graphics investigation](../research/boot-video.md) for the independent homebrew failure and evidence.
 
+- SOUNDBIAS: `0x0200`, matching mGBA's I/O initialization.
+- r0–r12 and r14: zero, and CPSR flags clear, matching mGBA's skip-BIOS start.
+
 It then enters `0x08000000` in ARM System mode with IRQ/FIQ masks clear.
+mGBA also starts cartridges in forced blank (`DISPCNT = 0x0080`) on scanline 126; neither is copied.
+Forced blank would change the first image of ROMs that never write `DISPCNT`, and mGBA marks the scanline as unverified on hardware.
+[`gba-diff`](../mgba-reference.md) aligns the reference to this start state instead.
 It does not reproduce Nintendo's logo, cartridge-header checks, RAM clearing, boot delays, or full hardware initialization.
 The executable can load raw ROM files for [terminal or window execution](cartridge.md) using this boot sequence.
 This does not establish game compatibility or complete BIOS behavior.

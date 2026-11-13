@@ -98,7 +98,16 @@ pub fn image() -> Vec<u8> {
     a.literal(1, POSTFLG);
     a.emit(0xe3a0_0001); // MOV r0,#1
     a.emit(0xe5c1_0000); // STRB r0,[r1]
-    a.emit(0xe321_f01f); // MSR CPSR_c,#System
+                         // Cartridge-entry state follows mGBA's I/O init and skip-BIOS start, the
+                         // reference for differential testing: SOUNDBIAS 0x200 and cleared r0-r12 and
+                         // flags. mGBA also starts in forced blank on scanline 126; neither is copied here.
+    a.literal(1, 0x0400_0000);
+    a.emit(0xe3a0_0c02); // MOV r0,#0x200
+    a.emit(0xe1c1_08b8); // STRH r0,[r1,#0x88] (SOUNDBIAS)
+    for register in 0..=12 {
+        a.emit(0xe3a0_0000 | register << 12); // MOV rN,#0
+    }
+    a.emit(0xe329_f01f); // MSR CPSR_fc,#System
     a.literal(15, ROM_START); // LDR pc,=ROM_START
     a.prefetch_tail(0xe129_f000); // Boot / SoftReset protected-read word.
 
