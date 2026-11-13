@@ -922,7 +922,11 @@ impl Memory {
             let halfword = ((address & 0x01ff_fffe) >> 1) as u16;
             return Ok(halfword.to_le_bytes()[(address & 1) as usize]);
         }
-        if matches!(address, 0x0000_4000..=0x01ff_ffff | 0x1000_0000..=0xffff_ffff) {
+        // Above the I/O register block (except the 0x04xx0800 mirror) the I/O page has no
+        // ports and reads like unused memory. Unused slots below 0x400 stay diagnostic:
+        // some of them read as zero instead.
+        let unused_io = address >> 24 == 0x04 && address & 0x00ff_fc00 != 0 && Io::unused(address);
+        if unused_io || matches!(address, 0x0000_4000..=0x01ff_ffff | 0x1000_0000..=0xffff_ffff) {
             if let Some(word) = self.cpu_access.and_then(|access| access.prefetch) {
                 return Ok((word >> ((address & 3) * 8)) as u8);
             }

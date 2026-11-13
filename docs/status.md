@@ -226,12 +226,13 @@ Successful DMA can establish lanes before CPU startup. Resumed fetches then upda
 ARM/Thumb instruction buffering retains sequential instructions and refill target pairs.
 Instruction buffering and supported bus history now consume the same mapped fetch samples, without sharing retained storage.
 Mapped boundary snapshots follow the actual fetched bus; unknown IWRAM lanes, missing bytes, and I/O fetch values remain diagnostic.
-Complete general-bus history, exact boundary timing, general DMA handoff, and unused/write-only I/O open bus remain incomplete.
+Complete general-bus history, exact boundary timing, general DMA handoff, and open bus for unused register-block slots and write-only I/O remain incomplete.
 [DMA channel data latches](hardware/dma.md#retained-channel-data) support blocked-source reuse, but never replace CPU bus history.
 BIOS protection uses separate retained BIOS fetch snapshots as described in [BIOS behavior](hardware/bios.md#cpu-bios-read-protection).
 Host inspection and instruction fetches remain strict. Other unmapped reads return errors.
 CPU and DMA writes to unused I/O addresses are ignored, as on hardware; host writes there stay strict.
-The unmodeled internal memory control register at `0x04xx0800` and all unused I/O reads remain diagnostics.
+CPU reads above the I/O register block (`0x04000400..0x04ffffff`) return open bus like other unused memory.
+The unmodeled internal memory control register at `0x04xx0800` and unused slots inside the register block remain diagnostics.
 CPU and DMA reads beyond the power-of-two ROM chip return the Game Pak halfword-address pattern; reads inside a trimmed image's chip, host reads, and instruction fetches past the image return errors.
 Direct memory-bus halfword and word accesses require alignment.
 CPU load/store instructions apply ARM7TDMI alignment and rotation rules before accessing the bus.

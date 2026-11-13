@@ -52,6 +52,36 @@ fn arm_unused_ranges_return_pc_plus_eight_not_address_mirrors() {
 }
 
 #[test]
+fn arm_reads_above_the_io_registers_return_pc_plus_eight() {
+    // The I/O page has no ports from 0x04000400 up, apart from the 64 KiB-repeated
+    // 0x04xx0800 register; mGBA's debug-port probe at 0x04fff780 lands here.
+    for address in [
+        0x0400_0400,
+        0x0400_1000,
+        0x0401_0100,
+        0x04ff_f780,
+        0x04ff_fffc,
+    ] {
+        let mut bus = memory(LDR);
+        let mut cpu = Cpu::new(ROM_START);
+        cpu.registers[0] = address;
+        let mut expected = cpu.clone();
+        expected.registers[1] = DATA;
+        expected.registers[15] += 4;
+        cpu.step(&mut bus).unwrap();
+        assert_cpu_arch_eq!(cpu, expected, "{address:#010x}");
+        assert_eq!(bus.read32(address), Err(MemoryError::Unmapped(address)));
+    }
+    // Unused slots inside the register block and the memory-control mirror stay strict.
+    for address in [0x0400_0304, 0x0400_0800, 0x0401_0800] {
+        let mut bus = memory(LDR);
+        let mut cpu = Cpu::new(ROM_START);
+        cpu.registers[0] = address;
+        assert!(cpu.step(&mut bus).is_err(), "{address:#010x}");
+    }
+}
+
+#[test]
 fn open_bus_loads_select_lanes_rotate_and_sign_extend_normally() {
     // Independent expectations for bytes [a5,80,33,f2].
     for (instruction, values) in [

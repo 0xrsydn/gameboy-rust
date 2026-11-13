@@ -124,6 +124,9 @@ and [shared fetch samples](../research/shared-fetch-samples.md).
 During ARM execution, data reads from `0x00004000..0x01ffffff` and `0x10000000..0xffffffff` return an open-bus value.
 Open bus means the bus retains previously driven data. GBATEK identifies this ARM value as the instruction word at PC+8.
 These high addresses do not mirror BIOS, RAM, or cartridge addresses.
+The I/O page above its register block, `0x04000400..0x04ffffff`, reads the same way, except the
+64 KiB-repeated `0x04xx0800` register. GBATEK treats entirely unused I/O ports like unused memory.
+mGBA's debug-port probe at `0x04fff780` lands in this range.
 
 The interpreter samples mapped bytes at PC+8 before executing each ARM instruction.
 That one fetch supplies both the new instruction-buffer entry and the unused-memory snapshot.
@@ -143,7 +146,8 @@ Limits remain explicit:
 
 - Thumb open bus uses the supported region rules below, including persistent internal-RAM lane history.
 - [BIOS-protected reads](bios.md#cpu-bios-read-protection) use separate retained ARM PC+8 or aligned Thumb PC+4 word snapshots.
-- Unused/write-only I/O reads, general DMA-to-CPU bus handoff, and disabled-RAM reads are not modeled here.
+- Unused slots inside the I/O register block (`0x04000000..0x040003ff`), write-only I/O reads, general
+  DMA-to-CPU bus handoff, and disabled-RAM reads are not modeled here. GBATEK notes some unused slots read as zero.
   [DMA channel data](dma.md#retained-channel-data) is separate and never overrides a CPU snapshot.
 - Missing BIOS, truncated ROM, unsupported I/O, and save-memory accesses retain their existing diagnostics.
 - Unused-memory writes remain diagnostics rather than ignored hardware writes. Swaps to those ranges still fail.
