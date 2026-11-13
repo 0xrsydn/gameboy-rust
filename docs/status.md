@@ -10,6 +10,7 @@ Update this file when a feature lands or a limit is removed.
 - Optional row capture at HBlank, double-buffered frame publication at VBlank, and retained mid-frame changes.
 - CPU-configured HBlank DMA raster demo with per-row palette changes.
 - Mode 0 tile backgrounds: 4-bit/8-bit pixels, palettes, flips, scrolling, map sizes, transparency, and priorities.
+- Backgrounds enabled mid-frame by the CPU appear three lines later, as on hardware; disabling is immediate.
 - Mode 3 video RAM snapshots, BG2 enable, palette backdrop, forced blank, and green swap.
 - Mode 1 mixed text/affine backgrounds and Mode 2 affine backgrounds, with signed transforms and map wrapping/clipping.
 - Mode 3/4/5 bitmap transforms through BG2 affine registers, with Mode 4/5 page selection.

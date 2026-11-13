@@ -94,6 +94,10 @@ pub(crate) const TIMER_START_DELAY: u8 = 2;
 /// seeing it. Fitted to the mGBA test suite's hardware-verified Timer IRQ results, together
 /// with the timer stop latency and reload latch; see docs/hardware/timers-irq.md.
 pub(crate) const IRQ_DELAY: u32 = 3;
+/// Line cycle at which each line samples the DISPCNT background enables. The mGBA
+/// suite's "Layer toggle 2" places it after cycle 18 and no later than cycle 56.
+const BG_ENABLE_SAMPLE_CYCLE: u32 = 32;
+
 /// Cycles a HALT stays idle after the request line reaches it, before the CPU resumes.
 /// Fitted to the suite's SIO timing results with this firmware's Halt service.
 pub(crate) const HALT_WAKE_CYCLES: u32 = 3;
@@ -249,6 +253,9 @@ pub(crate) struct Io {
     master_enable: bool,
     waitcnt: u16,
     dispcnt: u16,
+    // DISPCNT background enables (bits 8-11) as sampled at BG_ENABLE_SAMPLE_CYCLE of the
+    // current line and of the two lines before it, newest first.
+    bg_enable_lines: [u8; 3],
     greenswap: bool,
     mosaic: u16,
     vertical_mosaic: crate::video::mosaic::VerticalMosaic,
@@ -529,7 +536,13 @@ impl Io {
 
     pub(crate) fn video_settings(&self, captured: bool) -> crate::video::RenderSettings<'_> {
         crate::video::RenderSettings {
-            control: self.dispcnt,
+            // A background is drawn on a line only if it was also enabled when the
+            // line two above began; see docs/hardware/video.md.
+            control: if captured {
+                self.dispcnt & (0xf0ff | u16::from(self.bg_enable_lines[2]) << 8)
+            } else {
+                self.dispcnt
+            },
             prepared_objects: None,
             internal_affine: captured,
             vertical_windows: captured.then_some(self.window_edges.active),
@@ -540,6 +553,11 @@ impl Io {
             backgrounds: &self.backgrounds,
             effects: &self.effects,
         }
+    }
+
+    /// Host setup has no scanline to wait for: its enables count as long established.
+    pub(crate) fn settle_bg_enables(&mut self) {
+        self.bg_enable_lines = [(self.dispcnt >> 8) as u8 & 15; 3];
     }
 
     pub(crate) fn waitcnt(&self) -> u16 {
@@ -612,7 +630,9 @@ impl Io {
         // Line-start trackers, display IRQs, and display-triggered DMA have no event
         // in such an interval, so only the per-dot window history and the clock move.
         let within_line = cycles < CYCLES_PER_LINE - line_cycle
-            && !(line_cycle < HBLANK_START && line_cycle + cycles >= HBLANK_START);
+            && !(line_cycle < HBLANK_START && line_cycle + cycles >= HBLANK_START)
+            && !(line_cycle < BG_ENABLE_SAMPLE_CYCLE
+                && line_cycle + cycles >= BG_ENABLE_SAMPLE_CYCLE);
         if within_line && self.window_edges.started() && self.vertical_mosaic.started() {
             self.horizontal_windows
                 .advance(phase, cycles, self.effects.horizontal);
@@ -645,6 +665,14 @@ impl Io {
                 .advance(phase, cycles, active, height, counter);
         }
         self.vertical_mosaic.advance(phase, cycles, self.mosaic);
+        let enables = (self.dispcnt >> 8) as u8 & 15;
+        // 64-bit: a maximum-size batch would overflow the sum.
+        let since_sample = u64::from(line_cycle + CYCLES_PER_LINE - BG_ENABLE_SAMPLE_CYCLE);
+        let samples = (since_sample + u64::from(cycles)) / u64::from(CYCLES_PER_LINE)
+            - since_sample / u64::from(CYCLES_PER_LINE);
+        for _ in 0..samples.min(3) {
+            self.bg_enable_lines = [enables, self.bg_enable_lines[0], self.bg_enable_lines[1]];
+        }
         let (vblank, hblank) = self.display.dma_events(cycles);
         self.pending |= self.display.advance(cycles);
         if vblank || hblank {

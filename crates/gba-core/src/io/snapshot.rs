@@ -82,6 +82,7 @@ impl Snapshot for Io {
             master_enable,
             waitcnt,
             dispcnt,
+            bg_enable_lines,
             greenswap,
             mosaic,
             vertical_mosaic,
@@ -109,6 +110,7 @@ impl Snapshot for Io {
         writer.bool(*master_enable);
         writer.u16(*waitcnt);
         writer.u16(*dispcnt);
+        writer.bytes(bg_enable_lines);
         writer.bool(*greenswap);
         writer.u16(*mosaic);
         vertical_mosaic.save(writer);
@@ -138,6 +140,7 @@ impl Snapshot for Io {
             master_enable,
             waitcnt,
             dispcnt,
+            bg_enable_lines,
             greenswap,
             mosaic,
             vertical_mosaic,
@@ -165,6 +168,7 @@ impl Snapshot for Io {
         *master_enable = reader.bool()?;
         *waitcnt = reader.u16()?;
         *dispcnt = reader.u16()?;
+        reader.bytes_into(bg_enable_lines)?;
         *greenswap = reader.bool()?;
         *mosaic = reader.u16()?;
         vertical_mosaic.load(reader)?;

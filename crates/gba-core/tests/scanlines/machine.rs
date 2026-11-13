@@ -195,3 +195,71 @@ fn raster_controls_wrap_cancel_opposites_and_reset() {
         );
     }
 }
+
+fn striped_background(m: &mut Memory) {
+    m.write16(PAL, 31).unwrap(); // Backdrop.
+    m.write16(PAL + 2, 0x3e0).unwrap();
+    for word in 0..8 {
+        m.write32(VRAM + word * 4, 0x1111_1111).unwrap(); // Tile 0, all color 1.
+    }
+    m.write16(0x0400_0008, 0x0100).unwrap(); // BG0: screen block 1, all tile 0.
+}
+
+fn background_rows(f: &Framebuffer) -> Vec<usize> {
+    (0..HEIGHT)
+        .filter(|&y| {
+            let row = &f.pixels()[y * WIDTH..(y + 1) * WIDTH];
+            assert!(row.iter().all(|&p| p == row[0]), "row {y} is mixed");
+            row[0] == rgb(0x3e0)
+        })
+        .collect()
+}
+
+#[test]
+fn cpu_background_enable_shows_three_lines_later_and_disable_is_immediate() {
+    let rom = word_rom(&[
+        0xe3a0_0301, // MOV r0,#0x04000000
+        0xe1d0_10b6, // LDRH r1,[r0,#6] (VCOUNT)
+        0xe351_0028, // CMP r1,#40
+        0x1aff_fffc, // BNE
+        0xe1d0_10b4, // LDRH r1,[r0,#4] (DISPSTAT)
+        0xe311_0002, // TST r1,#2 (HBlank)
+        0x0aff_fffc, // BEQ
+        0xe3a0_2c01, // MOV r2,#0x100
+        0xe1c0_20b0, // STRH r2,[r0] (BG0 on, in line 40's HBlank)
+        0xe1d0_10b6, // LDRH r1,[r0,#6]
+        0xe351_0050, // CMP r1,#80
+        0x1aff_fffc, // BNE
+        0xe1d0_10b4, // LDRH r1,[r0,#4]
+        0xe311_0002, // TST r1,#2
+        0x0aff_fffc, // BEQ
+        0xe3a0_2000, // MOV r2,#0
+        0xe1c0_20b0, // STRH r2,[r0] (BG0 off, in line 80's HBlank)
+        0xeaff_fffe,
+    ]);
+    let mut m = Memory::new(rom).unwrap();
+    m.set_scanline_rendering(true);
+    striped_background(&mut m);
+    m.write16(DISPCNT, 0).unwrap();
+    let mut machine = Machine::new(Cpu::new(ROM_START), m);
+    machine.run_until_vblank(100_000).unwrap();
+    // Lines 41 and 42 began before the enable was two lines old.
+    assert_eq!(
+        background_rows(&present(machine.memory())),
+        (43..=80).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn host_background_enable_is_visible_at_once() {
+    let mut m = memory();
+    striped_background(&mut m);
+    m.write16(DISPCNT, 0).unwrap();
+    m.advance_cycles(CYCLES_PER_LINE * 10 + 100);
+    m.write16(DISPCNT, 0x100).unwrap();
+    m.advance_cycles(VBLANK_START - CYCLES_PER_LINE * 10 - 100);
+    assert_eq!(
+        background_rows(&present(&m)),
+        (10..HEIGHT).collect::<Vec<_>>()
+    );
+}

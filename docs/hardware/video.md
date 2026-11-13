@@ -76,6 +76,16 @@ Affine background snapshots support these configurations:
 - Mode 2: affine BG2/BG3.
 - Modes 3, 4, and 5: affine bitmap BG2, with out-of-bitmap samples always transparent.
 - DISPCNT enable bits for a background the selected mode lacks (BG3 in Mode 1, BG0/BG1 in Mode 2, all but BG2 in Modes 3–5) are ignored, as on hardware.
+- A background enabled by a CPU or DMA write is not drawn at once. Each line samples the four enable bits at line
+  cycle 32, and a captured row draws a background only if its bit is set now and was also set in the sample taken
+  two lines earlier. A write after line L's sample therefore shows from line L+3, whether it lands later in that
+  line or in its HBlank. Clearing the bit hides the background from the next captured row. A background re-enabled one line after
+  it was disabled shows for one row, hides for two, and then stays. This is what the mGBA suite's "Layer toggle"
+  and "Layer toggle 2" pictures require; they bound the sample point to after cycle 18 and no later than cycle 56.
+  The samples run on all 228 lines. Host writes to DISPCNT count as long established and show at once, and
+  `Memory::render_frame` ignores the history. Hardware starts such a row partway along (the suite shows its first
+  two pixels blank and a different first tile); rows here are still composed whole. Sprites and windows have no
+  such delay here; bitmap modes use the same rule as tile modes, which the suite does not test.
 
 `BG2PA..BG2PD` occupy `0x04000020..0x04000027`. BG2 reference points X/Y occupy `0x04000028..0x0400002f`.
 BG3 uses the corresponding registers at `0x04000030..0x0400003f`.

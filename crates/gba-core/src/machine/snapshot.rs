@@ -11,7 +11,7 @@ use crate::snapshot::{fingerprint, Reader, Snapshot, SnapshotError, Writer};
 
 const MAGIC: &[u8; 4] = b"GBAS";
 /// Bump on any change to an encoded type; older states are rejected, not migrated.
-const VERSION: u32 = 7;
+const VERSION: u32 = 8;
 const CHECKSUM_LEN: usize = 8;
 
 impl Machine {

@@ -1274,6 +1274,9 @@ impl Memory {
             if (DMA_BASE..=DMA_END).contains(&address) && self.write_access() == WriteAccess::Host {
                 self.io.expedite_dma();
             }
+            if address & !3 == crate::io::DISPCNT && self.write_access() == WriteAccess::Host {
+                self.io.settle_bg_enables();
+            }
             // A request that this write creates is dated at the access, inside a step.
             self.io
                 .update_irq_line(self.step_active.get().then(|| self.step_elapsed.get()));
