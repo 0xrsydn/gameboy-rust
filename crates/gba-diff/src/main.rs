@@ -27,7 +27,7 @@ const DISPCNT: u32 = 0x0400_0000;
 /// Machine steps allowed between VBlanks before the run is reported as stuck.
 const FRAME_STEP_LIMIT: usize = 2_000_000;
 
-const USAGE: &str = "usage: gba-diff --reference MGBA_REF --rom ROM [--frames N] [--save-type sram|flash64|flash128|eeprom512|eeprom8k] [--input FRAME:BUTTON:HOLD[,...]] [--ignore START-END[,...]] [--max-report N] [--out DIR] [--no-align] [--trace INSTRUCTIONS]";
+const USAGE: &str = "usage: gba-diff --reference MGBA_REF --rom ROM [--frames N] [--save-type sram|flash64|flash128|eeprom512|eeprom8k] [--input FRAME:BUTTON:HOLD[,...]] [--ignore START-END[,...]] [--max-report N] [--out DIR] [--images FRAME[,...]] [--no-align] [--trace INSTRUCTIONS]";
 
 /// Memory compared every frame. Video memory is compared after both frames render.
 const REGIONS: [(&str, u32, usize); 5] = [
@@ -88,6 +88,7 @@ struct Options {
     ignore: Vec<(u32, u32)>,
     max_report: usize,
     out: Option<PathBuf>,
+    images: Vec<u64>,
     align: bool,
     trace: Option<u64>,
 }
@@ -126,6 +127,7 @@ fn parse(args: &[String]) -> Result<Options, String> {
         ignore: Vec::new(),
         max_report: 8,
         out: None,
+        images: Vec::new(),
         align: true,
         trace: None,
     };
@@ -171,6 +173,11 @@ fn parse(args: &[String]) -> Result<Options, String> {
                     options
                         .ignore
                         .push((number(start)? as u32, number(end)? as u32));
+                }
+            }
+            "--images" => {
+                for frame in value()?.split(',').filter(|frame| !frame.is_empty()) {
+                    options.images.push(number(frame)?);
                 }
             }
             "--no-align" => options.align = false,
@@ -466,6 +473,64 @@ fn registers_line(label: &str, registers: &Registers) -> String {
     )
 }
 
+/// Instructions searched for the game's first RegisterRamReset.
+const RESET_SEARCH: u64 = 1_000_000;
+
+/// Whether the instruction at `address` is `SWI 0x01` (RegisterRamReset).
+fn is_ram_reset(local: &Local, address: u32, thumb: bool) -> bool {
+    let memory = local.machine.memory();
+    if thumb {
+        memory.read16(address) == Ok(0xdf01)
+    } else {
+        memory
+            .read32(address)
+            .is_ok_and(|op| op & 0x0f00_0000 == 0x0f00_0000 && (op >> 16) & 0xff == 1)
+    }
+}
+
+/// mGBA runs RegisterRamReset as a high-level call of a few dozen cycles, while this
+/// emulator's firmware clears RAM with real stores. Neither cost is hardware-verified, and the
+/// gap shifts every later frame. Run both sides in lockstep to the first such call, then move
+/// mGBA's display position to ours, as at cartridge entry.
+fn align_after_ram_reset(
+    local: &mut Local,
+    reference: &mut Reference,
+    out: &mut impl Write,
+) -> Result<(), String> {
+    let report = |error: io::Error| error.to_string();
+    for count in 1..=RESET_SEARCH {
+        let record = trace::next_local(&mut local.machine)?;
+        if !is_ram_reset(local, record.address, record.thumb) {
+            continue;
+        }
+        let theirs = reference.sync(count as usize).map_err(report)?;
+        let last = theirs.last().map(|record| record.address);
+        if last != Some(record.address) {
+            return Err(format!(
+                "cannot align after RegisterRamReset: ours at {:#010x}, mGBA at {last:x?}",
+                record.address
+            ));
+        }
+        let position = local.machine.memory().display_position();
+        local.vblank = position.vblanks; // Frames count from here on both sides.
+        reference
+            .align_video(position.scanline, position.line_cycle)
+            .map_err(report)?;
+        writeln!(
+            out,
+            "aligned mGBA after RegisterRamReset at {:#010x} (instruction {count}): VCOUNT {} cycle {}",
+            record.address, position.scanline, position.line_cycle
+        )
+        .map_err(report)?;
+        return Ok(());
+    }
+    writeln!(
+        out,
+        "no RegisterRamReset within {RESET_SEARCH} instructions; not aligned"
+    )
+    .map_err(report)
+}
+
 fn run(options: Options) -> Result<bool, String> {
     let rom =
         fs::read(&options.rom).map_err(|error| format!("{}: {error}", options.rom.display()))?;
@@ -520,6 +585,10 @@ fn run(options: Options) -> Result<bool, String> {
     )
     .map_err(report)?;
 
+    if options.align && options.trace.is_none() {
+        align_after_ram_reset(&mut local, &mut reference, &mut out)?;
+    }
+
     if let Some(count) = options.trace {
         return trace::run(
             &mut local.machine,
@@ -550,6 +619,9 @@ fn run(options: Options) -> Result<bool, String> {
         }
         let (report_frame, ours, theirs) =
             compare_frame(&local, &mut reference, &options.ignore).map_err(report)?;
+        if let (Some(dir), true) = (&options.out, options.images.contains(&frame)) {
+            write_images(dir, frame, &ours, &theirs).map_err(report)?;
+        }
         if report_frame.clean() {
             continue;
         }

@@ -25,6 +25,8 @@ SHIM = Path(__file__).with_name("mgba-ref") / "mgba_ref.c"
 MAX_TARBALL_BYTES = 64 * 1024 * 1024
 
 # Headless core only: no frontends, renderers, scripting, or optional libraries.
+COLOR_FLAG = "-DCOLOR_16_BIT"
+
 CMAKE_OPTIONS = [
     "-DCMAKE_BUILD_TYPE=Release",
     # mGBA 0.10 declares an old cmake_minimum_required that CMake 4 rejects.
@@ -112,11 +114,14 @@ def prepare(output, tarball=None, download=fetch, build=True):
     flags = os.environ.get("CFLAGS", "")
     # Newer SDKs flag APIs above mGBA's old deployment target; they are unused here.
     flags += " -Wno-error=unguarded-availability -Wno-error=unguarded-availability-new"
+    # BGR555 rendering blends 5-bit channels like hardware; the 32-bit renderer rounds at
+    # 8 bits and differs from hardware by one step in some blends.
+    flags += " " + COLOR_FLAG
     run(["cmake", "-S", str(source), "-B", str(objects), f"-DCMAKE_C_FLAGS={flags}"]
         + CMAKE_OPTIONS, output / "cmake-configure.log")
     run(["cmake", "--build", str(objects), "-j", str(os.cpu_count() or 2)],
         output / "cmake-build.log")
-    run(["cc", "-O2", "-std=gnu11", "-Wall", f"-I{source / 'include'}",
+    run(["cc", "-O2", "-std=gnu11", "-Wall", COLOR_FLAG, f"-I{source / 'include'}",
          f"-I{objects / 'include'}", "-DBUILD_STATIC", str(SHIM),
          str(objects / "libmgba.a"), *link_flags(), "-o", str(output / "mgba-ref")],
         output / "shim-build.log")

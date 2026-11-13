@@ -209,7 +209,13 @@ static void video(uint32_t line, uint32_t cycle) {
 static void frame_buffer(void) {
 	printf("ok %d %d\n", WIDTH, HEIGHT);
 	for (int i = 0; i < WIDTH * HEIGHT; ++i) {
+#ifdef COLOR_16_BIT
+		/* BGR555: report it in the 32-bit layout, each channel as value << 3. */
+		uint32_t c = framebuffer[i];
+		uint32_t pixel = (c & 0x1f) << 3 | ((c >> 5) & 0x1f) << 11 | ((c >> 10) & 0x1f) << 19;
+#else
 		uint32_t pixel = (uint32_t) framebuffer[i];
+#endif
 		uint8_t le[4] = { pixel, pixel >> 8, pixel >> 16, pixel >> 24 };
 		fwrite(le, 1, 4, stdout);
 	}

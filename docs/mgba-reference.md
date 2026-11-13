@@ -35,7 +35,8 @@ direnv exec . cargo run --locked --release -p gba-diff -- \
 
 After every frame (each VBlank), it compares EWRAM, IWRAM, palette RAM, VRAM, OAM, 30 readable I/O registers, and all
 pixels at 5 bits per channel. It prints the first divergent frame in detail, then one summary line per later divergent
-frame (`--max-report`). `--out` writes this emulator's frame, mGBA's frame, and a red difference mask as PPM files.
+frame (`--max-report`). `--out` writes this emulator's frame, mGBA's frame, and a red difference mask as PPM files,
+for the first divergent frame and for any frames listed with `--images`.
 `--ignore START-END[,...]` skips address ranges. Inputs use `FRAME:BUTTON:HOLD`, counted from frame 0.
 Exit status is 0 without divergence, 1 with one, and 2 for usage or setup errors.
 
@@ -73,6 +74,14 @@ It prints both original values first. `--no-align` keeps mGBA's own start (scanl
 
 The boot replacement already matches mGBA's SOUNDBIAS (`0x0200`) and its cleared r0–r12 and flags; see [BIOS](hardware/bios.md).
 
+Frame comparison also re-aligns after the game's first `RegisterRamReset` (`SWI 0x01`). mGBA runs that call as a
+high-level function of a few dozen cycles, while this emulator's firmware clears RAM with real stores (a full reset
+takes over three frames); neither cost is hardware-verified. Both sides run in instruction lockstep to that call, then
+mGBA's display position is moved to ours again. Without this, every later frame differs only by that offset.
+
+The reference is built with mGBA's 16-bit (BGR555) renderer. Its default 32-bit renderer blends 8-bit channels, which
+rounds differently from hardware's 5-bit blending by one step in some fades; the 16-bit renderer matches this emulator.
+
 ## Findings so far
 
 Measured 2026-11-13 on Darwin arm64 with the [pinned suite ROM](public-mgba-suite.md), before any timing changes:
@@ -106,3 +115,6 @@ With a local Pokémon FireRed dump (not distributed), lockstep matches 1,021 ins
 - No BIOS image is passed to mGBA. A real BIOS would make BIOS-internal comparison possible, but none is distributed here.
 - Paths passed to `mgba-ref` must be UTF-8 without whitespace.
 - Audio is not compared.
+- Known noise: residue below the stack pointer (`0x03007c00–0x03007fff`) differs because the two BIOS implementations
+  push different words, and mGBA sets the destination-control bits of sound-FIFO DMA control registers
+  (`0x040000c6`, `0x040000d2`) itself. Use `--ignore` for these when looking for behavior differences.
