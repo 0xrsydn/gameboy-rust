@@ -3,7 +3,7 @@ use gba_core::{
     cartridge::{SaveDevice, SaveError, SAVE_END, SAVE_START},
     cpu::Cpu,
     dma::DMA_BASE,
-    machine::{Machine, MachineError},
+    machine::{Machine, StepKind},
     memory::{Memory, MemoryError, ROM_START},
     snapshot::SnapshotError,
 };
@@ -63,9 +63,16 @@ fn byte_writes_commit_immediately_and_mirror_every_32_kib() {
     let mut bus = memory(&[0xeaff_fffe]);
     bus.write8(SAVE_START, 0xff).unwrap();
     assert!(!bus.save_modified());
+    // SRAM keeps repeating through 0x0e000000-0x0fffffff, as the mGBA suite's
+    // "SRAM mirror" tests expect; nothing answers beyond it.
+    let mut bus = memory(&[0xeaff_fffe]);
+    bus.write8(SAVE_START + 5, 0x42).unwrap();
+    assert_eq!(bus.read8(SAVE_END + 6).unwrap(), 0x42);
+    assert_eq!(bus.read8(0x0f00_0005).unwrap(), 0x42);
+    assert_eq!(bus.read8(0x0fff_8005).unwrap(), 0x42);
     assert_eq!(
-        bus.read8(SAVE_END + 1),
-        Err(MemoryError::Unmapped(SAVE_END + 1))
+        bus.read8(0x1000_0005),
+        Err(MemoryError::Unmapped(0x1000_0005))
     );
 }
 
@@ -190,6 +197,28 @@ fn cpu_wide_loads_repeat_the_addressed_byte_then_rotate() {
 }
 
 #[test]
+fn block_transfers_and_swaps_use_the_same_byte_lanes() {
+    let image = *b"Game Boy";
+    // LDMIA r0,{r2,r3}: each word repeats its addressed byte.
+    let mut machine = program_with(SAVE_START, 0, 0xe890_000c, &image);
+    machine.step().unwrap();
+    assert_eq!(machine.cpu().registers()[2], 0x4747_4747);
+    assert_eq!(machine.cpu().registers()[3], 0x2020_2020);
+    // STMIA r0,{r1}: one byte, the lane for the aligned address.
+    let mut machine = program_with(SAVE_START + 4, 0xa5b6_c7d8, 0xe880_0002, &[]);
+    machine.step().unwrap();
+    assert_eq!(
+        &machine.memory().save_image().unwrap()[..8],
+        &[0xff, 0xff, 0xff, 0xff, 0xd8, 0xff, 0xff, 0xff]
+    );
+    // SWP r2,r1,[r0]: reads the repeated old byte, stores the address lane.
+    let mut machine = program_with(SAVE_START + 1, 0xa5b6_c7d8, 0xe100_2091, &image);
+    machine.step().unwrap();
+    assert_eq!(machine.cpu().registers()[2], 0x6161_6161);
+    assert_eq!(machine.memory().save_image().unwrap()[1], 0xc7);
+}
+
+#[test]
 fn thumb_wide_accesses_use_the_same_byte_lanes() {
     // ADD r2,pc,#1; BX r2 enters Thumb at ROM+8, then STRH r1,[r0,#0]; LDR r3,[r0,#0].
     let mut bus = memory(&[
@@ -214,14 +243,50 @@ fn thumb_wide_accesses_use_the_same_byte_lanes() {
 }
 
 #[test]
-fn dma_into_sram_remains_a_diagnostic() {
-    let mut bus = memory(&[0xeaff_fffe]);
-    bus.write32(DMA_BASE + 0x24, 0x0300_0000).unwrap(); // DMA3 source
-    bus.write32(DMA_BASE + 0x28, SAVE_START).unwrap(); // DMA3 destination
-    bus.write32(DMA_BASE + 0x2c, 0x8000_0001).unwrap(); // One halfword, immediate
-    let mut machine = Machine::new(Cpu::new(ROM_START), bus);
-    assert!(matches!(machine.step(), Err(MachineError::Dma(_))));
-    assert!(!machine.memory().save_modified());
+fn dma_writes_the_address_byte_lane_into_sram() {
+    // mGBA suite "SRAM store": a DMA3 word of 0xa5b6c7d8 stores 0xd8.
+    for (control, offset, byte) in [
+        (0x8400_0001, 0, 0xd8), // Word
+        (0x8400_0001, 4, 0xd8),
+        (0x8000_0001, 2, 0xd8), // Halfword: the low byte at an aligned address
+    ] {
+        let mut bus = memory(&[0xeaff_fffe]);
+        bus.write32(0x0300_0000, 0xa5b6_c7d8).unwrap();
+        bus.write32(DMA_BASE + 0x24, 0x0300_0000).unwrap(); // DMA3 source
+        bus.write32(DMA_BASE + 0x28, SAVE_START + offset).unwrap(); // DMA3 destination
+        bus.write32(DMA_BASE + 0x2c, control).unwrap();
+        let mut machine = Machine::new(Cpu::new(ROM_START), bus);
+        assert_eq!(machine.step().unwrap(), StepKind::Dma { channel: 3 });
+        let image = machine.memory().save_image().unwrap();
+        let mut expected = [0xff; 8];
+        expected[offset as usize] = byte;
+        assert_eq!(&image[..8], &expected, "{control:#x} +{offset}");
+        assert!(machine.memory().save_modified());
+    }
+}
+
+#[test]
+fn dma_reads_repeat_the_addressed_sram_byte() {
+    // mGBA suite "SRAM load": DMA1-3 halfword reads give 0x4747, word reads 0x47474747.
+    for (control, expected) in [(0x8000_0001, 0x4747_4747), (0x8400_0001, 0x4747_4747)] {
+        let mut bus = memory(&[0xeaff_fffe]);
+        let mut image = vec![0xff; SIZE];
+        image[..4].copy_from_slice(b"Game");
+        bus.load_save_image(&image).unwrap();
+        bus.write32(DMA_BASE + 0x0c, SAVE_START).unwrap(); // DMA1 source (28-bit)
+        bus.write32(DMA_BASE + 0x10, 0x0300_0000).unwrap();
+        bus.write32(DMA_BASE + 0x14, control).unwrap();
+        let mut machine = Machine::new(Cpu::new(ROM_START), bus);
+        assert_eq!(machine.step().unwrap(), StepKind::Dma { channel: 1 });
+        let read = machine.memory().read32(0x0300_0000).unwrap();
+        let mask = if control & 0x0400_0000 != 0 {
+            u32::MAX
+        } else {
+            0xffff
+        };
+        assert_eq!(read & mask, expected & mask, "{control:#x}");
+        assert!(!machine.memory().save_modified());
+    }
 }
 
 #[test]

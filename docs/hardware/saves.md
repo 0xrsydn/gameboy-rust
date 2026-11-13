@@ -34,8 +34,11 @@ A browser frontend can use the same API with browser storage instead of filesyst
 ## SRAM
 
 `SaveDevice::Sram` is a 32 KiB byte-wide array with no command protocol. It starts erased (`0xff`) like Flash.
-The 32 KiB array repeats twice through the `0x0e000000..0x0e00ffff` save window; higher addresses stay unmapped.
-CPU byte stores take effect when the instruction's step completes. Reads later in the same step already see the new byte.
+The 32 KiB array repeats every 32 KiB through `0x0e000000..0x0fffffff`. The mGBA suite's hardware expectations for
+its "SRAM mirror" tests match SRAM exactly at `0x0f000000`, although GBATEK lists `0x0e010000` and up as unused.
+Flash keeps its 64 KiB window.
+Stores take effect in program order when the step completes; reads later in the same step already see them.
+One step can stage sixteen byte stores, enough for an `STM` of every register.
 Byte stores and loads may execute from ROM; the Flash work-RAM read restriction does not apply.
 SRAM sits on an 8-bit bus that receives the instruction's own, possibly unaligned, address.
 CPU halfword and word loads (`LDR`, `LDRH`, `LDRSH`) read that one byte and repeat it on every lane, then apply normal ARM7TDMI rotation.
@@ -44,7 +47,11 @@ CPU halfword and word stores (`STR`, `STRH`) write one byte: the data-bus lane t
 A word store writes `value >> (8 * (address & 3))`; a halfword store drives both bus halves, so it writes its low byte at even addresses and its high byte at odd ones.
 Each access costs one 8-bit bus access.
 Aligned results match hardware expectations published with the [mGBA test suite](https://github.com/mgba-emu/suite); unaligned stores were measured only as leaving byte 0 untouched.
-Block transfers (`LDM`/`STM`), swaps wider than a byte, DMA transfers, and host halfword/word accesses remain diagnostics.
+`LDM`/`STM` and word swaps use the same lanes for each word. DMA does too: a DMA1–3 source reads the repeated byte, and a
+DMA3 destination stores the address's lane, as the suite's "SRAM load/store" DMA results show. DMA0–2 destinations mask
+away from SRAM. Host halfword/word accesses remain diagnostics.
+The CpuSet/CpuFastSet services of the replacement BIOS align their addresses, so misaligned calls do not reproduce the
+real firmware's lane results; the suite's memory test reports these as its remaining failures.
 SRAM shares the save window's WAITCNT wait states, save-image API, host persistence, and save states with Flash.
 A save state records the selected device. Restoring it into a machine with another save device is rejected as a cartridge setup mismatch.
 

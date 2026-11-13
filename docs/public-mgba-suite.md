@@ -49,7 +49,7 @@ Each sub-suite started from a fresh boot. Repository tooling for this run does n
 
 | # | Sub-suite | Passed / results | Current | Stopped by |
 | ---: | --- | ---: | ---: | --- |
-| 0 | Memory | 43 / 44 so far | 43 / 44 so far | DMA0 read from unused `0x0003d8b0` |
+| 0 | Memory | 43 / 44 so far | 1511 / 1552 | — (misaligned BIOS copies remain) |
 | 1 | I/O read | 4 / 40 so far | 4 / 40 so far | CPU read of unused register slot `0x04000058` |
 | 2 | Timing | 1660 / 2020 | 1680 / 2020 | — |
 | 3 | Timers | 362 / 936 | 596 / 936 | — |
@@ -58,7 +58,7 @@ Each sub-suite started from a fresh boot. Repository tooling for this run does n
 | 6 | Carry | 93 / 93 | 93 / 93 | — |
 | 7 | Multiply long | 52 / 72 | 52 / 72 | — |
 | 8 | BIOS math | 20 / 30 so far | 20 / 30 so far | Undefined instruction in the BIOS replacement's argument trap |
-| 9 | DMA | 12 / 12 so far | 12 / 12 so far | DMA0 read from unused `0x0003cfd8` |
+| 9 | DMA | 12 / 12 so far | 1244 / 1244 | — |
 | 10 | SIO read | 1 / 6 so far | 1 / 6 so far | CPU read of unmodeled `RCNT` at `0x04000134` |
 | 11 | SIO timing | 4 / 4 | 0 / 4 | — |
 | 12 | Misc. edge | 4 / 12 | 4 / 12 | — |

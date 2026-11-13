@@ -297,7 +297,7 @@ impl Memory {
     }
 
     fn commit_save_mutation(&mut self) {
-        if let Some(effect) = self.cartridge.take_save_mutation() {
+        while let Some(effect) = self.cartridge.take_save_mutation() {
             let target = &mut self.save_image[effect.start..effect.end];
             self.save_modified |= target.iter().any(|&b| b != effect.value);
             target.fill(effect.value);
@@ -566,7 +566,12 @@ impl Memory {
         }
         let map_error = |error| DmaError::Memory { channel, error };
         // Validate before reading or committing channel data. Failed units are atomic.
+        // SRAM's 8-bit bus takes one byte whatever the transfer width.
+        let sram_destination = self.sram_lane(transfer.destination);
         match transfer.width {
+            _ if sram_destination => {
+                self.write_index::<1>(transfer.destination, WriteAccess::Emulated)
+            }
             AccessWidth::Halfword => {
                 self.write_index::<2>(transfer.destination, WriteAccess::Emulated)
             }
@@ -600,6 +605,9 @@ impl Memory {
                 transfer
                     .data_latch
                     .expect("unknown blocked source rejected above")
+            } else if self.sram_lane(transfer.source) {
+                // The addressed SRAM byte appears on every lane, as for CPU loads.
+                u32::from(self.read8(transfer.source)?) * 0x0101_0101
             } else {
                 match transfer.width {
                     AccessWidth::Halfword => u32::from(self.read16(transfer.source)?) * 0x0001_0001,
@@ -615,6 +623,12 @@ impl Memory {
             };
             self.advance_timer_step(timing.total());
             match transfer.width {
+                // SRAM stores the data-bus lane that matches the address.
+                _ if sram_destination => self.write_aligned(
+                    transfer.destination,
+                    [(data_latch >> ((transfer.destination & 3) * 8)) as u8],
+                    WriteAccess::Emulated,
+                ),
                 AccessWidth::Halfword => self.write_aligned(
                     transfer.destination,
                     (value as u16).to_le_bytes(),
@@ -1176,7 +1190,7 @@ impl Memory {
                 }
                 Ok(0)
             }
-            0x0e if self.cartridge_state().save_mapped(address) => {
+            0x0e | 0x0f if self.cartridge_state().save_mapped(address) => {
                 if N != 1 {
                     return Err(MemoryError::UnsupportedCartridgeAccess {
                         address,
@@ -1246,6 +1260,14 @@ impl Memory {
         // A serial request can finish before a later control write reaches the bus.
         let validation = (|| {
             for &(address, value) in writes {
+                if self.sram_lane(address) {
+                    // One byte per word on SRAM's 8-bit bus; see store32.
+                    self.write_index::<1>(address, self.write_access())?;
+                    let byte = [(value >> ((address & 3) * 8)) as u8];
+                    cartridge.write(address, &byte, &self.save_image, self.cpu_access.is_some())?;
+                    self.record_access(address, AccessWidth::Byte);
+                    continue;
+                }
                 self.write_index::<4>(address, self.write_access())?;
                 let bytes = value.to_le_bytes();
                 Self::validate_io_values(&mut audio, address, &bytes)?;
@@ -1271,7 +1293,7 @@ impl Memory {
         validation?;
         for &(address, value) in writes {
             // The map cannot change between validation and these writes.
-            self.write32(address, value)?;
+            self.store32(address, value)?;
         }
         Ok(())
     }
@@ -1343,7 +1365,7 @@ impl Memory {
 
     /// The 8-bit SRAM bus receives the unaligned address of CPU halfword/word accesses.
     fn sram_lane(&self, address: u32) -> bool {
-        address >> 24 == 0x0e && self.cartridge_state().sram_mapped(address)
+        matches!(address >> 24, 0x0e | 0x0f) && self.cartridge_state().sram_mapped(address)
     }
 
     /// A CPU `LDR` at its own (possibly unaligned) address, with ARM7TDMI rotation.

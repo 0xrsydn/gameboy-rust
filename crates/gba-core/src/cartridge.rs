@@ -15,6 +15,7 @@ use flash::Flash;
 pub(crate) use flash::SaveMutation;
 pub use flash::{
     SaveDevice, SaveError, FLASH_ERASE_CYCLES, FLASH_PROGRAM_CYCLES, SAVE_END, SAVE_START,
+    SRAM_MIRROR_END,
 };
 use rtc::Rtc;
 use sram::Sram;
@@ -75,7 +76,10 @@ impl Cartridge {
     }
 
     pub(crate) fn save_mapped(&self, address: u32) -> bool {
-        (self.flash.is_some() || self.sram.is_some()) && (SAVE_START..=SAVE_END).contains(&address)
+        // SRAM repeats through both save regions (the mGBA suite's "SRAM mirror" tests
+        // expect 0x0f000000 to match 0x0e000000); Flash keeps the 64 KiB window.
+        (self.flash.is_some() && (SAVE_START..=SAVE_END).contains(&address))
+            || (self.sram.is_some() && (SAVE_START..=SRAM_MIRROR_END).contains(&address))
     }
 
     /// SRAM sits on an 8-bit bus that sees the unaligned address of wider accesses.

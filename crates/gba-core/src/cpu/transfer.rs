@@ -69,7 +69,8 @@ impl Cpu {
                 continue;
             }
             if load {
-                let value = memory.read32(address)?;
+                // SRAM's 8-bit bus repeats one byte in each loaded word.
+                let value = memory.load32(address)?;
                 *destination = if register == 15 && restore.is_none() {
                     self.instruction_set.align(value)
                 } else {
@@ -136,8 +137,8 @@ impl Cpu {
             memory.write8(address, value as u8)?;
             previous
         } else {
-            let previous = memory.read32(address & !3)?.rotate_right((address & 3) * 8);
-            memory.write32(address & !3, value)?;
+            let previous = memory.load32(address)?;
+            memory.store32(address, value)?;
             previous
         };
         self.registers[destination] = previous;

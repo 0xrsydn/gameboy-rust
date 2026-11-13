@@ -5,6 +5,8 @@ use std::{error::Error, fmt};
 
 pub const SAVE_START: u32 = 0x0e00_0000;
 pub const SAVE_END: u32 = 0x0e00_ffff;
+/// SRAM answers throughout 0x0e000000-0x0fffffff, repeating every 32 KiB.
+pub const SRAM_MIRROR_END: u32 = 0x0fff_ffff;
 /// Nominal simulation delays, not measured Macronix operation times.
 pub const FLASH_PROGRAM_CYCLES: u32 = 650;
 pub const FLASH_ERASE_CYCLES: u32 = 30000;
