@@ -13,6 +13,11 @@ pub(crate) struct WindowEdges {
 }
 
 impl WindowEdges {
+    /// False until the first clock advance evaluates the reset line's comparators.
+    pub fn started(&self) -> bool {
+        self.started
+    }
+
     /// Evaluate each crossed line start, including hidden lines. With fixed bounds,
     /// only the latest matching edge matters, so large clock batches remain O(1).
     pub fn advance(&mut self, phase: u32, cycles: u32, bounds: [u16; 2]) {

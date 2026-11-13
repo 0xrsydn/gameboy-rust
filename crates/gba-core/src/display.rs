@@ -91,6 +91,15 @@ impl Display {
         (vblank, hblank)
     }
 
+    /// Advance inside one line without reaching its HBlank or the next line start.
+    /// No status flag changes and no event counter moves in such an interval.
+    pub(crate) fn advance_within_line(&mut self, cycles: u32) {
+        let line_cycle = self.phase % CYCLES_PER_LINE;
+        debug_assert!(line_cycle + cycles < CYCLES_PER_LINE);
+        debug_assert!(line_cycle >= HBLANK_START || line_cycle + cycles < HBLANK_START);
+        self.phase += cycles;
+    }
+
     /// Return IRQ request bits crossed during the interval (old time, new time].
     /// Periodic arithmetic handles large batches without skipping events or
     /// looping per cycle/scanline. Status derives from the final clock position.

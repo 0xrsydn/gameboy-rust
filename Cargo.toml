@@ -6,3 +6,9 @@ members = ["crates/gba-core", "crates/gba-demos", "crates/desktop", "crates/gba-
 version = "0.1.0"
 edition = "2021"
 publish = false
+
+# The interpreter's hot path crosses module and crate boundaries on every bus
+# access. Whole-program inlining is worth the slower release link.
+[profile.release]
+lto = "fat"
+codegen-units = 1

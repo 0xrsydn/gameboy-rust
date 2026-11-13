@@ -13,6 +13,11 @@ pub(crate) struct VerticalMosaic {
 }
 
 impl VerticalMosaic {
+    /// False until the first clock advance applies the reset-time OBJ phase.
+    pub fn started(&self) -> bool {
+        self.started
+    }
+
     pub fn advance(&mut self, phase: u32, cycles: u32, sizes: u16) {
         if cycles == 0 {
             return;

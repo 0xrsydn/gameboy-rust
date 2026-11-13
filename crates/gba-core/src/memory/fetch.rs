@@ -63,11 +63,23 @@ impl Memory {
         if address & (width as u32 - 1) != 0 {
             return Err(MemoryError::Unaligned(address));
         }
-        if self.cartridge_state().save_mapped(address) {
+        if address >> 24 >= 0x08 && self.with_cartridge(|c| c.save_mapped(address)) {
             return Err(MemoryError::UnsupportedCartridgeAccess {
                 address,
                 operation: "Flash instruction fetch",
             });
+        }
+        match state {
+            InstructionSet::Arm => {
+                if let Some(bytes) = self.plain_bytes::<4>(address) {
+                    return Ok(u32::from_le_bytes(bytes));
+                }
+            }
+            InstructionSet::Thumb => {
+                if let Some(bytes) = self.plain_bytes::<2>(address) {
+                    return Ok(u32::from(u16::from_le_bytes(bytes)));
+                }
+            }
         }
         let mut bytes = [0; 4];
         for (offset, byte) in bytes[..width].iter_mut().enumerate() {

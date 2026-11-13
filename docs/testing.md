@@ -37,6 +37,8 @@ The window starts before boot, so it covers boot execution, like a reset-to-fram
 A STOP, a diagnostic, or a missing VBlank ends the run without a timing result.
 `--bench-frames` rejects `--rtc`, `--audio`, `--speed`, `--state-file`, `--steps`, `--window`, and `--frames`.
 Timing depends on the host and its current load. Treat the output as a measurement, never as a test verdict.
+The workspace release profile uses fat LTO and one codegen unit, because the interpreter's bus path crosses module
+and crate boundaries on every access; release links are slower in exchange.
 The [mGBA reference](mgba-reference.md) has the comparable `mgba-perf` command.
 Run the additional file-backed ROM-window test explicitly in that desktop session:
 

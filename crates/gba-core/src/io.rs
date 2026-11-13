@@ -11,6 +11,8 @@ pub use serial::{
     JOYCNT, JOYSTAT, JOY_RECV, JOY_TRANS, RCNT, SIOCNT, SIODATA32, SIODATA8, SIOMLT_SEND,
     SIOMULTI0, SIOMULTI1, SIOMULTI2, SIOMULTI3,
 };
+#[cfg(test)]
+mod advance_tests;
 mod snapshot;
 mod timer_step;
 pub(crate) use timer_step::TimerStep;
@@ -156,11 +158,13 @@ impl Timer {
         let ticks = if self.count_up() {
             previous_overflows
         } else {
-            let divisor = [1, 64, 256, 1024][usize::from(self.control & 3)];
+            // Prescalers 1, 64, 256, and 1024 are powers of two, so shifts replace
+            // a division on every step.
+            let shift = [0, 6, 8, 10][usize::from(self.control & 3)];
             // Count shared divider edges in (start, end], independently of enable time,
             // after any remaining start delay.
             let start = u64::from(phase) + u64::from(skip);
-            (u64::from(phase) + u64::from(cycles)) / divisor - start / divisor
+            ((u64::from(phase) + u64::from(cycles)) >> shift) - (start >> shift)
         };
         let until_overflow = 0x1_0000 - u64::from(self.counter);
         if ticks < until_overflow {
@@ -526,7 +530,20 @@ impl Io {
         self.dma.elapse(cycles);
         // Hardware state tracks time even when host-side frame capture is disabled.
         let position = self.display.position();
-        let phase = u32::from(position.scanline) * CYCLES_PER_LINE + u32::from(position.line_cycle);
+        let line_cycle = u32::from(position.line_cycle);
+        let phase = u32::from(position.scanline) * CYCLES_PER_LINE + line_cycle;
+        // Most CPU steps end inside the line they began in, without reaching HBlank.
+        // Line-start trackers, display IRQs, and display-triggered DMA have no event
+        // in such an interval, so only the per-dot window history and the clock move.
+        let within_line = cycles < CYCLES_PER_LINE - line_cycle
+            && !(line_cycle < HBLANK_START && line_cycle + cycles >= HBLANK_START);
+        if within_line && self.window_edges.started() && self.vertical_mosaic.started() {
+            self.horizontal_windows
+                .advance(phase, cycles, self.effects.horizontal);
+            self.display.advance_within_line(cycles);
+            self.advance_timers_and_wake(cycles, advance_timers);
+            return;
+        }
         self.window_edges
             .advance(phase, cycles, self.effects.vertical);
         self.horizontal_windows
@@ -555,6 +572,10 @@ impl Io {
         let (vblank, hblank) = self.display.dma_events(cycles);
         self.dma.trigger(vblank, hblank);
         self.pending |= self.display.advance(cycles);
+        self.advance_timers_and_wake(cycles, advance_timers);
+    }
+
+    fn advance_timers_and_wake(&mut self, cycles: u32, advance_timers: bool) {
         if advance_timers {
             self.pending |= self.serial.advance(cycles);
             let mut clock = self.audio_capture.clock;

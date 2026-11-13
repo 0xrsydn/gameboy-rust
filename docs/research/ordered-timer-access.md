@@ -47,6 +47,18 @@ Block transfers have separate completion times for successive words.
 A start write cannot count earlier source cycles. A stop write includes clocks through its completion.
 Shared divider edges, cascaded overflow pulses, and reload behavior use the timer-bank implementation.
 
+### Lazy shadows
+
+The steps above describe what a step observes, not when the host does the work.
+A machine step records its elapsed bus time and creates a `TimerStep` only when an access reaches a register the
+shadow owns: timers, sound, serial, or the low IF byte. The shadow then advances from the step's start to that
+access's time in one jump. A step that never reaches such a register advances the committed devices once, in place,
+at completion. The cartridge shadow follows the same rule for save-device and GPIO accesses.
+
+Both shortcuts rely on every staged clock being additive: advancing by `a` and then `b` equals advancing by `a + b`.
+`io/timer_step.rs` checks that property, and the equality of the in-place advance with stage-advance-commit, over
+randomized timer, sound, and serial register contents. A new staged device must keep it.
+
 Timer IF reads include requests raised through the access phase.
 Acknowledgement clears timer requests already present at that phase; later work can raise them again.
 Committing timer flags preserves non-timer IF bits.

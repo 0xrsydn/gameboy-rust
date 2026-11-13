@@ -17,7 +17,8 @@ impl Memory {
 
     /// Staged per-step transactions exist only inside `Machine::step`.
     fn mid_step(&self) -> bool {
-        self.cartridge_step.get().is_some()
+        self.step_active.get()
+            || self.cartridge_step.get().is_some()
             || self.timer_step.get().is_some()
             || self.cpu_timing.get().is_some()
             || self.cpu_access.is_some()
@@ -46,8 +47,10 @@ impl Snapshot for Memory {
             bios: _,           // Host image, identified by the state header.
             io,
             cycles,
-            cpu_timing: _, // Staged transaction; empty between steps.
-            timer_step: _, // Staged transaction; empty between steps.
+            cpu_timing: _,   // Staged transaction; empty between steps.
+            timer_step: _,   // Staged transaction; empty between steps.
+            step_active: _,  // False between steps; checked above.
+            step_elapsed: _, // Zero between steps.
             gamepak_prefetch,
             #[cfg(test)]
                 last_cpu_timing: _, // Test trace only.
@@ -102,6 +105,8 @@ impl Snapshot for Memory {
             cycles,
             cpu_timing: _,
             timer_step: _,
+            step_active: _,
+            step_elapsed: _,
             gamepak_prefetch,
             #[cfg(test)]
                 last_cpu_timing: _,

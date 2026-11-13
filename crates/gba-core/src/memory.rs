@@ -1,4 +1,8 @@
-use std::{cell::Cell, error::Error, fmt};
+use std::{
+    cell::{Cell, RefCell, RefMut},
+    error::Error,
+    fmt,
+};
 
 #[cfg(test)]
 mod audio_capture_tests;
@@ -129,6 +133,28 @@ struct CpuAccess {
     prefetch: Option<u32>,
 }
 
+/// A step-scoped shadow of committed state. Bus accesses mutate it in place; the
+/// whole-value accessors serve the rare preflight and test paths.
+struct Stage<T>(RefCell<Option<T>>);
+
+impl<T: Copy> Stage<T> {
+    fn new() -> Self {
+        Self(RefCell::new(None))
+    }
+
+    fn get(&self) -> Option<T> {
+        *self.0.borrow()
+    }
+
+    fn set(&self, value: Option<T>) {
+        *self.0.borrow_mut() = value;
+    }
+
+    fn take(&self) -> Option<T> {
+        self.0.borrow_mut().take()
+    }
+}
+
 /// Work/video/palette RAM, OAM, cartridge ROM, optional BIOS, and supported I/O.
 /// Unused-memory reads use ARM PC+8 or supported region-dependent Thumb snapshots.
 /// Protected BIOS reads separately retain the snapshot from BIOS execution.
@@ -149,12 +175,16 @@ pub struct Memory {
     save_modified: bool,
     cartridge_elapsed: Cell<u32>,
     cartridge: Cartridge,
-    cartridge_step: Cell<Option<Cartridge>>,
+    cartridge_step: Stage<Cartridge>,
     bios: Option<Vec<u8>>,
     io: Io,
     cycles: u64,
     cpu_timing: Cell<Option<CpuTiming>>,
-    timer_step: Cell<Option<TimerStep>>,
+    timer_step: Stage<TimerStep>,
+    // A machine step is open. Its shadows are created by the first access that
+    // observes them and are brought to `step_elapsed` on each use.
+    step_active: Cell<bool>,
+    step_elapsed: Cell<u32>,
     gamepak_prefetch: Prefetch,
     #[cfg(test)]
     last_cpu_timing: Option<CpuTiming>,
@@ -183,12 +213,14 @@ impl Memory {
             save_modified: false,
             cartridge_elapsed: Cell::new(0),
             cartridge: Cartridge::default(),
-            cartridge_step: Cell::new(None),
+            cartridge_step: Stage::new(),
             bios: None,
             io: Io::default(),
             cycles: 0,
             cpu_timing: Cell::new(None),
-            timer_step: Cell::new(None),
+            timer_step: Stage::new(),
+            step_active: Cell::new(false),
+            step_elapsed: Cell::new(0),
             gamepak_prefetch: Prefetch::default(),
             #[cfg(test)]
             last_cpu_timing: None,
@@ -215,20 +247,14 @@ impl Memory {
     /// Replace GPIO/RTC hardware with its initial state. Call between machine steps.
     /// Save hardware/data are preserved. This never modifies ROM bytes or enables a host clock.
     pub fn set_cartridge_hardware(&mut self, hardware: CartridgeHardware) {
-        assert!(
-            self.cartridge_step.get().is_none(),
-            "active cartridge transaction"
-        );
+        assert!(!self.step_active.get(), "active cartridge transaction");
         self.cartridge.set_hardware(hardware);
     }
 
     /// Replace save hardware and its array with erased bytes. GPIO/RTC state is unchanged.
     /// Call between machine steps; no file is loaded or written by the core.
     pub fn set_save_device(&mut self, device: SaveDevice) {
-        assert!(
-            self.cartridge_step.get().is_none(),
-            "active cartridge transaction"
-        );
+        assert!(!self.step_active.get(), "active cartridge transaction");
         self.save_image = vec![0xff; device.capacity()];
         self.save_modified = false;
         self.cartridge.set_save_device(device, self.rom.len());
@@ -242,10 +268,7 @@ impl Memory {
     /// Replace the entire array and reset Flash command/bank state. RTC state is unchanged.
     /// A wrong length changes nothing. This setup API does not emulate programming.
     pub fn load_save_image(&mut self, bytes: &[u8]) -> Result<(), SaveError> {
-        assert!(
-            self.cartridge_step.get().is_none(),
-            "active cartridge transaction"
-        );
+        assert!(!self.step_active.get(), "active cartridge transaction");
         let device = self.cartridge.save_device();
         if device == SaveDevice::None {
             return Err(SaveError::NoDevice);
@@ -264,25 +287,19 @@ impl Memory {
 
     /// Inspect the live calendar, not an in-progress serial read snapshot.
     pub fn rtc_datetime(&self) -> Option<RtcDateTime> {
-        self.cartridge_state().rtc_datetime()
+        self.with_cartridge(Cartridge::rtc_datetime)
     }
 
     /// Set the RTC calendar between machine steps. Existing serial read snapshots stay latched.
     pub fn set_rtc_datetime(&mut self, date: RtcDateTime) -> Result<(), RtcError> {
-        assert!(
-            self.cartridge_step.get().is_none(),
-            "active cartridge transaction"
-        );
+        assert!(!self.step_active.get(), "active cartridge transaction");
         self.cartridge.set_rtc_datetime(date)
     }
 
     /// Supply battery-clock elapsed seconds independently of CPU cycles, HALT, and STOP.
     /// Call between machine steps. This requests no IRQ and never wakes the CPU.
     pub fn advance_rtc_seconds(&mut self, seconds: u64) -> Result<(), RtcError> {
-        assert!(
-            self.cartridge_step.get().is_none(),
-            "active cartridge transaction"
-        );
+        assert!(!self.step_active.get(), "active cartridge transaction");
         self.cartridge.advance_rtc_seconds(seconds)
     }
 
@@ -309,8 +326,53 @@ impl Memory {
         }
     }
 
-    fn cartridge_state(&self) -> Cartridge {
-        self.cartridge_step.get().unwrap_or(self.cartridge)
+    /// Inspect cartridge state that does not depend on elapsed step time: the
+    /// address map and GPIO latches. Uses the staged shadow once one exists.
+    fn with_cartridge<R>(&self, inspect: impl FnOnce(&Cartridge) -> R) -> R {
+        match self.cartridge_step.0.borrow().as_ref() {
+            Some(cartridge) => inspect(cartridge),
+            None => inspect(&self.cartridge),
+        }
+    }
+
+    /// The staged cartridge at the current bus time, created on first use.
+    /// `None` outside a machine step.
+    fn staged_cartridge(&self) -> Option<RefMut<'_, Cartridge>> {
+        if !self.step_active.get() {
+            return None;
+        }
+        let mut slot = self.cartridge_step.0.borrow_mut();
+        let elapsed = self.step_elapsed.get();
+        let cartridge = slot.get_or_insert_with(|| {
+            self.cartridge_elapsed.set(0);
+            self.cartridge
+        });
+        cartridge.advance(elapsed - self.cartridge_elapsed.get());
+        self.cartridge_elapsed.set(elapsed);
+        Some(RefMut::map(slot, |slot| {
+            slot.as_mut().expect("cartridge shadow was just staged")
+        }))
+    }
+
+    /// A copy of the cartridge at the current bus time, for time-dependent reads
+    /// and for trial writes that commit only on success.
+    fn cartridge_now(&self) -> Cartridge {
+        self.staged_cartridge()
+            .map_or(self.cartridge, |cartridge| *cartridge)
+    }
+
+    /// The staged timer, sound, and serial devices at the current bus time,
+    /// created on first use. `None` outside a machine step.
+    fn staged_devices(&self) -> Option<RefMut<'_, TimerStep>> {
+        if !self.step_active.get() {
+            return None;
+        }
+        let mut slot = self.timer_step.0.borrow_mut();
+        let step = slot.get_or_insert_with(|| self.io.timer_step());
+        step.advance_to(self.step_elapsed.get());
+        Some(RefMut::map(slot, |slot| {
+            slot.as_mut().expect("device shadow was just staged")
+        }))
     }
 
     /// Current committed audio mixer level. This is not a host sample stream.
@@ -323,7 +385,7 @@ impl Memory {
     /// Call between machine steps. Repeating the current setting preserves state.
     pub fn set_audio_capture(&mut self, enabled: bool) {
         assert!(
-            self.timer_step.get().is_none(),
+            !self.step_active.get(),
             "audio capture configuration during a step"
         );
         self.io.audio_capture.set_enabled(enabled);
@@ -341,14 +403,12 @@ impl Memory {
     }
 
     fn serial_state(&self) -> Serial {
-        self.timer_step
-            .get()
+        self.staged_devices()
             .map_or(self.io.serial, |step| step.serial)
     }
 
     fn audio_state(&self) -> Audio {
-        self.timer_step
-            .get()
+        self.staged_devices()
             .map_or(self.io.audio, |step| step.audio)
     }
 
@@ -378,43 +438,56 @@ impl Memory {
         self.complete_timer_step(cycles);
     }
 
+    /// Open a machine step. Nothing is copied here: most steps never observe a
+    /// staged device, and complete by advancing the committed state in place.
     pub(crate) fn begin_timer_step(&self) {
+        debug_assert!(!self.step_active.get());
         debug_assert!(self.timer_step.get().is_none());
-        self.timer_step.set(Some(self.io.timer_step()));
-        self.cartridge_step.set(Some(self.cartridge));
+        debug_assert!(self.cartridge_step.get().is_none());
+        self.step_active.set(true);
+        self.step_elapsed.set(0);
         self.cartridge_elapsed.set(0);
     }
 
     pub(crate) fn discard_timer_step(&self) {
         self.timer_step.set(None);
         self.cartridge_step.set(None);
+        self.step_active.set(false);
+        self.step_elapsed.set(0);
         self.cartridge_elapsed.set(0);
     }
 
+    /// Record the step's bus time. Shadows catch up when an access next observes
+    /// them, which is equivalent because every staged clock advances additively.
     fn advance_timer_step(&self, cycles: u32) {
-        if let Some(mut cartridge) = self.cartridge_step.get() {
-            cartridge.advance(cycles - self.cartridge_elapsed.get());
-            self.cartridge_elapsed.set(cycles);
-            self.cartridge_step.set(Some(cartridge));
-        }
-        if let Some(mut step) = self.timer_step.get() {
-            step.advance_to(cycles);
-            self.timer_step.set(Some(step));
+        if self.step_active.get() {
+            debug_assert!(cycles >= self.step_elapsed.get());
+            self.step_elapsed.set(cycles);
         }
     }
 
     fn complete_timer_step(&mut self, cycles: u32) {
-        self.advance_timer_step(cycles);
-        let step = self
-            .timer_step
-            .take()
-            .expect("machine timer transaction is active");
-        self.io.commit_timer_step(step);
-        self.cartridge = self
-            .cartridge_step
-            .take()
-            .expect("active cartridge transaction");
+        assert!(
+            self.step_active.get(),
+            "machine timer transaction is active"
+        );
+        match self.timer_step.take() {
+            Some(mut step) => {
+                step.advance_to(cycles);
+                self.io.commit_timer_step(step);
+            }
+            None => self.io.advance_staged_devices(cycles),
+        }
+        match self.cartridge_step.take() {
+            Some(mut cartridge) => {
+                cartridge.advance(cycles - self.cartridge_elapsed.get());
+                self.cartridge = cartridge;
+            }
+            None => self.cartridge.advance(cycles),
+        }
         self.commit_save_mutation();
+        self.step_active.set(false);
+        self.step_elapsed.set(0);
         self.cartridge_elapsed.set(0);
         // Staged devices already reached this boundary. Advance remaining devices exactly once.
         self.advance_running_cycles_with_timers(cycles, false);
@@ -434,8 +507,18 @@ impl Memory {
         }
         if self.scanline_capture.is_none() {
             let position = self.io.display_position();
-            let phase =
-                u32::from(position.scanline) * CYCLES_PER_LINE + u32::from(position.line_cycle);
+            let line_cycle = u32::from(position.line_cycle);
+            // A step that stays inside its line and does not reach the sprite
+            // preparation cycle has no pipeline event to split at.
+            if cycles < CYCLES_PER_LINE - line_cycle
+                && !(line_cycle < pipeline::PREPARE_CYCLE
+                    && line_cycle + cycles >= pipeline::PREPARE_CYCLE)
+            {
+                self.io.advance(cycles, advance_timers);
+                self.cycles = self.cycles.wrapping_add(u64::from(cycles));
+                return;
+            }
+            let phase = u32::from(position.scanline) * CYCLES_PER_LINE + line_cycle;
             let mut advanced = 0;
             for (offset, row) in pipeline::latest_events(phase, cycles).into_iter().flatten() {
                 self.io.advance(offset - advanced, advance_timers);
@@ -880,21 +963,48 @@ impl Memory {
 
     pub fn read8(&self, address: u32) -> Result<u8, MemoryError> {
         self.record_access(address, AccessWidth::Byte);
-        let value = self.read_byte(address)?;
+        let value = match self.plain_bytes::<1>(address) {
+            Some([value]) => value,
+            None => self.read_byte(address)?,
+        };
         self.iwram_bus
             .access(address, AccessWidth::Byte, u32::from(value));
         Ok(value)
     }
 
+    /// Bytes of one aligned access to plain RAM or to in-image ROM. These regions
+    /// have no device, read protection, or open-bus rule, so `read_byte` would
+    /// return the same stored bytes. The first 256 ROM bytes stay on the general
+    /// path because Game Pak GPIO can replace them.
+    #[inline]
+    fn plain_bytes<const N: usize>(&self, address: u32) -> Option<[u8; N]> {
+        debug_assert_eq!(address & (N as u32 - 1), 0);
+        let (bytes, index) = match address >> 24 {
+            0x02 => (&self.external_ram, (address & 0x3ffff) as usize),
+            0x03 => (&self.internal_ram, (address & 0x7fff) as usize),
+            0x05 => (&self.palette_ram, (address & 0x3ff) as usize),
+            0x06 => (&self.video_ram, vram_index(address)),
+            0x07 => (&self.oam, (address & 0x3ff) as usize),
+            0x08..=0x0c if address & 0x01ff_ff00 != 0 => {
+                (&self.rom, (address & 0x01ff_ffff) as usize)
+            }
+            _ => return None,
+        };
+        bytes.get(index..index + N)?.try_into().ok()
+    }
+
     // Multi-byte reads use this helper to avoid charging each byte as a bus access.
     fn read_byte(&self, address: u32) -> Result<u8, MemoryError> {
-        if self.cartridge_state().eeprom_mapped(address) {
+        // Every cartridge device decodes at or above the first ROM window.
+        let cartridge_region = address >> 24 >= 0x08;
+        if cartridge_region && self.with_cartridge(|cartridge| cartridge.eeprom_mapped(address)) {
             return Err(MemoryError::UnsupportedCartridgeAccess {
                 address,
                 operation: "EEPROM non-halfword read",
             });
         }
-        if self.cartridge_state().flash_mapped(address)
+        if cartridge_region
+            && self.with_cartridge(|cartridge| cartridge.flash_mapped(address))
             && self
                 .cpu_access
                 .is_some_and(|access| !matches!(access.pc >> 24, 0x02 | 0x03))
@@ -915,8 +1025,8 @@ impl Memory {
                 }
             }
         }
-        if address >> 24 == 0x04 {
-            if let Some(step) = self.timer_step.get() {
+        if address >> 24 == 0x04 && TimerStep::owns(address) {
+            if let Some(step) = self.staged_devices() {
                 if Serial::mapped(address) {
                     return step
                         .serial
@@ -942,8 +1052,8 @@ impl Memory {
         }
         if matches!(address >> 24, 0x08..=0x0d)
             && (address & 0x01ff_ffff) as usize >= self.rom.len().next_power_of_two()
-            && !self.cartridge_state().mapped(address)
-            && (self.cpu_access.is_some() || self.timer_step.get().is_some())
+            && !self.with_cartridge(|cartridge| cartridge.mapped(address))
+            && (self.cpu_access.is_some() || self.step_active.get())
         {
             // Beyond the power-of-two ROM chip no device drives the Game Pak bus, which
             // returns the halfword address (A/2, low 16 bits) on each lane. Bytes between a
@@ -966,12 +1076,14 @@ impl Memory {
 
     // Strict lookup for host access, instruction fetches, and prefetch snapshots.
     fn read_mapped_byte(&self, address: u32) -> Result<u8, MemoryError> {
-        let cartridge = self.cartridge_state();
-        if cartridge.save_mapped(address) {
-            return cartridge.read_save8(address, &self.save_image);
-        }
-        if let Some(value) = cartridge.read8(address) {
-            return Ok(value);
+        if address >> 24 >= 0x08 {
+            if self.with_cartridge(|cartridge| cartridge.save_mapped(address)) {
+                // Flash status depends on the time elapsed inside this step.
+                return self.cartridge_now().read_save8(address, &self.save_image);
+            }
+            if let Some(value) = self.with_cartridge(|cartridge| cartridge.read8(address)) {
+                return Ok(value);
+            }
         }
         match address >> 24 {
             0x00 => self
@@ -1024,7 +1136,9 @@ impl Memory {
         access: WriteAccess,
     ) -> Result<(), MemoryError> {
         let index = self.write_index::<N>(address, access)?;
-        Self::validate_io_values(&mut self.audio_state(), address, &bytes)?;
+        if address >> 24 == 0x04 {
+            Self::validate_io_values(&mut self.audio_state(), address, &bytes)?;
+        }
         self.record_access(
             address,
             match N {
@@ -1034,11 +1148,12 @@ impl Memory {
                 _ => unreachable!("unsupported bus width"),
             },
         );
-        let mut cartridge = self.cartridge_state();
-        cartridge.write(address, &bytes, &self.save_image, self.cpu_access.is_some())?;
-        if cartridge.mapped(address) {
-            if self.cartridge_step.get().is_some() {
-                self.cartridge_step.set(Some(cartridge));
+        if address >> 24 >= 0x08 && self.with_cartridge(|cartridge| cartridge.mapped(address)) {
+            // Write a copy first: a rejected access must change nothing.
+            let mut cartridge = self.cartridge_now();
+            cartridge.write(address, &bytes, &self.save_image, self.cpu_access.is_some())?;
+            if self.step_active.get() {
+                *self.staged_cartridge().expect("step is active") = cartridge;
             } else {
                 self.cartridge = cartridge;
                 // Outside a machine step, an SRAM store has no step boundary to commit at.
@@ -1074,18 +1189,17 @@ impl Memory {
                 let mut serial = self.serial_state();
                 Self::validate_serial(&serial, address, &bytes)?;
                 serial.write(address, &bytes);
-                if let Some(mut step) = self.timer_step.get() {
-                    step.serial = serial;
-                    self.timer_step.set(Some(step));
+                if self.step_active.get() {
+                    self.staged_devices().expect("step is active").serial = serial;
                 } else {
                     self.io.serial = serial;
                 }
                 return Ok(());
             }
             if Audio::mapped(address) {
-                if let Some(mut step) = self.timer_step.get() {
+                if self.step_active.get() {
+                    let mut step = self.staged_devices().expect("step is active");
                     step.audio.write(address, &bytes);
-                    self.timer_step.set(Some(step));
                 } else {
                     self.io.audio.write(address, &bytes);
                 }
@@ -1103,11 +1217,11 @@ impl Memory {
                 if matches!(byte_address, POSTFLG | HALTCNT) && !self.can_write_power_control() {
                     continue; // BIOS-only CPU writes; ignored elsewhere, including STOP requests.
                 }
-                if let Some(mut step) = self.timer_step.get() {
-                    let handled = step.write8(byte_address, byte);
-                    self.timer_step.set(Some(step));
-                    if handled {
-                        continue;
+                if TimerStep::owns(byte_address) {
+                    if let Some(mut step) = self.staged_devices() {
+                        if step.write8(byte_address, byte) {
+                            continue;
+                        }
                     }
                 }
                 self.io.write8(byte_address, byte);
@@ -1198,17 +1312,17 @@ impl Memory {
                 // The 0x0d window stays diagnostic until EEPROM is modeled there.
                 let ignored = access == WriteAccess::Emulated && address >> 24 != 0x0d;
                 for offset in 0..N as u32 {
-                    if !ignored && !self.cartridge_state().mapped(address + offset) {
+                    if !ignored && !self.with_cartridge(|c| c.mapped(address + offset)) {
                         return Err(MemoryError::ReadOnly(address + offset));
                     }
                 }
                 Ok(0)
             }
-            0x0e | 0x0f if self.cartridge_state().save_mapped(address) => {
+            0x0e | 0x0f if self.with_cartridge(|c| c.save_mapped(address)) => {
                 if N != 1 {
                     return Err(MemoryError::UnsupportedCartridgeAccess {
                         address,
-                        operation: if self.cartridge_state().flash_mapped(address) {
+                        operation: if self.with_cartridge(|c| c.flash_mapped(address)) {
                             "Flash non-byte write"
                         } else {
                             "SRAM non-byte write"
@@ -1261,13 +1375,28 @@ impl Memory {
     /// leave a partial block store. This is not a model of hardware data aborts.
     /// Mapped I/O reads currently have no side effects; writes cannot fail after validation.
     pub(crate) fn write_words(&mut self, writes: &[(u32, u32)]) -> Result<(), MemoryError> {
-        let mut audio = self.audio_state();
-        let mut serial = self.serial_state();
-        let mut cartridge = self.cartridge_state();
+        // Plain RAM stores can only fail the address check. They reach no device,
+        // so they need no trial run against device and timing copies.
+        if writes
+            .iter()
+            .all(|&(address, _)| matches!(address >> 24, 0x02 | 0x03 | 0x05 | 0x06 | 0x07))
+        {
+            for &(address, _) in writes {
+                self.write_index::<4>(address & !3, self.write_access())?;
+            }
+            for &(address, value) in writes {
+                self.store32(address, value)?;
+            }
+            return Ok(());
+        }
         let timing = self.cpu_timing.get();
         let devices = self.timer_step.get();
         let cartridge_step = self.cartridge_step.get();
         let cartridge_elapsed = self.cartridge_elapsed.get();
+        let step_elapsed = self.step_elapsed.get();
+        let mut audio = self.audio_state();
+        let mut serial = self.serial_state();
+        let mut cartridge = self.cartridge_now();
         // Preflight ordered data phases on temporary device/timing copies.
         // A serial request can finish before a later control write reaches the bus.
         let validation = (|| {
@@ -1287,10 +1416,9 @@ impl Memory {
                 cartridge.write(address, &bytes, &self.save_image, self.cpu_access.is_some())?;
                 self.record_access(address, AccessWidth::Word);
                 if Serial::mapped(address) {
-                    if let Some(mut step) = self.timer_step.get() {
+                    if let Some(mut step) = self.staged_devices() {
                         Self::validate_serial(&step.serial, address, &bytes)?;
                         step.serial.write(address, &bytes);
-                        self.timer_step.set(Some(step));
                     } else {
                         Self::validate_serial(&serial, address, &bytes)?;
                         serial.write(address, &bytes);
@@ -1303,6 +1431,7 @@ impl Memory {
         self.timer_step.set(devices);
         self.cartridge_step.set(cartridge_step);
         self.cartridge_elapsed.set(cartridge_elapsed);
+        self.step_elapsed.set(step_elapsed);
         validation?;
         for &(address, value) in writes {
             // The map cannot change between validation and these writes.
@@ -1315,12 +1444,15 @@ impl Memory {
         if address & 1 != 0 {
             return Err(MemoryError::Unaligned(address));
         }
-        if self.cartridge_state().eeprom_mapped(address) {
+        if address >> 24 >= 0x08 && self.with_cartridge(|c| c.eeprom_mapped(address)) {
             return self.read_eeprom16(address);
         }
         self.validate_save_read_width(address)?;
         self.record_access(address, AccessWidth::Halfword);
-        let value = u16::from_le_bytes([self.read_byte(address)?, self.read_byte(address + 1)?]);
+        let value = u16::from_le_bytes(match self.plain_bytes(address) {
+            Some(bytes) => bytes,
+            None => [self.read_byte(address)?, self.read_byte(address + 1)?],
+        });
         self.iwram_bus
             .access(address, AccessWidth::Halfword, u32::from(value));
         Ok(value)
@@ -1330,33 +1462,37 @@ impl Memory {
     /// inspect status or the next bit; nothing outside a step can stage the change.
     fn read_eeprom16(&self, address: u32) -> Result<u16, MemoryError> {
         self.record_access(address, AccessWidth::Halfword);
-        let mut cartridge = self.cartridge_state();
+        let mut cartridge = self.cartridge_now();
         let value = cartridge.read_eeprom16(address, self.cpu_access.is_some())?;
-        if self.cartridge_step.get().is_some() {
-            self.cartridge_step.set(Some(cartridge));
+        if let Some(mut staged) = self.staged_cartridge() {
+            *staged = cartridge;
         }
         Ok(value)
     }
 
     fn validate_save_read_width(&self, address: u32) -> Result<(), MemoryError> {
-        let cartridge = self.cartridge_state();
-        if cartridge.eeprom_mapped(address) {
-            return Err(MemoryError::UnsupportedCartridgeAccess {
-                address,
-                operation: "EEPROM non-halfword read",
-            });
+        if address >> 24 < 0x08 {
+            return Ok(()); // No cartridge device decodes below the ROM windows.
         }
-        if cartridge.save_mapped(address) {
-            return Err(MemoryError::UnsupportedCartridgeAccess {
-                address,
-                operation: if cartridge.flash_mapped(address) {
-                    "Flash non-byte read"
-                } else {
-                    "SRAM non-byte read"
-                },
-            });
-        }
-        Ok(())
+        self.with_cartridge(|cartridge| {
+            if cartridge.eeprom_mapped(address) {
+                return Err(MemoryError::UnsupportedCartridgeAccess {
+                    address,
+                    operation: "EEPROM non-halfword read",
+                });
+            }
+            if cartridge.save_mapped(address) {
+                return Err(MemoryError::UnsupportedCartridgeAccess {
+                    address,
+                    operation: if cartridge.flash_mapped(address) {
+                        "Flash non-byte read"
+                    } else {
+                        "SRAM non-byte read"
+                    },
+                });
+            }
+            Ok(())
+        })
     }
 
     /// The bus requires alignment; the CPU applies ARM7TDMI load rotation.
@@ -1366,19 +1502,22 @@ impl Memory {
         }
         self.validate_save_read_width(address)?;
         self.record_access(address, AccessWidth::Word);
-        let value = u32::from_le_bytes([
-            self.read_byte(address)?,
-            self.read_byte(address + 1)?,
-            self.read_byte(address + 2)?,
-            self.read_byte(address + 3)?,
-        ]);
+        let value = u32::from_le_bytes(match self.plain_bytes(address) {
+            Some(bytes) => bytes,
+            None => [
+                self.read_byte(address)?,
+                self.read_byte(address + 1)?,
+                self.read_byte(address + 2)?,
+                self.read_byte(address + 3)?,
+            ],
+        });
         self.iwram_bus.access(address, AccessWidth::Word, value);
         Ok(value)
     }
 
     /// The 8-bit SRAM bus receives the unaligned address of CPU halfword/word accesses.
     fn sram_lane(&self, address: u32) -> bool {
-        matches!(address >> 24, 0x0e | 0x0f) && self.cartridge_state().sram_mapped(address)
+        matches!(address >> 24, 0x0e | 0x0f) && self.with_cartridge(|c| c.sram_mapped(address))
     }
 
     /// A CPU `LDR` at its own (possibly unaligned) address, with ARM7TDMI rotation.
