@@ -154,7 +154,7 @@ CPU/bus costs are nominal estimates, not a cycle-accurate implementation.
 The instruction buffer retains the next fetch kind; cold startup costs and per-access device scheduling remain unmodeled.
 Game Pak prefetch uses source-backed queue rules, not hardware-verified timing.
 Live WAITCNT transitions, page-boundary behavior, and exact DMA/idle ordering still need independent timing validation.
-Timer data accesses follow ordered nominal bus phases. Other devices remain instruction-batched; the timer start delay matches hardware calibration for unprescaled timers; IRQ delays remain unverified.
+Timer data accesses follow ordered nominal bus phases. Other devices remain instruction-batched; the timer start delay matches hardware calibration for unprescaled timers; the IRQ request delay matches the mGBA suite, with two fitted constants.
 Graphics support includes Mode 0–5 debug snapshots and HBlank row capture with sprites, mosaic, windows, and color effects.
 Internal affine origins, vertical window flags, and vertical mosaic counters track line boundaries.
 Horizontal window comparators retain four-cycle event history.
@@ -264,9 +264,9 @@ The remaining hardware-validation backlog includes:
 2. Validate the active nominal Game Pak prefetch queue against independent timing tests.
    The [cancellation probe](research/prefetch-cancellation.md) now matches after [ordered timer accesses](research/ordered-timer-access.md).
    The [shared timer prescaler](research/timer-prescaler.md) now retains a common clock origin across enable and clock-source changes.
-   Validate delayed timer startup/control edges and extend ordered observations to other devices without duplicate clocks or lost rollback.
+   Extend ordered observations to other devices without duplicate clocks or lost rollback.
    Validate full-buffer restart, page boundaries, live WAITCNT transitions, and cold-start costs.
-   See [prefetch behavior and evidence](research/gamepak-prefetch.md); exact bus arbitration and timer/IRQ delays remain separate work.
+   See [prefetch behavior and evidence](research/gamepak-prefetch.md); exact bus arbitration remains separate work.
 3. Validate keypad retrigger behavior with hardware tests and add remaining device registers; extend BIOS reset coverage as sound/serial support becomes available.
    Validate STOP entry/wake edges and add external wake sources and remaining DMA device modes.
 4. Replace nominal sprite work limits with verified individual fetch timing; add background fetch timing and per-pixel composition.

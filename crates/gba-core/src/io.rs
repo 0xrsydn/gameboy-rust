@@ -1,7 +1,7 @@
 //! GBA I/O subset: DMA, timers, interrupts, WAITCNT, display, keypad input,
 //! Direct Sound, and disconnected normal serial transfers.
-//! Timers share a free-running prescaler phase. Hardware startup/write delays
-//! and interrupt delivery delays are not modeled.
+//! Timers share a free-running prescaler phase. Timer start, stop, and reload edges and
+//! the interrupt request delay follow docs/hardware/timers-irq.md.
 
 mod serial;
 use crate::audio::Audio;
@@ -181,6 +181,8 @@ impl Timer {
             return 0;
         }
         if let Some(running) = self.stopping.take() {
+            // A stopped timer has no later overflow for an old reload value to serve.
+            self.stale_reload = None;
             // A cascaded timer has no clock edge of its own in that one cycle.
             let stopped = std::mem::replace(&mut self.control, running);
             let overflows = self.count(1, 0, phase);
@@ -714,15 +716,33 @@ impl Io {
         self.update_irq_line(Some(0));
     }
 
-    /// Cycles until the first interrupt-enabled prescaled timer overflows, if that is
-    /// within `cycles`. Cascaded timers are dated by their caller at the batch end.
-    fn first_timer_irq(timers: &[Timer; 4], phase: u16, cycles: u32) -> Option<u32> {
-        timers
-            .iter()
-            .filter(|timer| timer.control & 0x40 != 0)
-            .filter_map(|timer| timer.next_overflow(phase))
-            .filter(|&overflow| overflow <= cycles)
-            .min()
+    /// First cycle in `1..=cycles` by which one of the `new` timer requests (IF bits
+    /// 3-6) has been raised. The caller has seen one raised within `cycles`, and
+    /// requests only accumulate, so a binary search over the batch length finds it.
+    /// This covers cascaded timers and the stop and reload edges without a second model.
+    fn first_timer_irq(timers: &[Timer; 4], phase: u16, cycles: u32, new: u16) -> u32 {
+        let raised = |length: u32| {
+            let mut timers = *timers;
+            let mut overflows = 0;
+            let mut bits = 0;
+            for (index, timer) in timers.iter_mut().enumerate() {
+                overflows = timer.advance(length, overflows, phase);
+                if overflows != 0 && timer.control & 0x40 != 0 {
+                    bits |= 1 << (3 + index);
+                }
+            }
+            bits & new != 0
+        };
+        let (mut low, mut high) = (1, cycles);
+        while low < high {
+            let middle = low + (high - low) / 2;
+            if raised(middle) {
+                high = middle;
+            } else {
+                low = middle + 1;
+            }
+        }
+        low
     }
 }
 

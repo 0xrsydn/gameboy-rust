@@ -6,7 +6,9 @@ CPSR.I while a request is pending resends it with the same delay. This emulator 
 instruction boundary after the request, and HALT wakes at once.
 
 On 2026-11-13 a delay model was implemented and scored against the [mGBA test suite](../public-mgba-suite.md).
-It was not adopted. This note records the design and the evidence so a later attempt can start from them.
+That first attempt was not adopted, and the sections below record its design and evidence. A second model was
+adopted the same day; see "Adopted model" at the end and [timers and IRQ](../hardware/timers-irq.md). The paragraph
+above describes the emulator before that.
 
 ## Evidence for some delay
 

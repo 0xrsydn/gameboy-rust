@@ -158,7 +158,7 @@ impl Machine {
     /// generate FIQ. IRQ entry consumes a separate step and does not clear IF.
     /// CPU/DMA work uses nominal costs; HALT advances exactly to the next device event.
     /// Timer, sound, and serial accesses use staged bus-completion phases. Other device writes
-    /// precede their bulk clock update. IRQ synchronization delays are not modeled. Opcode
+    /// precede their bulk clock update. Requests reach the CPU after `IRQ_DELAY` cycles. Opcode
     /// prefetch follows ordered nominal CPU/DMA costs, not per-cycle arbitration.
     /// CPU/DMA diagnostics leave CPU, devices, and the clock unchanged for this step.
     /// Row-capture diagnostics are deferred to Memory::present_frame instead.

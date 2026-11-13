@@ -28,7 +28,7 @@ Comparison values 228–255 never match.
 The clock starts at line zero, cycle zero, with comparison zero matched and no pending IRQ.
 Both event counters wrap as 64-bit values. Bulk advances account for every crossed event, including multiple frames.
 Display status is calculated at the resulting position. CPU IRQ delivery occurs between instructions, after ready DMA work.
-Hardware IRQ synchronization delays and display bus contention are not modeled.
+Display requests reach the CPU after the [request delay](timers-irq.md#request-delay-stop-latency-and-reload-latch). Display bus contention is not modeled.
 
 `Machine::run_until_vblank(max_steps)` executes through the next line-160 entry, even if already in VBlank.
 It returns at the first instruction, DMA-unit, or HALT-idle boundary after that event and reports the number of machine steps.

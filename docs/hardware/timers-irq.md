@@ -27,7 +27,7 @@ Timers now use a staged clock during machine instructions, IRQ entry, and DMA un
 Source-fetch cycles advance that clock before data work. Each data access advances it before reading or writing timer registers.
 All byte lanes of one access share the same completion time. Internal and target-fetch cycles follow in order.
 A timer load therefore includes its source and data cycles, but not its trailing internal cycle.
-Timer-start writes do not count preceding cycles. Timer-stop writes count through their own bus completion.
+Timer-start writes do not count preceding cycles. Timer-stop writes count through their own bus completion, plus the one-cycle stop latency below.
 A timer started by CPU or DMA code then waits two cycles before it counts its first divider edge.
 This start delay reproduces the [mGBA test suite](../public-mgba-suite.md)'s hardware-verified timer calibration:
 `STR` to start timer 0 followed at once by `LDRH` of its counter reads 0 from IWRAM and 7 from ARM ROM code with default wait states.
@@ -55,6 +55,14 @@ and SIO timing results. With them all three sub-suites pass in full. The
 Host setup writes outside machine steps do none of this: a request they create is visible at once, and timers stop
 and take reload values immediately. Key presses and host keypad-control writes are the exception: they model an
 external event, so the request they raise is delayed like any other. All four states are part of save states.
+
+A request is dated at the exact cycle its source raised it: a prescaled or cascaded timer overflow, or a serial
+completion. The date does not depend on how a step's clock is split into batches or on host audio capture.
+Known gaps, each at most one instruction of error and none checked on hardware:
+
+- A request that an `IE` write enables later in the same instruction is dated at the overflow, not at the write.
+- A wake that completes during a DMA unit or at the end of the HALT store itself does not pay the HALT wake cost.
+- An overflow in the stop-latency cycle raises a request only if the newly written control value keeps the IRQ bit.
 Block transfers preserve distinct word phases; combined reload/control writes merge at one phase, with reload bytes first.
 
 The transaction also owns timer IF bits. Reads see overflows through the current access; acknowledgements clear earlier timer requests.
@@ -122,7 +130,7 @@ HALT next-event bounds use that phase. STOP freezes it, and wake resumes without
 CPU/DMA timer transactions stage divider progress and commit it only on success, without a second bulk tick.
 See [prescaler evidence and original tests](../research/timer-prescaler.md).
 
-Hardware startup and register-write delays are still not modeled. Writes retain the immediate bus-completion policy.
+Apart from the start delay, stop latency, and reload latch described above, writes retain the immediate bus-completion policy.
 The shared-phase tests validate this bounded model, not absolute enable/reload edges on hardware.
 Timers 0 and 1 can clock Direct Sound playback and request FIFO DMA independently of timer IRQ enable.
 Implemented interrupt sources are timers, display events, DMA completion, keypad input, and normal serial completion.
@@ -133,7 +141,7 @@ The timer overflows after 16 supplied cycles and enters the original handler thr
 The handler stops Timer 0, acknowledges IF, increments r10, and returns with `SUBS pc, lr, #4`.
 The demo completes with one handler call, using default WAITCNT settings.
 Its initial ARM ROM fetch uses PC+8 sequential timing; cold pipeline filling has no separate startup charge.
-The stopped counter is now `0xfff2`, rather than the earlier bulk-write result `0xfffb`.
+The stopped counter is now `0xfff3` (one more with the stop latency), rather than the earlier bulk-write result `0xfffb`.
 Timer start excludes its preceding nine cycles and waits its two-cycle start delay; timer stop includes its two bus cycles.
 These are nominal regression results, not hardware startup-delay measurements.
 Its test handler deliberately changes r2 and r10; it does not implement the Nintendo BIOS calling convention.
@@ -176,7 +184,7 @@ While the system clock runs, the functional model follows mGBA's polling behavio
 
 This policy makes IRQ generation depend on input sampling, not only on elapsed emulated time.
 Host input calls consume no emulated cycles and do not modify CPU registers.
-They can wake HALT immediately; `Machine::step` subsequently samples the IRQ line.
+A key press that raises a request wakes HALT after the request delay, like any other source; `Machine::step` then samples the IRQ line.
 The desktop demos currently supply frame-based input snapshots.
 Physical key-event timing, switch bounce, exact hardware retrigger rules, and synchronization delays remain unverified.
 STOP uses a separate live-condition wake path described below, without latching IF or updating this polling history.
@@ -198,7 +206,7 @@ The current instruction finishes before the machine pauses CPU execution.
 Timers, display timing, and DMA continue to run. HALT does not pause the native window or host input.
 `Memory::halted()` and `Machine::halted()` report whether HALT is still waiting.
 
-HALT ends when `IE & IF` becomes nonzero, even when IME or CPSR.I blocks IRQ delivery.
+HALT ends when `IE & IF` becomes nonzero and the request delay has passed, even when IME or CPSR.I blocks IRQ delivery.
 An already pending enabled request prevents the CPU from sleeping.
 Wake-up does not acknowledge IF. Clearing IF after wake-up does not put the CPU back into HALT.
 On the next machine step, ready DMA still takes priority.
@@ -210,7 +218,7 @@ These bounds prevent idle advances from skipping DMA triggers or wake-up events.
 They also keep frame execution bounded when no interrupt can wake the CPU.
 Idle steps neither fetch instructions nor change CPU registers; code, data, and internal cycle counts remain zero.
 HALT idle cycles advance an already active Game Pak opcode prefetch stream, without starting one.
-Exact hardware entry/exit delays and pipeline effects are not modeled.
+The wake cost is a fitted constant, and HALT entry delay and pipeline effects are not modeled.
 
 CPU writes to POSTFLG and HALTCNT take effect only when the executing instruction address is within the 16 KiB BIOS region.
 ARM and Thumb use the same rule. This is an instruction-address check, not a simulated prefetched PC signal.

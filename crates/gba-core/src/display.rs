@@ -1,7 +1,7 @@
 //! GBA display clock and status, independent of pixel rendering.
 //! Events use supplied clock cycles. Device updates occur at instruction, DMA,
-//! or HALT-idle boundaries; display bus contention and IRQ synchronization delays
-//! are not modeled. Forced blank does not stop this clock.
+//! or HALT-idle boundaries; display bus contention is not modeled. The request delay
+//! lives in `io`. Forced blank does not stop this clock.
 
 use crate::snapshot::{Reader, Snapshot, SnapshotError, Writer};
 

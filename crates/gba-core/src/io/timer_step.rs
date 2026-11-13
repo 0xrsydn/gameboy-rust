@@ -34,9 +34,9 @@ struct Staged<'a> {
 }
 
 impl Staged<'_> {
-    /// Advance from `from` cycles into the step by `cycles`. Record when the first new
-    /// enabled request occurred: serial completion and prescaled timer overflows at their
-    /// exact cycle, a cascaded overflow at the end of its batch.
+    /// Advance from `from` cycles into the step by `cycles`. Record the exact cycle at
+    /// which the first new enabled request occurred, so the date does not depend on how
+    /// the step is split into batches.
     #[inline]
     fn advance(self, from: u32, cycles: u32) {
         let Self {
@@ -52,23 +52,27 @@ impl Staged<'_> {
         } = self;
         // Dating a request needs the timers as they were before the batch. Requests are
         // rare, so keep a copy and compute the overflow cycle only when one is raised.
-        let mut raise = |bits: u16, at: &dyn Fn() -> u32| {
-            if bits & enable & !*pending != 0 && raised_at.is_none() {
-                *raised_at = Some(at());
+        let mut raise = |bits: u16, at: &dyn Fn(u16) -> u32| {
+            let new = bits & enable & !*pending;
+            if new != 0 {
+                // A later batch cannot date a request before an earlier one did; two
+                // devices in the same batch can, so keep the earlier cycle.
+                let at = at(new);
+                *raised_at = Some(raised_at.map_or(at, |first| first.min(at)));
             }
             *pending |= bits;
         };
         // An unclocked serial port has no event and its advance does nothing.
         if let Some(completion) = serial.next_event_cycles() {
-            raise(serial.advance(cycles), &|| from + completion.min(cycles));
+            raise(serial.advance(cycles), &|_| from + completion.min(cycles));
         }
         let mut base = from;
         let capacity = STEP_SAMPLES - samples.len;
         let dropped = sample_clock.advance(cycles, capacity, |count, sample| {
             let before = (*timers, *phase);
             let bits = Io::advance_timer_bank(timers, phase, audio, count);
-            raise(bits, &|| {
-                base + Io::first_timer_irq(&before.0, before.1, count).unwrap_or(count)
+            raise(bits, &|new| {
+                base + Io::first_timer_irq(&before.0, before.1, count, new)
             });
             base += count;
             if sample {
@@ -203,6 +207,56 @@ mod tests {
         }
     }
 
+    fn timer(io: &mut Io, index: u32, reload: u16, control: u8) {
+        let base = TIMER_BASE + index * 4;
+        for (offset, byte) in reload.to_le_bytes().into_iter().enumerate() {
+            io.write8(base + offset as u32, byte);
+        }
+        io.write8(base + 2, control);
+    }
+
+    fn wait_after(io: &Io, parts: &[u32]) -> Option<u32> {
+        let mut io = io.clone();
+        let mut step = io.timer_step();
+        let mut elapsed = 0;
+        for part in parts {
+            elapsed += part;
+            step.advance_to(elapsed);
+        }
+        io.commit_timer_step(step);
+        io.irq_wait
+    }
+
+    #[test]
+    fn a_masked_timer_does_not_date_another_timers_request() {
+        let mut io = Io::default();
+        timer(&mut io, 0, 0xfffc, 0xc0); // Overflows at cycle 4; its request is masked.
+        timer(&mut io, 2, 0xfff0, 0xc0); // Overflows at cycle 16.
+        io.enable = 1 << 5;
+        for parts in [&[20][..], &[6, 14], &[3, 3, 14], &[16, 4]] {
+            assert_eq!(
+                wait_after(&io, parts),
+                Some(16 + crate::io::IRQ_DELAY),
+                "{parts:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_cascaded_overflow_is_dated_at_the_overflow_that_caused_it() {
+        let mut io = Io::default();
+        timer(&mut io, 0, 0xfffc, 0x80); // Overflows every 4 cycles.
+        timer(&mut io, 1, 0xfffe, 0xc4); // Counts those; overflows at cycle 8.
+        io.enable = 1 << 4;
+        for parts in [&[9][..], &[6, 3], &[8, 1], &[2, 2, 5]] {
+            assert_eq!(
+                wait_after(&io, parts),
+                Some(8 + crate::io::IRQ_DELAY),
+                "{parts:?}"
+            );
+        }
+    }
+
     /// Reprogram timers, sound, and serial with arbitrary accepted register values.
     fn scramble(io: &mut Io, random: &mut Lcg) {
         for index in 0..4 {
@@ -247,6 +301,19 @@ mod tests {
             for round in 0..400 {
                 if round % 16 == 0 {
                     scramble(&mut io, &mut random);
+                }
+                // Requests must be dated the same way however the step is split, so
+                // enable some, acknowledge some, and let the line drop between rounds.
+                io.enable = random.next() as u16 & 0x00f8;
+                io.pending &= random.next() as u16;
+                io.irq_wait = None;
+                io.update_irq_line(None);
+                if round % 5 == 0 {
+                    // CPU-style writes leave stop, reload, and start edges pending.
+                    let index = random.next() as usize % 4;
+                    let address = TIMER_BASE + index as u32 * 4 + (random.next() & 2);
+                    let value = random.next() as u8;
+                    io.timers[index].write8(address, value, index, TIMER_START_DELAY);
                 }
                 let parts = [
                     cycles(&mut random),
