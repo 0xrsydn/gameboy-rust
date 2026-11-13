@@ -5,6 +5,7 @@ The repository is a Cargo workspace with three crates:
 - `crates/gba-core`: the platform-independent GBA emulator. It has no dependencies and must not depend on window, audio, or file-system libraries.
 - `crates/gba-demos`: original ARM test programs and their frame runners. Depends on `gba-core`.
 - `crates/desktop`: the minifb window frontend and the `gameboy-rust` executable. Depends on both.
+- `crates/gba-diff`: the `gba-diff` differential runner. Depends on `gba-core` only; it drives mGBA through the separately built `mgba-ref` process, never by linking.
   Serde and serde_json handle host-side test manifests and reports; neither dependency enters the core.
 
 `gba-core` uses `gba-demos` as a development dependency, because its integration tests run the demo programs.

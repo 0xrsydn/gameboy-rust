@@ -12,6 +12,7 @@ It cannot run commercial games yet. See [docs/status.md](docs/status.md) for wha
 - `crates/gba-core`: the emulator (CPU, memory bus, I/O, timers, DMA, video, BIOS replacement). Keep it free of external dependencies and of window, audio, clock, and file-system code, so it stays portable to WebAssembly.
 - `crates/gba-demos`: original ARM test programs and frame runners that drive the core.
 - `crates/desktop`: minifb frontend and the `gameboy-rust` binary. Host-specific code belongs here.
+- `crates/gba-diff`: differential runner against a locally built mGBA reference (`tools/mgba-ref`). Development-only.
 
 [docs/architecture.md](docs/architecture.md) has a file-by-file map.
 
@@ -37,6 +38,7 @@ Window smoke tests (`--*-smoke-test`) need a logged-in desktop session. Details 
 | Pinned public ARM/Thumb tests and compatibility results | [docs/public-arm-tests.md](docs/public-arm-tests.md), [docs/public-thumb-tests.md](docs/public-thumb-tests.md) |
 | Pinned public memory tests and video-byte coverage limits | [docs/public-memory-tests.md](docs/public-memory-tests.md) |
 | mGBA test suite build, result reading, and baseline scoreboard | [docs/public-mgba-suite.md](docs/public-mgba-suite.md) |
+| Differential testing against mGBA (`gba-diff`, frame and instruction lockstep) | [docs/mgba-reference.md](docs/mgba-reference.md) |
 | ROM test suites, assertions, and JSON reports | [docs/rom-tests.md](docs/rom-tests.md) |
 | Jev-assisted diagnostic review and `/jev-gb-debug` | [docs/jev-debugging.md](docs/jev-debugging.md) |
 | ROM files, window execution, and terminal diagnostics | [docs/hardware/cartridge.md](docs/hardware/cartridge.md) |

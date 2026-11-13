@@ -1,0 +1,12 @@
+[package]
+name = "gba-diff"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "gba-diff"
+path = "src/main.rs"
+
+[dependencies]
+gba-core = { path = "../gba-core" }
