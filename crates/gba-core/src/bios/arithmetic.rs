@@ -1,6 +1,6 @@
 //! Original integer algorithms emitted as ARM instructions, not host calculations.
 
-use super::{pad, ArmImage};
+use super::{emit_return, emit_return_results, pad, ArmImage};
 
 pub(super) fn emit(a: &mut ArmImage) {
     a.label("div_arm");
@@ -32,13 +32,13 @@ pub(super) fn emit(a: &mut ArmImage) {
     a.emit(0xe1a0_20a2); // MOV r2,r2,LSR #1
     a.emit(0xe152_0001); // CMP r2,r1
     a.branch(2, "div_bit"); // BHS
-    a.emit(0xe1a0_1000); // MOV r1,r0
-    a.emit(0xe31c_0001); // TST r12,#1
-    a.emit(0x1261_1000); // RSBNE r1,r1,#0 (remainder follows numerator sign)
-    a.emit(0xe35c_0000); // CMP r12,#0
-    a.emit(0x51a0_0003); // MOVPL r0,r3
-    a.emit(0x4263_0000); // RSBMI r0,r3,#0 (signed quotient)
-    a.branch(14, "return_results");
+                            // N = numerator sign (bit 30), C = quotient sign (bit 31).
+    a.emit(0xe1b0_c08c); // MOVS r12,r12,LSL #1
+    a.emit(0x4260_1000); // RSBMI r1,r0,#0 (remainder follows numerator sign)
+    a.emit(0x51a0_1000); // MOVPL r1,r0
+    a.emit(0x2263_0000); // RSBCS r0,r3,#0 (signed quotient)
+    a.emit(0x31a0_0003); // MOVCC r0,r3
+    emit_return_results(a);
     a.label("div_zero");
     // Hardware returns from a zero divisor only for numerators -1, 0, and 1; other numerators
     // hang the firmware, which stays a diagnostic here.
@@ -48,10 +48,10 @@ pub(super) fn emit(a: &mut ArmImage) {
     a.emit(0xe350_0000); // CMP r0,#0
     a.emit(0xa3a0_2001); // MOVGE r2,#1
     a.emit(0xb3e0_2000); // MVNLT r2,#0
-    a.emit(0xe58d_2004); // STR r2,[sp,#4] (saved r0 = sign, or 1)
-    a.emit(0xe58d_0008); // STR r0,[sp,#8] (saved r1 = numerator)
+    a.emit(0xe58d_2000); // STR r2,[sp] (saved r0 = sign, or 1)
+    a.emit(0xe58d_0004); // STR r0,[sp,#4] (saved r1 = numerator)
     a.emit(0xe3a0_2001); // MOV r2,#1
-    a.emit(0xe58d_2010); // STR r2,[sp,#16] (saved r3)
+    a.emit(0xe58d_200c); // STR r2,[sp,#12] (saved r3)
     a.branch(14, "return");
 
     // Newton iteration from a power-of-two estimate. Its loops cost 6 cycles per scaling step,
@@ -90,13 +90,13 @@ pub(super) fn emit(a: &mut ArmImage) {
     a.emit(0xe153_0001); // CMP r3,r1
     a.emit(0x31a0_1003); // MOVCC r1,r3
     a.branch(3, "sqrt_refine"); // BCC
-    a.emit(0xe58d_1004); // STR r1,[sp,#4] (saved r0 = floor(sqrt(input)))
-    a.branch(14, "return");
+    a.emit(0xe58d_1000); // STR r1,[sp] (saved r0 = floor(sqrt(input)))
+    emit_return(a);
     a.label("sqrt_zero");
     pad(a, SQRT_ZERO_PAD);
-    a.branch(14, "return"); // The saved r0 already holds the zero result.
+    emit_return(a); // The saved r0 already holds the zero result.
 }
 
 const DIV_PAD: usize = 0;
-const SQRT_PAD: usize = 3;
-const SQRT_ZERO_PAD: usize = 45;
+const SQRT_PAD: usize = 0;
+const SQRT_ZERO_PAD: usize = 42;

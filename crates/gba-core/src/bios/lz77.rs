@@ -21,7 +21,7 @@ enum Output {
 /// variant's extra alignment checks leave it 8 cycles over mGBA per call.
 const fn prologue_pad(output: Output) -> usize {
     match output {
-        Output::Wram => 1,
+        Output::Wram => 0,
         Output::Vram => 0,
     }
 }
@@ -138,14 +138,7 @@ fn emit_decoder(a: &mut ArmImage, output: Output) {
     a.label(label("done"));
     a.emit(0xe3a0_3000); // MOV r3,#0
     a.emit(0xe8bd_01f0); // LDMIA sp!,{r4-r8}
-                         // Return r0 (source end), r1 (output end), and r3 (0); restore r2, r12, lr, and status.
-    a.emit(0xe8bd_1000); // LDMIA sp!,{r12} (saved SPSR)
-    a.emit(0xe169_f00c); // MSR SPSR_fc,r12
-    a.emit(0xe59d_2008); // LDR r2,[sp,#8] (saved r2)
-    a.emit(0xe28d_d010); // ADD sp,sp,#16 (drop saved r0-r3)
-    a.emit(0xe8bd_5000); // LDMIA sp!,{r12,lr}
-    a.emit(0xe1b0_f00e); // MOVS pc,lr
-    a.prefetch_tail(0xe3a0_2004); // SWI return protected-read word.
+    super::emit_return_results(a); // r0: source end, r1: output end, r3: 0.
 }
 
 /// Write r4 at r1 and advance r1. WRAM stores bytes; VRAM pairs bytes into halfword stores,

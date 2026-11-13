@@ -222,7 +222,11 @@ fn internal_ram_clear_preserves_bios_work_area_except_common_swi_frame() {
         }
         complete(&mut m, pc);
         for address in (0x0300_7e00..0x0300_8000).step_by(4) {
-            if (bios::SVC_STACK - 28..bios::SVC_STACK).contains(&address) {
+            // The SWI entry keeps 16 bytes on the Supervisor stack and a 28-byte service
+            // frame on the caller's (System) stack.
+            if (bios::SVC_STACK - 16..bios::SVC_STACK).contains(&address)
+                || (SYSTEM_STACK - 28..SYSTEM_STACK).contains(&address)
+            {
                 continue;
             }
             assert_eq!(
@@ -519,7 +523,7 @@ fn dma_reset_disables_channels_and_clears_write_only_address_and_count_latches()
 #[test]
 fn memory_only_reset_keeps_io_and_allows_dma_timers_and_deferred_irq() {
     for thumb in [false, true] {
-        let (mut m, pc) = prepare(4, thumb, 0x1f);
+        let (mut m, pc) = prepare(4, thumb, 0x9f); // Caller masks IRQs
         let before = m.cpu().clone();
         m.step().unwrap();
         m.memory_mut().write16(BG0CNT, 0x41).unwrap();
@@ -557,7 +561,6 @@ fn memory_only_reset_keeps_io_and_allows_dma_timers_and_deferred_irq() {
             assert_eq!(m.memory().read16(address).unwrap(), value);
         }
         assert_ne!(m.memory().read16(IF).unwrap() & 8, 0);
-        assert_eq!(m.step().unwrap(), StepKind::IrqEntry);
     }
 }
 

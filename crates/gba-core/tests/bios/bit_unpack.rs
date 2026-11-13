@@ -385,7 +385,9 @@ fn word_stores_support_palette_oam_and_video_memory() {
 
 #[test]
 fn timers_and_dma_continue_while_irq_delivery_is_masked() {
-    let (mut m, pc) = prepare(false, DEST, &[0x12; 16], 8, 32, 0);
+    // The caller masks IRQs, so delivery waits for the caller.
+    let (mut m, pc) = call_status_data(0x10, false, [ROM_DATA, DEST, INFO], 0x9f, &[0x12; 16]);
+    info(&mut m, 16, 8, 32, 0);
     m.step().unwrap(); // Enter SWI before enabling IRQ sources.
     m.memory_mut().write16(IE, 8).unwrap();
     m.memory_mut().write16(IME, 1).unwrap();

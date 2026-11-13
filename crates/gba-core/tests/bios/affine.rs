@@ -651,7 +651,7 @@ fn dma_and_timers_progress_while_services_defer_irq_delivery() {
                 angle: 0,
             }])
         };
-        let (mut m, pc) = prepare(service, false, [DATA, DEST, 1, 2], 0x1f, &data);
+        let (mut m, pc) = prepare(service, false, [DATA, DEST, 1, 2], 0x9f, &data); // Caller masks IRQs;
         m.step().unwrap();
         m.memory_mut().write16(IE, 8).unwrap();
         m.memory_mut().write16(IME, 1).unwrap();
@@ -678,6 +678,5 @@ fn dma_and_timers_progress_while_services_defer_irq_delivery() {
         assert_eq!(m.memory().read16(IME).unwrap(), 1);
         assert_eq!(m.memory().read16(IRQ_FLAGS).unwrap(), 0);
         assert_eq!(m.memory().read16(DEST).unwrap(), 256);
-        assert_eq!(m.step().unwrap(), StepKind::IrqEntry);
     }
 }

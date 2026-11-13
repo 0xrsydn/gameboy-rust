@@ -288,7 +288,7 @@ fn does_not_reset_io_or_device_clocks() {
 fn dma_timers_and_pending_irq_continue_but_irq_stays_masked_after_restart() {
     for thumb in [false, true] {
         for ime in [0, 1] {
-            let (mut m, _) = call(0, thumb, [0, 0, 0]);
+            let (mut m, _) = call_status(0, thumb, [0, 0, 0], 0x9f); // Caller masks IRQs
             m.memory_mut().write8(FLAG, 1).unwrap();
             m.memory_mut().write32(SOURCE, 0xeaff_fffe).unwrap();
             m.step().unwrap();
@@ -346,18 +346,13 @@ fn reset_is_not_an_atomic_host_memory_clear() {
 }
 
 #[test]
-fn exception_mode_callers_still_receive_a_diagnostic() {
+fn exception_mode_callers_restart_like_system_callers() {
+    // The firmware-style entry does not depend on the caller's mode.
     for status in [0x12, 0x13] {
         let (mut m, _) = call_status(0, false, [0, 0, 0], status);
         m.memory_mut().write32(CLEAR_START, 0x1357_2468).unwrap();
-        let error = (0..100).find_map(|_| m.step().err()).unwrap();
-        assert!(matches!(
-            error,
-            MachineError::Cpu(CpuError::UnsupportedInstruction {
-                instruction: UNSUPPORTED_TRAP,
-                ..
-            })
-        ));
-        assert_eq!(m.memory().read32(CLEAR_START).unwrap(), 0x1357_2468);
+        reach(&mut m, ROM_START, 2000);
+        assert_eq!(m.cpu().cpsr() & 0x1f, 0x1f);
+        assert_eq!(m.memory().read32(CLEAR_START).unwrap(), 0);
     }
 }

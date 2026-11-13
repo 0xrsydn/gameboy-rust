@@ -374,7 +374,9 @@ fn declared_end_does_not_consume_trailing_payload() {
 fn dma_and_timers_continue_while_filter_masks_cpu_irq_delivery() {
     for service in [0x16, 0x17, 0x18] {
         let (data, expected) = filtered(service, &[0x55; 32]);
-        let (mut m, pc) = prepare(service, false, DEST, &data);
+        // The caller masks IRQs, so delivery waits for the caller.
+        let (mut m, pc) =
+            call_status_data(service, false, [ROM_DATA, DEST, 0x55aa_1234], 0x9f, &data);
         m.step().unwrap(); // Enter SWI before requesting IRQs.
         m.memory_mut().write16(IE, 8).unwrap();
         m.memory_mut().write16(IME, 1).unwrap();

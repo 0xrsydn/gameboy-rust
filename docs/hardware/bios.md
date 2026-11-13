@@ -71,13 +71,16 @@ Supported software interrupt services:
 | `0x18` | Diff16bitUnFilter | Reconstruct 16-bit samples from r0 to r1 with halfword writes |
 
 ARM code uses `SWI service_number << 16`; Thumb code uses the service number directly.
-Only User/System callers are supported. Calls from exception modes return a diagnostic rather than risking nested stack corruption.
+The SWI entry follows the firmware's structure (see mGBA's firmware-modeled `hle-bios.s`): it keeps r11, r12, lr, and
+the caller's status on the Supervisor stack (16 bytes per call), then switches to System mode with the caller's IRQ
+mask and runs the service on the caller's stack. Interrupts are therefore serviced during long calls when the caller
+has them enabled, and an IRQ callback may itself call a service; callers in any mode return to that mode.
 Returning services preserve CPSR and every caller register except the documented arithmetic outputs.
 SoftReset instead initializes CPU registers and status as described below.
 This is deterministic behavior, not a claim about undocumented firmware outputs.
-Supervisor stack use is 28 bytes normally, including Div, ArcTan, and RegisterRamReset. ArcTan2 uses 40 bytes.
-CpuFastSet, affine-matrix services, BitUnPack, run-length and Huffman decompression, and differential filters use 60
-bytes; LZ77 uses 48.
+Each call also uses the caller's stack: 24 bytes for the frame, including Div, ArcTan, and RegisterRamReset. ArcTan2 uses 36 bytes.
+CpuFastSet, affine-matrix services, BitUnPack, run-length and Huffman decompression, and differential filters use 56
+bytes; LZ77 uses 44.
 They do not reproduce the original firmware's internal stack layout.
 
 ### Service timing
@@ -95,9 +98,10 @@ Div, Sqrt, ArcTan, and CpuFastSet are shaped and padded to the firmware cycle co
 - ArcTan and CpuFastSet match the measured cost for the tested inputs. ArcTan's multiply costs follow the CPU's
   early-termination rule, so other inputs may differ by a few cycles.
 
-Div and ArcTan return through a shorter exit that keeps r0, r1, and r3 in registers. Every measured case matches
-except ROM callers with the GamePak prefetch buffer enabled, which are one cycle slow. That comes from the prefetch
-model, not the BIOS. Other services keep their functional timing.
+Div and ArcTan return through a shorter exit that keeps r0, r1, and r3 in registers. Sqrt and CpuFastSet match every
+measured case except ROM callers with the GamePak prefetch buffer enabled (one cycle slow, from the prefetch model).
+With the firmware-style frame, Div's fixed part is 4 cycles over the measurements and ArcTan's 3. Other services keep
+their functional timing.
 
 **IRQ callback contract:** install a word-aligned ARM callback address at `0x03007ffc` after boot.
 The dispatcher saves r0–r3, r12, and lr on the IRQ stack, then calls it with r0 equal to `0x04000000`.
@@ -109,7 +113,7 @@ Before this, extra pointer checks made the mGBA suite's Timer IRQ handler stop t
 it now stops at `0x4e`, three cycles early, because the CPU-side IRQ entry delay is not modeled yet.
 The callback must preserve r4–r11, acknowledge handled IF bits, and return with `BX lr`.
 For interrupt waits, it must also OR the handled bits into the halfword at `0x03007ff8`.
-Acknowledging IF alone does not complete IntrWait. Nested IRQs and SWIs from callbacks are not supported.
+Acknowledging IF alone does not complete IntrWait. Nested IRQs are not supported; callbacks may call other services.
 The dispatcher restores registers and returns with `SUBS pc, lr, #4`.
 
 IntrWait consumes only the selected BIOS RAM flags; other flags remain set.
@@ -127,8 +131,8 @@ halfword source reads rotated, and SRAM's 8-bit bus sees the low address bits; s
 This matches the hardware results of the [mGBA test suite](../public-mgba-suite.md)'s misaligned `swi B`/`swi C` cases.
 Sources below `0x02000000`, or ranges with a wrapping end address, return without copying.
 Other invalid accesses use normal memory diagnostics. Earlier successful writes remain committed if a later instruction fails.
-These copy services keep CPU IRQ delivery masked until return; device clocks and DMA continue throughout.
-BIOS bus protection, exact firmware timing, undocumented side effects, and nested service calls remain incomplete.
+These copy services run with the caller's IRQ mask; device clocks and DMA continue throughout.
+BIOS bus protection, exact firmware timing, and undocumented side effects remain incomplete.
 
 ## CPU BIOS read protection
 
@@ -257,7 +261,7 @@ Device clocks and DMA continue, so counters and pending requests can change duri
 IRQ delivery stays masked throughout the service and after restart.
 Restart code must install an IRQ callback and configure interrupts before unmasking IRQ.
 
-The common SWI entry still requires an initialized, writable Supervisor stack and saves a 28-byte frame.
+The common SWI entry still requires initialized, writable Supervisor and caller stacks; it saves 16 bytes on the first and a 24-byte frame on the second.
 SoftReset abandons that frame. It uses no further stack storage and never restores the old caller state.
 With default stacks, the frame lies inside the cleared RAM.
 If the Supervisor stack is outside this region, its entry writes remain there after reset.
@@ -319,7 +323,7 @@ GREENSWAP, KEYINPUT/button state, KEYCNT, POSTFLG, and BIOS IRQ communication wo
 Bit 7 covers only the listed registers. A later matching input sample can request keypad IRQ again after IF acknowledgement.
 
 Without their corresponding reset flags, device configuration remains unchanged except for DISPCNT and the SIODATA32 low halfword.
-IRQ delivery stays CPU-masked during the call. The service restores the caller's mask on return.
+The service runs with the caller's IRQ mask and restores the caller's status on return.
 Timers and DMA continue until their reset writes, if selected; this service does not stop clocks or replace frame-capture history.
 Pending IRQs remain pending without bit 7 and can be delivered after return.
 
@@ -344,7 +348,7 @@ Other numerators hang the firmware; here they reach `bios::INVALID_ARGUMENT_TRAP
 Sqrt treats r0 as an unsigned 32-bit number and returns an unsigned result in `0..65535`.
 The result satisfies `root² <= input < (root + 1)²`. Other registers are preserved.
 Its integer Newton iteration has firmware-matched cost, without floating-point calculations.
-Arithmetic services keep IRQ delivery masked until return, without changing IME.
+Arithmetic services run with the caller's IRQ mask, without changing IME.
 Device clocks and DMA continue. See [service timing](#service-timing) for which costs match the firmware.
 
 ## Fixed-point angles
@@ -371,7 +375,7 @@ Use ArcTan2 for direction calculations that require all four quadrants.
 Both services also return the firmware's scratch registers, as the [mGBA test suite](../public-mgba-suite.md) measured:
 ArcTan leaves the negated squared ratio `-(r0² >> 14)` in r1 and the polynomial sum in r3. ArcTan2 leaves the inner
 ArcTan's r1 (Y unchanged on an axis) and the constant `0x170` in r3. Other registers and the caller's status are preserved.
-They execute original ARM instructions and keep CPU IRQ delivery masked until return, without changing IME.
+They execute original ARM instructions with the caller's IRQ mask, without changing IME.
 Device clocks and DMA continue. Exact firmware timing and full hardware compatibility remain unverified.
 
 ## Affine matrices
@@ -421,7 +425,7 @@ A failed source read preserves earlier records without writing the current recor
 A failed destination write preserves earlier successful stores, including stores within the current record.
 Normal halfword/word bus rules apply to video memory and display registers.
 Both services preserve all caller registers and status.
-They keep CPU IRQ delivery masked without changing IME; device clocks and DMA continue.
+They run with the caller's IRQ mask without changing IME; device clocks and DMA continue.
 Exact firmware cycle counts and undocumented side effects are not reproduced.
 
 ## LZ77 decompression
@@ -453,7 +457,7 @@ Truncated cartridge input and invalid destination accesses return normal memory 
 Earlier completed writes remain committed on failure; neither the whole service nor the whole output buffer is rolled back.
 Each call runs as ordinary ARM instructions, so callers can enforce machine-step limits on large streams.
 LZ77 returns r0 past the last source byte read, r1 past the output, and r3 = 0, as mGBA reports; other registers and
-the caller's status are preserved. CPU IRQ delivery stays masked until return; device clocks and DMA continue.
+the caller's status are preserved. The service runs with the caller's IRQ mask; device clocks and DMA continue.
 Each step costs what mGBA's hardware-fitted model charges: 14 cycles per flag byte, 32 per literal or reference, and
 10 per copied byte (14 for the VRAM variant), plus each memory access and one cycle per load. An original calibration
 ROM run through [instruction lockstep](../mgba-reference.md#instruction-lockstep) matches mGBA within one cycle per call
@@ -483,7 +487,7 @@ Zero length reads no blocks and writes no output after header/argument validatio
 Truncated source data and invalid destination accesses use normal memory diagnostics. Earlier completed writes remain committed.
 
 The CPU executes these routines as original ARM instructions, sharing the byte/halfword output routine with LZ77.
-They preserve caller registers/status and keep CPU IRQ delivery masked until return, without changing IME.
+They preserve caller registers/status and run with the caller's IRQ mask, without changing IME.
 Timers, display clocks, and DMA continue during execution. Callers can enforce machine-step limits for large streams.
 Exact Nintendo BIOS timing and undocumented side effects are not reproduced.
 
@@ -522,7 +526,7 @@ Truncated input and invalid stores use normal memory diagnostics. Earlier comple
 Use separate source and output buffers. Overlapping buffers and partial final output words are not supported.
 
 The CPU executes original ARM instructions for all traversal and packing. No host-side service hook performs decoding.
-The routine preserves caller registers/status and keeps CPU IRQ delivery masked until return. IME is unchanged; device clocks and DMA continue.
+The routine preserves caller registers/status and runs with the caller's IRQ mask. IME is unchanged; device clocks and DMA continue.
 Exact Nintendo BIOS timing and undocumented side effects remain unmodeled.
 
 ## Bit unpacking
@@ -555,7 +559,7 @@ These checks are development safeguards, not a model of Nintendo BIOS behavior f
 Zero length accesses neither source data nor output after descriptor and argument validation.
 Unmapped descriptor/source reads and invalid stores use normal memory diagnostics.
 The service preserves caller registers/status and uses original ARM instructions, without host-side SWI interception.
-CPU IRQ delivery stays masked until return. IME is unchanged; timers, display clocks, and DMA continue.
+The service runs with the caller's IRQ mask. IME is unchanged; timers, display clocks, and DMA continue.
 Exact firmware timing and undocumented register outputs remain unmodeled.
 
 ## Differential filters

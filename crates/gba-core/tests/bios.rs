@@ -357,17 +357,16 @@ fn fast_copy_reads_each_eight_word_block_before_writing_it() {
 }
 
 #[test]
-fn swi_callers_outside_user_and_system_modes_are_rejected() {
-    for mode in [0x11, 0x12, 0x13, 0x17, 0x1b] {
-        let (mut machine, _) = call_status(0x0b, false, [SOURCE, DEST, 0], mode);
-        let error = (0..100).find_map(|_| machine.step().err()).unwrap();
-        assert!(matches!(
-            error,
-            MachineError::Cpu(CpuError::UnsupportedInstruction {
-                instruction: UNSUPPORTED_TRAP,
-                ..
-            })
-        ));
+fn swi_callers_in_exception_modes_return_to_their_mode() {
+    // Like the firmware, the service runs in System mode and returns to the caller's mode;
+    // an IRQ callback can therefore call BIOS services.
+    for mode in [0x11, 0x12, 0x17, 0x1b] {
+        let (mut machine, return_pc) = call_status(0x0b, false, [SOURCE, DEST, 1], mode);
+        machine.memory_mut().write32(SOURCE, 0x1234_abcd).unwrap();
+        let before = machine.cpu().clone();
+        finish(&mut machine, return_pc);
+        assert_eq!(machine.cpu().cpsr(), before.cpsr());
+        assert_eq!(machine.memory().read16(DEST).unwrap(), 0xabcd);
     }
 }
 

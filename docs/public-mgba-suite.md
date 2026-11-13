@@ -51,8 +51,8 @@ Each sub-suite started from a fresh boot. Repository tooling for this run does n
 | ---: | --- | ---: | ---: | --- |
 | 0 | Memory | 43 / 44 so far | 1552 / 1552 | — |
 | 1 | I/O read | 4 / 40 so far | 130 / 130 | — |
-| 2 | Timing | 1660 / 2020 | 1792 / 2020 | — |
-| 3 | Timers | 362 / 936 | 596 / 936 | — |
+| 2 | Timing | 1660 / 2020 | 1824 / 2020 | — |
+| 3 | Timers | 362 / 936 | 587 / 936 | — |
 | 4 | Timer IRQ | 0 / 90 | 44 / 90 | — |
 | 5 | Shifter | 140 / 140 | 140 / 140 | — |
 | 6 | Carry | 93 / 93 | 93 / 93 | — |
@@ -61,13 +61,15 @@ Each sub-suite started from a fresh boot. Repository tooling for this run does n
 | 9 | DMA | 12 / 12 so far | 1244 / 1244 | — |
 | 10 | SIO read | 1 / 6 so far | 90 / 90 | — |
 | 11 | SIO timing | 4 / 4 | 0 / 4 | — |
-| 12 | Misc. edge | 4 / 12 | 4 / 12 | — |
+| 12 | Misc. edge | 4 / 12 | 6 / 12 | — |
 | 13 | Video | visual only | visual only | — |
 
 The current column is the latest local run. Since the baseline, the sub-suites that used to stop were fixed
 (unused-memory writes, SRAM's 8-bit bus in DMA and block transfers, I/O read policy, misaligned BIOS copies, BIOS
 math side effects, serial register reads), the multiply carry flag was modeled, and Div, Sqrt, ArcTan, and CpuFastSet
-were matched to the firmware's measured [service timing](hardware/bios.md#service-timing).
+were matched to the firmware's measured [service timing](hardware/bios.md#service-timing). Immediate DMA now starts
+3 cycles after the enabling instruction began (timing +32, misc. edge +2). Services now run in System mode with the
+caller's IRQ mask, like the firmware; that changed the IntrWait wake path the Timers tests count (−9).
 
 Earlier the same day, the column was measured after the [timer start delay](hardware/timers-irq.md)
 (timing +20, timers +42, Timer IRQ +44) and the [minimal BIOS IRQ dispatch](hardware/bios.md) (timers +192).

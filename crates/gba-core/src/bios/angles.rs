@@ -11,10 +11,9 @@ pub(super) const ARCTAN2_R3: u32 = 0x170;
 pub(super) fn emit(a: &mut ArmImage) {
     // Any 32-bit input is accepted; products keep their low 32 bits as on hardware.
     a.label("arctan");
-    super::pad(a, 2); // Measured firmware cost; see docs/hardware/bios.md.
     a.call("atan_polynomial");
     a.emit(0xe1a0_3002); // MOV r3,r2 (r1 = negated squared ratio, r3 = polynomial sum)
-    a.branch(14, "return_results");
+    super::emit_return_results(a);
 
     a.label("arctan2");
     a.emit(0xe92d_0070); // STMDB sp!,{r4-r6} (40 bytes total SVC stack use)
@@ -91,7 +90,7 @@ pub(super) fn emit(a: &mut ArmImage) {
     a.emit(0xe355_0000); // CMP r5,#0
     a.emit(0x0084_0000); // ADDEQ r0,r4,r0
     a.emit(0x1060_0004); // RSBNE r0,r0,r4
-    a.emit(0xe58d_1014); // STR r1,[sp,#20] (saved r1 = inner negated squared ratio)
+    a.emit(0xe58d_1010); // STR r1,[sp,#16] (saved r1 = inner negated squared ratio)
     a.branch(14, "atan2_done");
 
     // Axis directions leave r1 unchanged.
@@ -107,9 +106,9 @@ pub(super) fn emit(a: &mut ArmImage) {
     a.label("atan2_done");
     a.emit(0xe1a0_0800); // MOV r0,r0,LSL #16
     a.emit(0xe1a0_0820); // MOV r0,r0,LSR #16 (unsigned turn angle)
-    a.emit(0xe58d_0010); // STR r0,[sp,#16] (saved caller r0 below local frame)
+    a.emit(0xe58d_000c); // STR r0,[sp,#12] (saved caller r0 below local frame)
     a.literal(3, ARCTAN2_R3);
-    a.emit(0xe58d_301c); // STR r3,[sp,#28] (saved r3)
+    a.emit(0xe58d_3018); // STR r3,[sp,#24] (saved r3)
     a.emit(0xe8bd_0070); // LDMIA sp!,{r4-r6}
     a.branch(14, "return");
 

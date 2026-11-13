@@ -130,18 +130,20 @@ pub fn image() -> Vec<u8> {
     a.prefetch_tail(0xe55e_c002); // IRQ return protected-read word.
 
     a.label("swi");
-    a.emit(0xe92d_500f); // STMDB sp!,{r0-r3,r12,lr}
-    a.emit(0xe14f_3000); // MRS r3,SPSR
-    a.emit(0xe92d_0008); // STMDB sp!,{r3} (save caller status across IRQs)
-                         // Keep stack usage bounded within the default 64-byte Supervisor area.
-                         // In particular, reject a nested SWI from an IRQ callback during a wait.
-                         // User (0x10) and System (0x1f) are the only modes whose low mode bits are 0 or 0xf.
-    a.emit(0xe203_c00f); // AND r12,r3,#0xf
-    a.emit(0xe35c_000f); // CMP r12,#0xf (System)
-    a.emit(0x135c_0000); // CMPNE r12,#0 (User)
-    a.branch(1, "unsupported");
-    // One byte read serves both states: the Thumb immediate, or bits 16-23 of the ARM comment.
+    // Like the firmware: keep only r11, r12, lr, and the caller's status on the Supervisor
+    // stack (16 bytes per call, so IRQ callbacks may nest calls), then run the service in
+    // System mode on the caller's stack with the caller's IRQ mask, so interrupts are serviced
+    // during long calls.
+    a.emit(0xe92d_5800); // STMDB sp!,{r11,r12,lr}
+                         // One byte read serves both states: the Thumb immediate, or bits 16-23 of the ARM comment.
     a.emit(0xe55e_c002); // LDRB r12,[lr,#-2]
+    a.emit(0xe14f_b000); // MRS r11,SPSR
+    a.emit(0xe92d_0800); // STMDB sp!,{r11}
+    a.emit(0xe20b_b080); // AND r11,r11,#I (caller's IRQ mask)
+    a.emit(0xe38b_b01f); // ORR r11,r11,#System
+    a.emit(0xe121_f00b); // MSR CPSR_c,r11
+                         // Service frame on the caller's stack: r0-r3, r12, and the caller's lr.
+    a.emit(0xe92d_500f); // STMDB sp!,{r0-r3,r12,lr}
                          // Constant-cost dispatch, like the firmware's table: every service pays the same entry cost.
     a.emit(0xe35c_0018); // CMP r12,#last service
     a.emit(0x979f_f10c); // LDRLS pc,[pc,r12,LSL #2] (table follows the next instruction)
@@ -232,7 +234,7 @@ pub fn image() -> Vec<u8> {
     a.branch(1, "copy_word");
     a.branch(14, "copy_halfword");
     a.label("cpu_fast_set");
-    pad(&mut a, 11); // Measured firmware cost; see docs/hardware/bios.md.
+    pad(&mut a, 5); // Measured firmware cost; see docs/hardware/bios.md.
     emit_count(&mut a);
     a.emit(0xe283_3007); // ADD r3,r3,#7
     a.emit(0xe3c3_3007); // BIC r3,r3,#7 (round up to eight words)
@@ -284,26 +286,14 @@ pub fn image() -> Vec<u8> {
     huffman::emit(&mut a);
     decompression::emit_writer(&mut a);
 
+    // IRQs may stay enabled while unwinding the caller's stack, as on the firmware.
     a.label("return");
-    a.emit(0xe10f_3000); // MRS r3,CPSR
-    a.emit(0xe383_3080); // ORR r3,r3,#I (protect status/stack restoration)
-    a.emit(0xe121_f003); // MSR CPSR_c,r3
-    a.emit(0xe8bd_0008); // LDMIA sp!,{r3}
-    a.emit(0xe169_f003); // MSR SPSR_fc,r3
-    a.emit(0xe8bd_500f); // LDMIA sp!,{r0-r3,r12,lr}
-    a.emit(0xe1b0_f00e); // MOVS pc,lr
-    a.prefetch_tail(0xe3a0_2004); // SWI return protected-read word.
+    emit_return(&mut a);
 
-    // Shorter exit for services that never unmask IRQs and return r0, r1, and r3 in registers.
-    // It restores r2, r12, lr, and the caller's status from the frame.
+    // Shorter exit for services that return r0, r1, and r3 in registers.
+    // It restores r2 and the caller's lr from the frame.
     a.label("return_results");
-    a.emit(0xe8bd_1000); // LDMIA sp!,{r12} (saved SPSR)
-    a.emit(0xe169_f00c); // MSR SPSR_fc,r12
-    a.emit(0xe59d_2008); // LDR r2,[sp,#8] (saved r2)
-    a.emit(0xe28d_d010); // ADD sp,sp,#16 (drop saved r0-r3)
-    a.emit(0xe8bd_5000); // LDMIA sp!,{r12,lr}
-    a.emit(0xe1b0_f00e); // MOVS pc,lr
-    a.prefetch_tail(0xe3a0_2004); // SWI return protected-read word.
+    emit_return_results(&mut a);
     a.label("unsupported");
     a.emit(UNSUPPORTED_TRAP);
     a.label("invalid_argument");
@@ -311,6 +301,31 @@ pub fn image() -> Vec<u8> {
     let mut image = a.finish(affine::TABLE_ADDRESS as usize);
     affine::write_table(&mut image);
     image
+}
+
+/// Restore the caller's r0-r3, r12, and lr from the service frame, then return. Services
+/// may emit this inline instead of branching to `return`.
+fn emit_return(a: &mut ArmImage) {
+    a.emit(0xe8bd_500f); // LDMIA sp!,{r0-r3,r12,lr}
+    emit_supervisor_exit(a);
+}
+
+/// Return r0, r1, and r3 in registers; restore r2, r12, and lr from the service frame.
+fn emit_return_results(a: &mut ArmImage) {
+    a.emit(0xe28d_d008); // ADD sp,sp,#8 (saved r0-r1)
+                         // r11 takes the saved r3 as a dummy; the exit restores the caller's r11.
+    a.emit(0xe8bd_5804); // LDMIA sp!,{r2,r11,r12,lr}
+    emit_supervisor_exit(a);
+}
+
+/// Return from System mode through the Supervisor stack saved at SWI entry.
+fn emit_supervisor_exit(a: &mut ArmImage) {
+    a.emit(0xe321_f093); // MSR CPSR_c,#SVC|I
+    a.emit(0xe8bd_0800); // LDMIA sp!,{r11}
+    a.emit(0xe169_f00b); // MSR SPSR_fc,r11
+    a.emit(0xe8bd_5800); // LDMIA sp!,{r11,r12,lr}
+    a.emit(0xe1b0_f00e); // MOVS pc,lr
+    a.prefetch_tail(0xe3a0_2004); // SWI return protected-read word.
 }
 
 /// Single-cycle `MOV r0,r0` padding that matches the firmware's measured fixed costs.

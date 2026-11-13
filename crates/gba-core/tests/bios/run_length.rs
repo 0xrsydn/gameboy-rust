@@ -359,7 +359,9 @@ fn byte_and_halfword_variants_use_normal_video_bus_write_rules() {
 fn device_clocks_and_dma_continue_while_service_masks_irq_delivery() {
     let (data, expected) = stream(&[Block::Repeat(0x55, 130)]);
     for service in [0x14, 0x15] {
-        let (mut m, return_pc) = prepare(service, false, DEST, &data);
+        // The caller masks IRQs, so delivery waits for the caller.
+        let (mut m, return_pc) =
+            call_status_data(service, false, [ROM_DATA, DEST, 0xa55a_1234], 0x9f, &data);
         m.step().unwrap(); // Enter Supervisor mode before requesting any IRQ.
         let start = m.cycles();
         m.memory_mut().write16(IE, 8).unwrap();

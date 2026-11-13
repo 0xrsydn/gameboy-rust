@@ -440,7 +440,8 @@ fn declared_output_end_ignores_remaining_bits_and_trailing_words() {
 #[test]
 fn device_clocks_and_dma_continue_while_huffman_masks_irq_delivery() {
     let (data, expected) = encode(8, &pair(), &[0x12; 32]);
-    let (mut m, pc) = prepare(false, DEST, &data);
+    // The caller masks IRQs, so delivery waits for the caller.
+    let (mut m, pc) = call_status_data(0x13, false, [ROM_DATA, DEST, 0xa55a_1234], 0x9f, &data);
     m.step().unwrap();
     m.memory_mut().write16(IE, 8).unwrap();
     m.memory_mut().write16(IME, 1).unwrap();

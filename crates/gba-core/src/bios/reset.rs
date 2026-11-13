@@ -12,8 +12,9 @@ use crate::{
 
 pub(super) fn emit(a: &mut ArmImage) {
     a.label("soft_reset");
-    // Read the byte before clearing its containing RAM and the common SWI frame.
-    // No stack accesses follow: this service never returns to its caller.
+    a.emit(0xe321_f0d3); // MSR CPSR_c,#SVC|I|F (services run in System mode)
+                         // Read the byte before clearing its containing RAM and the common SWI frame.
+                         // No stack accesses follow: this service never returns to its caller.
     a.literal(0, 0x0300_7ffa);
     a.emit(0xe5d0_2000); // LDRB r2,[r0] (zero: ROM, nonzero: EWRAM)
     a.literal(0, 0x0300_7e00);

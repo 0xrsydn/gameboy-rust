@@ -443,12 +443,16 @@ mod tests {
             assert_eq!(demo.machine().memory().read16(IF).unwrap(), 1);
             assert!(demo.machine().last_timing().idle_cycles > 0);
             assert_eq!(demo.machine().last_timing().code_cycles, 0);
-            assert_eq!(demo.machine().cpu().mode(), Mode::Supervisor);
+            // BIOS services run in System mode, like the firmware.
+            assert_eq!(demo.machine().cpu().mode(), Mode::System);
+            assert!(demo.machine().cpu().pc() < ROM_START);
             assert_eq!(demo.machine().cpu().cpsr() & 0x80, 0);
             assert!(!demo.machine().halted()); // VBlank wakes HALT while the wait service has IME=0.
             let mut entries = 0;
             for _ in 0..200 {
-                if demo.machine().cpu().mode() == Mode::System {
+                // Back in the demo's own code, not in its IRQ callback (IRQ mode).
+                let cpu = demo.machine().cpu();
+                if cpu.pc() >= ROM_START && cpu.mode() == Mode::System {
                     break;
                 }
                 if demo.machine.step().unwrap() == StepKind::IrqEntry {

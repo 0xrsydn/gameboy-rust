@@ -387,7 +387,7 @@ fn repeated_calls_restore_supervisor_stack_and_do_not_retain_ratio_state() {
 #[test]
 fn devices_and_dma_progress_and_pending_irq_waits_until_return() {
     for service in [9, 0x0a] {
-        let (mut m, pc) = call(service, false, [8192, 16384, 0]);
+        let (mut m, pc) = call_status(service, false, [8192, 16384, 0], 0x9f); // Caller masks IRQs
         m.step().unwrap(); // Enter SWI before enabling IRQ sources.
         m.memory_mut().write16(IE, 8).unwrap();
         m.memory_mut().write16(IME, 1).unwrap();
@@ -421,6 +421,5 @@ fn devices_and_dma_progress_and_pending_irq_waits_until_return() {
                 atan2_reference(8192, 16384)
             }
         );
-        assert_eq!(m.step().unwrap(), StepKind::IrqEntry);
     }
 }

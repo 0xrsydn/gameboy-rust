@@ -134,7 +134,7 @@ fn entry(a: &mut ArmImage, background: bool) {
     if !background {
         // SWI dispatch uses r3 for caller status. Recover the fourth argument
         // from the common frame before adding our local register save.
-        a.emit(0xe59d_3010); // LDR r3,[sp,#16] (original coefficient stride)
+        a.emit(0xe59d_300c); // LDR r3,[sp,#12] (original coefficient stride)
     }
     a.emit(0xe92d_0ff0); // STMDB sp!,{r4-r11} (60 bytes total SVC stack use)
     a.emit(0xe180_c001); // ORR r12,r0,r1
