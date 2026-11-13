@@ -39,6 +39,16 @@ fn stream(tokens: &[Token]) -> (Vec<u8>, Vec<u8>) {
     (compressed, expected)
 }
 
+/// Caller registers after a successful call: r0 past the source bytes read, r1 past the
+/// output, r3 cleared, as mGBA reports; every other register is preserved.
+fn returned(before: &[u32], source_end: u32, output_end: u32) -> Vec<u32> {
+    let mut registers = before[..15].to_vec();
+    registers[0] = source_end;
+    registers[1] = output_end;
+    registers[3] = 0;
+    registers
+}
+
 fn prepare(service: u8, thumb: bool, destination: u32, compressed: &[u8]) -> (Machine, u32) {
     call_status_data(
         service,
@@ -94,7 +104,21 @@ fn verify(service: u8, thumb: bool, destination: u32, compressed: &[u8], expecte
         machine.memory().read32(bios::IRQ_STACK).unwrap(),
         0x5a5a_a5a5
     );
-    assert_eq!(&machine.cpu().registers()[..15], &before.registers()[..15]);
+    // Empty streams read only the header.
+    let source_end = ROM_DATA
+        + if expected.is_empty() {
+            4
+        } else {
+            compressed.len() as u32
+        };
+    assert_eq!(
+        machine.cpu().registers()[..15],
+        returned(
+            before.registers(),
+            source_end,
+            destination + expected.len() as u32
+        )
+    );
     assert_eq!(machine.cpu().cpsr(), before.cpsr());
 }
 
@@ -276,7 +300,7 @@ fn compressed_sources_can_be_read_from_either_work_ram_region() {
 }
 
 #[test]
-fn decompression_restores_user_mode_masks_and_all_caller_registers() {
+fn decompression_restores_user_mode_masks_and_returns_end_pointers() {
     let (compressed, _) = stream(&[
         Token::Literal(0x55),
         Token::Literal(0xaa),
@@ -298,7 +322,14 @@ fn decompression_restores_user_mode_masks_and_all_caller_registers() {
                 let before = machine.cpu().clone();
                 complete(&mut machine, return_pc);
                 assert_eq!(machine.cpu().cpsr(), before.cpsr());
-                assert_eq!(&machine.cpu().registers()[..15], &before.registers()[..15]);
+                assert_eq!(
+                    machine.cpu().registers()[..15],
+                    returned(
+                        before.registers(),
+                        ROM_DATA + compressed.len() as u32,
+                        DEST + 6
+                    )
+                );
             }
         }
     }
@@ -315,7 +346,10 @@ fn empty_headers_ignore_type_without_reading_payload_or_accessing_destination() 
                     prepare(service, thumb, 0x0e00_0001, &[low_byte, 0, 0, 0]);
                 let before = machine.cpu().clone();
                 complete(&mut machine, return_pc); // Header ends at the last supplied ROM byte.
-                assert_eq!(&machine.cpu().registers()[..15], &before.registers()[..15]);
+                assert_eq!(
+                    machine.cpu().registers()[..15],
+                    returned(before.registers(), ROM_DATA + 4, 0x0e00_0001)
+                );
                 assert_eq!(machine.cpu().cpsr(), before.cpsr());
             }
         }

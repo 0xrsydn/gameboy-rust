@@ -80,9 +80,10 @@ fn raw_original_program_runs_with_a_bounded_report_without_changing_the_file() {
 fn empty_lz_setup() -> Vec<u32> {
     // Original ARM caller, an all-zero header at EOF, and a RAM sentinel.
     // Both LZ variants must return without reading tokens or writing the destination.
+    // Each call returns r0 past the header it read, so the caller rewinds it.
     vec![
-        0xe59f001c, 0xe59f101c, 0xe3a0205a, 0xe5812000, 0xef110000, 0xef120000, 0xe5913000,
-        0xe3a0402a, 0xeafffffe, 0x0800002c, 0x02001000, 0,
+        0xe59f0020, 0xe59f1020, 0xe3a0205a, 0xe5812000, 0xef110000, 0xe2400004, 0xef120000,
+        0xe5913000, 0xe3a0402a, 0xeafffffe, 0x08000030, 0x02001000, 0,
     ]
 }
 

@@ -76,7 +76,8 @@ Returning services preserve CPSR and every caller register except the documented
 SoftReset instead initializes CPU registers and status as described below.
 This is deterministic behavior, not a claim about undocumented firmware outputs.
 Supervisor stack use is 28 bytes normally, including Div, ArcTan, and RegisterRamReset. ArcTan2 uses 40 bytes.
-CpuFastSet, affine-matrix services, BitUnPack, all three decompression formats, and differential filters use 60 bytes.
+CpuFastSet, affine-matrix services, BitUnPack, run-length and Huffman decompression, and differential filters use 60
+bytes; LZ77 uses 48.
 They do not reproduce the original firmware's internal stack layout.
 
 ### Service timing
@@ -451,7 +452,12 @@ This is a bounded compatibility rule, not physical-hardware validation of malfor
 Truncated cartridge input and invalid destination accesses return normal memory diagnostics.
 Earlier completed writes remain committed on failure; neither the whole service nor the whole output buffer is rolled back.
 Each call runs as ordinary ARM instructions, so callers can enforce machine-step limits on large streams.
-LZ77 preserves caller registers/status and keeps CPU IRQ delivery masked until return; device clocks and DMA continue.
+LZ77 returns r0 past the last source byte read, r1 past the output, and r3 = 0, as mGBA reports; other registers and
+the caller's status are preserved. CPU IRQ delivery stays masked until return; device clocks and DMA continue.
+Each step costs what mGBA's hardware-fitted model charges: 14 cycles per flag byte, 32 per literal or reference, and
+10 per copied byte (14 for the VRAM variant), plus each memory access and one cycle per load. An original calibration
+ROM run through [instruction lockstep](../mgba-reference.md#instruction-lockstep) matches mGBA within one cycle per call
+for the WRAM variant; the VRAM variant's extra alignment checks leave it 8 cycles over.
 
 ## Run-length decompression
 
