@@ -150,7 +150,7 @@ Limits remain explicit:
   open bus (DMA word counts read zero), and an unused halfword reads zero when the low half of its word is a readable
   register, open bus otherwise. `BGxCNT` bits 4–5 are stored and read back. General DMA-to-CPU bus handoff and
   disabled-RAM reads are not modeled here.
-  [DMA channel data](dma.md#retained-channel-data) is separate and never overrides a CPU snapshot.
+  The instruction right after a DMA unit reads [that unit's data](dma.md#bus-value-after-a-transfer) instead, except Thumb code in IWRAM.
 - Missing BIOS, truncated ROM, unsupported I/O, and save-memory accesses retain their existing diagnostics.
 - CPU and DMA writes to unused memory (`0x00004000..0x01ffffff`, `0x10000000..0xffffffff`) are ignored, as on hardware,
   and pay the nominal one-cycle access. A swap there reads the open-bus value and ignores its write. Host writes stay strict.

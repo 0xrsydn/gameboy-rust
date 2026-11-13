@@ -1,7 +1,7 @@
 use gba_core::{
     cpu::{Cpu, Mode},
     display::{CYCLES_PER_FRAME, CYCLES_PER_LINE, HBLANK_START, VBLANK_START},
-    dma::{DmaError, DMA_BASE, DMA_STRIDE},
+    dma::{DmaError, DMA_BASE, DMA_STRIDE, START_DELAY},
     io::{DISPCNT, DISPSTAT, IE, IF, IME, TIMER_BASE, WAITCNT},
     machine::{FrameRunError, Machine, MachineError, StepKind},
     memory::{Memory, MemoryError, BIOS_SIZE, PALETTE_START, ROM_START, VRAM_START},
@@ -368,6 +368,7 @@ fn enabling_during_blank_waits_for_next_edge_and_zero_advance_does_not_trigger()
         assert_eq!(machine.step().unwrap(), StepKind::Instruction);
         let elapsed = (machine.cycles() - u64::from(edge)) as u32;
         machine.memory_mut().advance_cycles(period - elapsed);
+        machine.memory_mut().advance_cycles(u32::from(START_DELAY));
         units(&mut machine, 0, 1);
     }
 }
@@ -383,14 +384,39 @@ fn hblank_dma_runs_on_all_visible_lines_but_not_hidden_lines() {
         assert_eq!(machine.memory().read16(IF).unwrap(), 2); // HBlank IRQ still occurs on hidden lines.
         machine.memory_mut().write16(IF, 2).unwrap();
         if line < 160 {
+            machine.memory_mut().advance_cycles(u32::from(START_DELAY));
             units(&mut machine, 1, 1);
         } else {
             assert_eq!(machine.step().unwrap(), StepKind::Instruction);
         }
     }
     let edge = u64::from(CYCLES_PER_FRAME + HBLANK_START);
-    advance_to(&mut machine, edge);
+    advance_to(&mut machine, edge + u64::from(START_DELAY));
     units(&mut machine, 1, 1);
+}
+
+#[test]
+fn blank_dma_starts_three_cycles_after_its_edge() {
+    for (timing, edge) in [(0x1000, VBLANK_START), (0x2000, HBLANK_START)] {
+        // The host clock stops short of the delay: the CPU still owns the bus.
+        for short in 1..=u32::from(START_DELAY) {
+            let mut machine = machine();
+            configure(machine.memory_mut(), 0, SOURCE, DEST, 1, timing);
+            machine
+                .memory_mut()
+                .advance_cycles(edge + u32::from(START_DELAY) - short);
+            assert_eq!(machine.step().unwrap(), StepKind::Instruction);
+            units(&mut machine, 0, 1); // The instruction outlasted the rest of the wait.
+        }
+        // A batch that ends past the edge has already spent part of the wait.
+        let mut machine = machine();
+        configure(machine.memory_mut(), 0, SOURCE, DEST, 1, timing);
+        machine.memory_mut().advance_cycles(edge - 5);
+        machine
+            .memory_mut()
+            .advance_cycles(5 + u32::from(START_DELAY));
+        units(&mut machine, 0, 1);
+    }
 }
 
 #[test]
@@ -402,14 +428,16 @@ fn vblank_repeat_preserves_source_reloads_destination_and_count() {
         .write32(SOURCE + 4, 0x4444_3333)
         .unwrap();
     configure(machine.memory_mut(), 3, SOURCE, DEST, 2, 0x5260); // VBlank, repeat, dest reload, IRQ.
-    machine.memory_mut().advance_cycles(VBLANK_START);
+    machine
+        .memory_mut()
+        .advance_cycles(VBLANK_START + u32::from(START_DELAY));
     units(&mut machine, 3, 2);
     assert_eq!(machine.memory().read32(DEST).unwrap(), 0x2222_1111);
     assert!(enabled(&machine, 3));
     assert_eq!(machine.memory().read16(IF).unwrap(), 0x800);
     machine.memory_mut().write16(IF, 0x800).unwrap();
     assert_eq!(machine.step().unwrap(), StepKind::Instruction); // Same VBlank does not retrigger.
-    let next = u64::from(VBLANK_START + CYCLES_PER_FRAME);
+    let next = u64::from(VBLANK_START + CYCLES_PER_FRAME) + u64::from(START_DELAY);
     advance_to(&mut machine, next);
     units(&mut machine, 3, 2);
     assert_eq!(machine.memory().read32(DEST).unwrap(), 0x4444_3333);
@@ -440,10 +468,12 @@ fn repeated_increment_destination_continues_and_reload_uses_programmed_values() 
             .memory_mut()
             .write32(base(0) + 4, DEST + 16)
             .unwrap();
-        machine.memory_mut().advance_cycles(VBLANK_START);
+        machine
+            .memory_mut()
+            .advance_cycles(VBLANK_START + u32::from(START_DELAY));
         units(&mut machine, 0, 1);
         assert_eq!(machine.memory().read16(DEST).unwrap(), 0x1111);
-        let next = u64::from(VBLANK_START + CYCLES_PER_FRAME);
+        let next = u64::from(VBLANK_START + CYCLES_PER_FRAME) + u64::from(START_DELAY);
         advance_to(&mut machine, next);
         units(&mut machine, 0, 2);
         let address = if reload { DEST + 16 } else { DEST + 2 };
@@ -462,7 +492,9 @@ fn pending_requests_coalesce_and_busy_channel_does_not_queue_repeats() {
 
     let mut machine = self::machine();
     configure(machine.memory_mut(), 0, SOURCE, DEST, 100, 0x2200); // Takes 402 cycles, beyond HBlank.
-    machine.memory_mut().advance_cycles(HBLANK_START);
+    machine
+        .memory_mut()
+        .advance_cycles(HBLANK_START + u32::from(START_DELAY));
     units(&mut machine, 0, 99);
     // Inject more display edges while the block is still active; no queued repeat.
     machine.memory_mut().advance_cycles(CYCLES_PER_FRAME * 2);

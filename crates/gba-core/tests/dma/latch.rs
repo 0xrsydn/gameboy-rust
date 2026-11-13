@@ -279,7 +279,7 @@ fn repeated_hblank_blocks_and_priority_keep_channel_history_and_nominal_clocks()
         u64::from(HBLANK_START),
         u64::from(HBLANK_START + CYCLES_PER_LINE),
     ] {
-        advance_to(&mut machine, cycle);
+        advance_to(&mut machine, cycle + u64::from(START_DELAY));
         for channel in [0, 3] {
             units(&mut machine, channel, 1);
             assert_eq!(machine.last_timing().data_cycles, 2);

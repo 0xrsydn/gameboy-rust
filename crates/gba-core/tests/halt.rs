@@ -465,6 +465,8 @@ fn blank_triggered_dma_continues_during_halt_and_completion_can_wake() {
     halt(&mut machine);
     assert_eq!(machine.run_until_vblank(320).unwrap(), 320);
     assert!(machine.halted()); // No display IRQ enabled; DMA has not run yet.
+    assert_eq!(machine.step().unwrap(), StepKind::HaltIdle); // The transfer's start delay.
+    assert_eq!(machine.last_timing().idle_cycles, 3);
     assert_eq!(machine.step().unwrap(), StepKind::Dma { channel: 0 });
     assert_eq!(machine.memory().read16(0x0300_0000).unwrap(), 0x1234);
     assert_eq!(machine.memory().read16(IF).unwrap(), 0x100);
@@ -482,6 +484,8 @@ fn dma_without_completion_irq_does_not_wake_halt() {
     halt(&mut machine);
     assert_eq!(machine.step().unwrap(), StepKind::HaltIdle);
     assert_eq!(machine.cycles(), u64::from(HBLANK_START));
+    assert_eq!(machine.step().unwrap(), StepKind::HaltIdle); // The transfer's start delay.
+    assert_eq!(machine.cycles(), u64::from(HBLANK_START) + 3);
     assert_eq!(machine.step().unwrap(), StepKind::Dma { channel: 0 });
     assert!(machine.halted());
     assert_eq!(machine.step().unwrap(), StepKind::HaltIdle);

@@ -181,19 +181,29 @@ impl Dma {
     }
 
     /// Blanking requests are edges, not queued jobs. An active channel ignores
-    /// further edges until its current block completes.
-    pub(crate) fn trigger(&mut self, vblank: bool, hblank: bool) {
+    /// further edges until its current block completes. Each delay is what remains of
+    /// START_DELAY at the end of the clock batch that crossed that edge.
+    pub(crate) fn trigger(
+        &mut self,
+        vblank: bool,
+        hblank: bool,
+        vblank_delay: u8,
+        hblank_delay: u8,
+    ) {
         for (index, channel) in self.channels.iter_mut().enumerate() {
+            if !channel.enabled() || channel.active {
+                continue;
+            }
             // DMA3 special timing (video capture) is unmodeled: its HBlank request makes
             // the channel ready so `next` reports it instead of silently never running.
-            if channel.enabled()
-                && !channel.active
-                && ((vblank && channel.start_timing() == 1)
-                    || (hblank && channel.start_timing() == 2)
-                    || (hblank && channel.start_timing() == 3 && index == 3))
-            {
-                channel.active = true;
-            }
+            let delay = match channel.start_timing() {
+                1 if vblank => vblank_delay,
+                2 if hblank => hblank_delay,
+                3 if hblank && index == 3 => hblank_delay,
+                _ => continue,
+            };
+            channel.active = true;
+            channel.start_delay = delay;
         }
     }
 
@@ -296,8 +306,9 @@ fn replace_byte(previous: u32, byte: u32, value: u8) -> u32 {
 /// An immediate transfer enabled by a CPU store starts at the first step boundary at least
 /// this many cycles after that instruction began, as mGBA schedules it. A store taking
 /// three or more cycles (from ROM, say) lets the transfer start right after it; a faster
-/// store lets the next instruction run first.
-pub(crate) const START_DELAY: u8 = 3;
+/// store lets the next instruction run first. VBlank and HBlank transfers wait the same
+/// number of cycles after their display edge.
+pub const START_DELAY: u8 = 3;
 
 impl Dma {
     /// Count down pending start delays as cycles elapse.

@@ -27,6 +27,7 @@ Hardware references used for the core:
 - [HALTCNT hardware-access tests](https://github.com/mgba-emu/mgba/issues/2309), for BIOS-only writes and halfword access.
 - [GBATEK display status and IRQs](https://problemkaputt.de/gbatek-lcd-i-o-interrupts-and-status.htm).
 - [GBATEK display dimensions and timings](https://problemkaputt.de/gbatek-lcd-dimensions-and-timings.htm).
+- [mGBA `src/gba/dma.c`](https://github.com/mgba-emu/mgba/blob/master/src/gba/dma.c) `GBADMARunHblank` (transfer scheduled 3 cycles after the HBlank event) and `GBADMAService` (`gba->bus` holds the unit's data), with `GBALoadBad` in `memory.c` returning it to the instruction one opcode past the transfer.
 - [mGBA display implementation](https://github.com/mgba-emu/mgba/blob/master/src/gba/video.c), used to cross-check hidden-line HBlank IRQs and comparison-write edges.
 - [GBATEK affine background registers](https://problemkaputt.de/gbatek-lcd-i-o-bg-rotation-scaling.htm).
 - [NanoBoyAdvance background implementation](https://github.com/nba-emu/NanoBoyAdvance/blob/master/src/nba/src/hw/ppu/background.cc), reviewed for internal origins, line-end increments, and affine mosaic behavior.

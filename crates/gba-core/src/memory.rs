@@ -131,6 +131,16 @@ enum WriteAccess {
 struct CpuAccess {
     pc: u32,
     prefetch: Option<u32>,
+    /// Value a DMA left on the bus just before this instruction, if any.
+    dma_bus: Option<u32>,
+}
+
+impl CpuAccess {
+    /// What an undriven data read sees: the bus keeps a preceding DMA's data until
+    /// the CPU's next fetch, which comes after this instruction's data accesses.
+    fn open_bus(&self) -> Option<u32> {
+        self.dma_bus.or(self.prefetch)
+    }
 }
 
 /// A step-scoped shadow of committed state. Bus accesses mutate it in place; the
@@ -191,6 +201,8 @@ pub struct Memory {
     // A completed DMA unit breaks the CPU's next nominal code-access sequence.
     cpu_resume_nonsequential: bool,
     cpu_access: Option<CpuAccess>,
+    // Data of the last DMA unit, until a CPU step consumes it.
+    dma_bus: Option<u32>,
     bios_prefetch: Option<u32>,
     iwram_bus: IwramBus,
     scanline_capture: Option<video::capture::Capture>,
@@ -226,6 +238,7 @@ impl Memory {
             last_cpu_timing: None,
             cpu_resume_nonsequential: false,
             cpu_access: None,
+            dma_bus: None,
             bios_prefetch: None,
             iwram_bus: IwramBus::default(),
             scanline_capture: None,
@@ -771,6 +784,7 @@ impl Memory {
         self.complete_timer_step(timing.total());
         self.io.complete_dma_unit(channel, data_latch);
         self.cpu_resume_nonsequential = true;
+        self.dma_bus = Some(data_latch);
         Ok(Some((channel, timing)))
     }
 
@@ -821,13 +835,20 @@ impl Memory {
             InstructionSet::Thumb if fetch.address >> 24 == 3 => self.iwram_bus.snapshot(),
             InstructionSet::Thumb => fetch.bus_word,
         };
-        self.cpu_access = Some(CpuAccess { pc, prefetch });
+        // Thumb code in IWRAM keeps its own lane history, which DMA units already drive.
+        let local_lanes = instruction_set == InstructionSet::Thumb && fetch.address >> 24 == 3;
+        self.cpu_access = Some(CpuAccess {
+            pc,
+            prefetch,
+            dma_bus: self.dma_bus.filter(|_| !local_lanes),
+        });
     }
 
     pub(crate) fn end_cpu_access(&mut self, succeeded: bool) {
         if succeeded {
             // Timed and untimed CPU execution both consume a resume. Errors do not.
             self.cpu_resume_nonsequential = false;
+            self.dma_bus = None;
         }
         self.iwram_bus.finish(succeeded);
         if let Some(access) = self.cpu_access.take() {
@@ -1042,7 +1063,7 @@ impl Memory {
                 crate::io::IoRead::Register => {}
                 crate::io::IoRead::Zero => return Ok(0),
                 crate::io::IoRead::OpenBus => {
-                    if let Some(word) = self.cpu_access.and_then(|access| access.prefetch) {
+                    if let Some(word) = self.cpu_access.and_then(|access| access.open_bus()) {
                         return Ok((word >> ((address & 3) * 8)) as u8);
                     }
                 }
@@ -1090,7 +1111,7 @@ impl Memory {
         // some of them read as zero instead.
         let unused_io = address >> 24 == 0x04 && address & 0x00ff_fc00 != 0 && Io::unused(address);
         if unused_io || matches!(address, 0x0000_4000..=0x01ff_ffff | 0x1000_0000..=0xffff_ffff) {
-            if let Some(word) = self.cpu_access.and_then(|access| access.prefetch) {
+            if let Some(word) = self.cpu_access.and_then(|access| access.open_bus()) {
                 return Ok((word >> ((address & 3) * 8)) as u8);
             }
         }

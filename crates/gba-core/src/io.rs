@@ -19,7 +19,9 @@ pub(crate) use timer_step::TimerStep;
 use timer_step::STAGED_IRQ_MASK;
 
 use crate::{
-    display::{Display, DisplayPosition, CYCLES_PER_LINE, HBLANK_START, VISIBLE_LINES},
+    display::{
+        Display, DisplayPosition, CYCLES_PER_LINE, HBLANK_START, LINES_PER_FRAME, VISIBLE_LINES,
+    },
     dma::{Dma, DmaError, Transfer, DMA_BASE, DMA_END},
     input::{Buttons, Keypad},
 };
@@ -644,8 +646,21 @@ impl Io {
         }
         self.vertical_mosaic.advance(phase, cycles, self.mosaic);
         let (vblank, hblank) = self.display.dma_events(cycles);
-        self.dma.trigger(vblank, hblank);
         self.pending |= self.display.advance(cycles);
+        if vblank || hblank {
+            // A blanking transfer starts START_DELAY cycles after its edge. A batch
+            // that ends past the edge has already spent part of that wait.
+            let position = self.display.position();
+            let line_cycle = u32::from(position.line_cycle);
+            let since_hblank = (line_cycle + CYCLES_PER_LINE - HBLANK_START) % CYCLES_PER_LINE;
+            let since_vblank = (u32::from(position.scanline) + LINES_PER_FRAME - VISIBLE_LINES)
+                % LINES_PER_FRAME
+                * CYCLES_PER_LINE
+                + line_cycle;
+            let left = |since: u32| u32::from(crate::dma::START_DELAY).saturating_sub(since) as u8;
+            self.dma
+                .trigger(vblank, hblank, left(since_vblank), left(since_hblank));
+        }
         self.advance_timers_and_wake(cycles, advance_timers);
     }
 

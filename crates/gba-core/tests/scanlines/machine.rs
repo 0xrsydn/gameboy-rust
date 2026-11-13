@@ -19,6 +19,7 @@ fn hblank_dma_updates_next_row_while_cpu_stays_halted() {
         machine.memory().display_position().line_cycle,
         HBLANK_START as u16
     );
+    assert_eq!(machine.step().unwrap(), StepKind::HaltIdle); // The transfer's start delay.
     assert_eq!(machine.step().unwrap(), StepKind::Dma { channel: 0 });
     machine.run_until_vblank(1000).unwrap();
     assert_eq!(machine.cpu(), &cpu);
@@ -41,7 +42,7 @@ fn vblank_dma_cannot_change_the_frame_just_published() {
     m.write32(DMA_BASE, 0x0200_0000).unwrap();
     m.write32(DMA_BASE + 4, PAL).unwrap();
     m.write32(DMA_BASE + 8, 0x9000_0001).unwrap();
-    m.advance_cycles(VBLANK_START);
+    m.advance_cycles(VBLANK_START + 3); // The edge, then the transfer's start delay.
     let mut machine = Machine::new(Cpu::new(ROM_START), m);
     assert_eq!(machine.step().unwrap(), StepKind::Dma { channel: 0 });
     assert!(present(machine.memory())

@@ -80,7 +80,7 @@ Each sub-suite started from a fresh boot. These results came from a local probe 
 | 9 | DMA | 12 / 12 so far | 1244 / 1244 | — |
 | 10 | SIO read | 1 / 6 so far | 90 / 90 | — |
 | 11 | SIO timing | 4 / 4 | 4 / 4 | — |
-| 12 | Misc. edge | 4 / 12 | 6 / 12 | — |
+| 12 | Misc. edge | 4 / 12 | 8 / 12 | — |
 | 13 | Video | visual only | visual only | — |
 
 The current column is the latest local run. Since the baseline, the sub-suites that used to stop were fixed
@@ -122,7 +122,7 @@ per sub-suite. It reproduces the Current column exactly:
 | 9 | DMA | 1244 / 1244 |
 | 10 | SIO register R/W | 90 / 90 |
 | 11 | SIO timing | 4 / 4 |
-| 12 | Misc. edge | 6 / 12 |
+| 12 | Misc. edge | 8 / 12 |
 | 13 | Video | visual only |
 
 The recorded `: FAIL` lines list the remaining mismatches by test name. The numbers no longer depend on an
@@ -142,7 +142,14 @@ with the HALT wake cost and IntrWait's exit path fitted to them.
 
 ## Remaining failures
 
-Every sub-suite now runs to completion. Every counted sub-suite except Misc. edge passes every result. What remains is cycle-level timing:
+Every sub-suite now runs to completion. Every counted sub-suite except Misc. edge passes every result:
 
-- Misc. edge: open bus left by a DMA while the CPU runs from the prefetch buffer, and a 3-cycle difference between two
-  identical HALT wake paths (HBlank flag polling).
+- Misc. edge "DMA Prefetch" now passes: the instruction after a DMA unit reads the unit's data as
+  [open bus](hardware/dma.md#bus-value-after-a-transfer), and blanking transfers start 3 cycles after their edge.
+- Misc. edge "H-blank bit start" still fails "Hblank" and "Flip" 1 to 3. These four expectations cannot be met with
+  the pinned build. The test times C code, and this compiler places three `movs` instructions between the second
+  `Halt` and its timer read (`0x03000118`–`0x0300011c`) that the first read does not have, so two identical wake
+  paths read 1,235 cycles apart, not the expected 1,232. The polling loops behind "Flip" 3, 4, and 5 share one
+  8-cycle period and identical code between them, so those results must agree modulo 8; the expected values are 5, 3,
+  and 3 modulo 8, which no fixed instruction timing of this binary produces. The expectations were presumably recorded from a
+  different build. "Flip" 4 to 6 pass. Running the same ROM in mGBA would confirm this; that has not been done here.

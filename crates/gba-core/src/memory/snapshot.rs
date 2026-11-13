@@ -56,6 +56,7 @@ impl Snapshot for Memory {
                 last_cpu_timing: _, // Test trace only.
             cpu_resume_nonsequential,
             cpu_access: _, // Staged transaction; empty between steps.
+            dma_bus,
             bios_prefetch,
             iwram_bus,
             scanline_capture,
@@ -76,6 +77,7 @@ impl Snapshot for Memory {
         writer.u64(*cycles);
         gamepak_prefetch.save(writer);
         writer.bool(*cpu_resume_nonsequential);
+        writer.option(dma_bus.as_ref(), |value, writer| writer.u32(*value));
         writer.option(bios_prefetch.as_ref(), |value, writer| writer.u32(*value));
         iwram_bus.save(writer);
         writer.option(scanline_capture.as_ref(), |capture, writer| {
@@ -112,6 +114,7 @@ impl Snapshot for Memory {
                 last_cpu_timing: _,
             cpu_resume_nonsequential,
             cpu_access: _,
+            dma_bus,
             bios_prefetch,
             iwram_bus,
             scanline_capture,
@@ -130,6 +133,7 @@ impl Snapshot for Memory {
         *cycles = reader.u64()?;
         gamepak_prefetch.load(reader)?;
         *cpu_resume_nonsequential = reader.bool()?;
+        *dma_bus = reader.option(Reader::u32)?;
         *bios_prefetch = reader.option(Reader::u32)?;
         iwram_bus.load(reader)?;
         // Whether row capture runs is host configuration; only its contents are state.

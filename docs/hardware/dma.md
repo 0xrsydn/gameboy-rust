@@ -32,6 +32,11 @@ Supported triggers:
   at the pending start. Repeat does not keep it running. This raised the mGBA suite's timing results from 1792 to 1824
   without changing any memory or DMA result; mGBA's own cost attribution (charging a store's following fetch to the
   next instruction) lowered them, so cycles count with this emulator's attribution.
+- VBlank and HBlank transfers wait the same 3 cycles after their display edge (mGBA schedules HBlank transfers that way; VBlank is assumed alike): the transfer is
+  ready at the first step boundary at least 3 cycles after line 160 begins or after cycle 1,006 of a visible line.
+  A clock batch that ends past the edge has already spent part of the wait; HALT idles through the rest. The mGBA
+  suite's "DMA Prefetch" test passes with a wait of 1 to 4 cycles and fails with 0 or with 5 or more, so the value
+  inside that range is mGBA's, not a measurement.
 - VBlank: ready on entry to line 160.
 - HBlank: ready at HBlank entry on visible lines 0–159 only.
 
@@ -93,7 +98,17 @@ Successful units update local IWRAM lanes for their actual IWRAM reads and write
 No CPU continuation is required; DMA can establish lanes before the first CPU instruction.
 Accesses elsewhere leave those local lanes unchanged. Failed units preserve history.
 A resumed Thumb PC+4 fetch updates its addressed halfword; a cold pipeline fill drives all its new samples.
-No universal DMA-value override is used.
+Thumb code running from IWRAM never takes a DMA value in place of those lanes.
+
+## Bus value after a transfer
+
+The first instruction that runs after a DMA unit reads the unit's data, not its own prefetched opcode, from unused
+memory and from write-only I/O registers. A halfword unit leaves its halfword on both halves. The following
+instruction reads its own fetch again, and an IRQ entry in between discards the value. This is mGBA's rule (the
+instruction one opcode past the transfer reads `gba->bus`), and the mGBA suite's "DMA Prefetch" test checks it for
+Thumb code in ROM. Thumb code in IWRAM is excluded because its lane history above already records what the unit drove.
+On hardware the transfer takes the bus between that instruction's opcode fetch and its data access; this emulator
+runs the whole unit before the instruction, so only the value, not the sub-instruction order, is modeled.
 See [local IWRAM DMA history](cpu.md#dma-effects-on-thumb-iwram-continuations) for the scope.
 
 ## Retained channel data
@@ -122,4 +137,4 @@ This error policy is not a model of hardware data aborts.
 
 See [the latch evidence and scope](../research/dma-data-latches.md).
 General DMA open-bus reads and sub-instruction bus ownership remain unimplemented.
-In particular, the known channel value does not supply unused/write-only I/O reads or CPU open-bus snapshots.
+The known channel value supplies a CPU open-bus read only as described under [Bus value after a transfer](#bus-value-after-a-transfer).

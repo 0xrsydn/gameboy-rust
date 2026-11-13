@@ -114,5 +114,5 @@ Two constants were then fitted, each with a single sharp optimum:
 | Timers (of 936), HALT wake 3 | 903 | 920 | 936 | 918 | 911 | 897 | 880 |
 
 Sampling the line earlier inside multi-cycle instructions was also tried and scored lower in every variant.
-The same six Misc. edge results fail before and after the model ("Break", "Read", "Hblank", and "Flip" 1 to 3). The rules are documented in
+The same six Misc. edge results fail before and after the model ("Break", "Read", "Hblank", and "Flip" 1 to 3); "Break" and "Read" were fixed later, and the other four are [build-dependent](../public-mgba-suite.md#remaining-failures). The rules are documented in
 [timers and interrupts](../hardware/timers-irq.md#request-delay-stop-latency-and-reload-latch).

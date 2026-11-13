@@ -257,7 +257,7 @@ fn irq_preserves_dma_history_while_pc_discontinuity_performs_a_new_fill() {
 }
 
 #[test]
-fn arm_and_other_thumb_regions_keep_their_fetch_snapshot_not_dma_data() {
+fn arm_and_other_thumb_regions_read_dma_data_until_the_next_instruction() {
     for thumb in [false, true] {
         for pc in [0x0200_0100, 0x0300_0100, 0x0700_0100] {
             if thumb && pc >> 24 == 3 {
@@ -266,25 +266,43 @@ fn arm_and_other_thumb_regions_keep_their_fetch_snapshot_not_dma_data() {
             let mut bus = Memory::new(vec![]).unwrap();
             let mut cpu = Cpu::new(pc);
             cpu.registers[0] = UNUSED;
-            let expected = if thumb {
+            // Two loads of the same unused address: only the first follows the DMA.
+            let fetched = if thumb {
                 cpu.instruction_set = InstructionSet::Thumb;
                 bus.write16(pc, PROBE).unwrap();
+                bus.write16(pc + 2, 0x6807).unwrap(); // LDR r7,[r0].
                 bus.write32(pc + 4, 0x83e6_92ab).unwrap();
                 if pc >> 24 == 7 {
-                    0x83e6_92ab
+                    0x1c00_92ab // Aligned OAM word around PC+4 of the second load.
                 } else {
-                    0x92ab_92ab
+                    0x1c00_1c00
                 }
             } else {
                 bus.write32(pc, 0xe590_6000).unwrap(); // LDR r6,[r0].
+                bus.write32(pc + 4, 0xe590_7000).unwrap(); // LDR r7,[r0].
                 bus.write32(pc + 8, 0x83e6_92ab).unwrap();
-                0x83e6_92ab
+                bus.write32(pc + 12, 0x1c00_1c00).unwrap();
+                0x1c00_1c00
             };
+            if thumb {
+                bus.write16(pc + 6, 0x1c00).unwrap();
+                bus.write16(pc + 8, 0x1c00).unwrap();
+            }
             bus.write32(EWRAM, DATA).unwrap();
             let mut machine = Machine::new(cpu, bus);
             transfer(&mut machine, EWRAM, IWRAM, true);
             machine.step().unwrap();
-            assert_eq!(machine.cpu().registers()[6], expected);
+            assert_eq!(
+                machine.cpu().registers()[6],
+                DATA,
+                "thumb {thumb} pc {pc:#x}"
+            );
+            machine.step().unwrap();
+            assert_eq!(
+                machine.cpu().registers()[7],
+                fetched,
+                "thumb {thumb} pc {pc:#x}"
+            );
         }
     }
 }
