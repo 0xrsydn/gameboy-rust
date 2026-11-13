@@ -618,22 +618,56 @@ fn wait_services_restore_user_system_and_irq_masked_caller_status() {
 }
 
 #[test]
-fn missing_or_misaligned_irq_callback_is_an_explicit_trap() {
-    for pointer in [0, CALLBACK + 1, CALLBACK + 2] {
-        let (mut machine, _) = call(5, false, [0, 0, 0]);
+fn missing_irq_callback_is_an_explicit_trap() {
+    // A null pointer reaches the reset code in IRQ mode, which traps instead of rebooting.
+    let (mut machine, _) = call(5, false, [0, 0, 0]);
+    machine.memory_mut().write32(IRQ_HANDLER, 0).unwrap();
+    machine.memory_mut().write16(IE, 8).unwrap();
+    machine.memory_mut().write16(IME, 1).unwrap();
+    request_timer(machine.memory_mut());
+    let error = (0..100).find_map(|_| machine.step().err()).unwrap();
+    assert!(matches!(
+        error,
+        MachineError::Cpu(CpuError::UnsupportedInstruction {
+            instruction: UNSUPPORTED_TRAP,
+            ..
+        })
+    ));
+}
+
+#[test]
+fn irq_callback_pointer_ignores_low_bits_like_an_arm_pc_load() {
+    // The dispatcher loads PC directly; ARMv4 aligns it and does not enter Thumb.
+    for pointer in [CALLBACK + 1, CALLBACK + 2, CALLBACK + 3] {
+        let (mut machine, return_pc) = call(4, false, [0, 8, 0]);
+        callback(machine.memory_mut());
         machine.memory_mut().write32(IRQ_HANDLER, pointer).unwrap();
         machine.memory_mut().write16(IE, 8).unwrap();
-        machine.memory_mut().write16(IME, 1).unwrap();
         request_timer(machine.memory_mut());
-        let error = (0..100).find_map(|_| machine.step().err()).unwrap();
-        assert!(matches!(
-            error,
-            MachineError::Cpu(CpuError::UnsupportedInstruction {
-                instruction: UNSUPPORTED_TRAP,
-                ..
-            })
-        ));
+        finish(&mut machine, return_pc);
+        assert_eq!(machine.memory().read16(IF).unwrap(), 0, "{pointer:#x}");
     }
+}
+
+#[test]
+fn irq_dispatch_reaches_the_callback_in_four_instructions() {
+    // STMDB, MOV r0, MOV lr, LDR pc: no pointer validation on the IRQ path.
+    let (mut machine, _) = call(4, false, [0, 8, 0]);
+    callback(machine.memory_mut());
+    machine.memory_mut().write16(IE, 8).unwrap();
+    request_timer(machine.memory_mut());
+    machine.step().unwrap(); // SWI IntrWait
+    (0..10_000)
+        .find(|_| machine.step().unwrap() == StepKind::IrqEntry)
+        .expect("timer IRQ");
+    assert_eq!(machine.cpu().pc(), 0x18);
+    for _ in 0..5 {
+        // The vector branch, then the four dispatch instructions.
+        assert!(machine.cpu().pc() < BIOS_SIZE as u32);
+        machine.step().unwrap();
+    }
+    assert_eq!(machine.cpu().pc(), CALLBACK);
+    assert_eq!(machine.cpu().registers()[0], 0x0400_0000);
 }
 
 #[test]

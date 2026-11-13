@@ -37,6 +37,7 @@ Update this file when a feature lands or a limit is removed.
 - Four 16-bit timers, with reloads, prescalers, count-up cascading, and timer-generated IRQs.
 - A shared free-running timer divider survives enable and clock-source changes; HALT advances it and STOP freezes it.
 - Timers started by CPU or DMA code wait two cycles before counting, matching the mGBA test suite's hardware-verified timer calibration.
+- The replacement BIOS dispatches IRQs with a minimal `LDR pc` path; the CPU-side IRQ entry delay after a request is not modeled yet.
 - A 228-line display clock, VCOUNT/DISPSTAT, and VBlank/HBlank/VCount-match interrupts.
 - Four direct memory access (DMA) channels, with immediate, VBlank, and visible-line HBlank triggers.
 - Halfword/word DMA, address controls, repeat, channel priority, CPU pausing, and completion IRQs.

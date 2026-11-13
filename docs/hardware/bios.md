@@ -81,6 +81,12 @@ They do not reproduce the original firmware's internal stack layout or cycle cou
 
 **IRQ callback contract:** install a word-aligned ARM callback address at `0x03007ffc` after boot.
 The dispatcher saves r0–r3, r12, and lr on the IRQ stack, then calls it with r0 equal to `0x04000000`.
+It loads the callback straight into PC with `LDR pc,[r0,#-4]`, through the `0x03fffffc` mirror of `0x03007ffc`.
+That is the whole dispatch path: no pointer checks, so IRQ latency matches hardware within the dispatcher.
+As with any ARMv4 PC load, address bits 0–1 are ignored and the callback always runs as ARM code.
+A null pointer branches to the reset vector in IRQ mode; the reset code traps there instead of rebooting.
+Before this, extra pointer checks made the mGBA suite's Timer IRQ handler stop the timer at `0x56` instead of hardware's `0x51`;
+it now stops at `0x4e`, three cycles early, because the CPU-side IRQ entry delay is not modeled yet.
 The callback must preserve r4–r11, acknowledge handled IF bits, and return with `BX lr`.
 For interrupt waits, it must also OR the handled bits into the halfword at `0x03007ff8`.
 Acknowledging IF alone does not complete IntrWait. Nested IRQs and SWIs from callbacks are not supported.
@@ -551,7 +557,7 @@ Timers, display clocks, and DMA continue. Exact Nintendo BIOS timing and undocum
 
 ## Firmware diagnostics
 
-Unsupported SWIs, unsupported exception vectors, and null/misaligned IRQ callbacks reach an intentional undefined-instruction trap.
+Unsupported SWIs, unsupported exception vectors, and null IRQ callbacks reach an intentional undefined-instruction trap.
 The CPU reports `CpuError::UnsupportedInstruction` with `bios::UNSUPPORTED_TRAP`, rather than silently treating a service as a no-op.
 Invalid arithmetic/decompression arguments use the same CPU error type with the distinct `bios::INVALID_ARGUMENT_TRAP` instruction.
 Prior boot/service steps remain committed on failure.

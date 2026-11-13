@@ -75,6 +75,11 @@ pub fn image() -> Vec<u8> {
     }
 
     a.label("reset");
+    // A null IRQ callback pointer jumps here in IRQ mode; real resets enter in Supervisor.
+    a.emit(0xe10f_c000); // MRS r12,CPSR
+    a.emit(0xe20c_c01f); // AND r12,r12,#mode mask
+    a.emit(0xe35c_0012); // CMP r12,#IRQ
+    a.branch(0, "unsupported");
     a.emit(0xe321_f0d3); // MSR CPSR_c,#SVC|I|F
     a.literal(13, SVC_STACK);
     a.emit(0xe321_f0d2); // MSR CPSR_c,#IRQ|I|F
@@ -112,16 +117,12 @@ pub fn image() -> Vec<u8> {
     a.prefetch_tail(0xe129_f000); // Boot / SoftReset protected-read word.
 
     a.label("irq");
+    // Minimal dispatch, so IRQ latency matches hardware: no pointer checks on this path.
     a.emit(0xe92d_500f); // STMDB sp!,{r0-r3,r12,lr}
-    a.literal(1, IRQ_HANDLER);
-    a.emit(0xe591_1000); // LDR r1,[r1]
-    a.emit(0xe351_0000); // CMP r1,#0
-    a.branch(0, "unsupported");
-    a.emit(0xe311_0003); // TST r1,#3 (hardware callback is word-aligned ARM)
-    a.branch(1, "unsupported");
     a.emit(0xe3a0_0301); // MOV r0,#0x04000000 (callback convention)
-    a.emit(0xe1a0_e00f); // MOV lr,pc (return after BX)
-    a.emit(0xe12f_ff11); // BX r1
+    a.emit(0xe1a0_e00f); // MOV lr,pc (return to the LDMIA below)
+                         // [0x03fffffc] mirrors IRQ_HANDLER. ARMv4 LDR pc ignores bits 0-1 and stays in ARM.
+    a.emit(0xe510_f004); // LDR pc,[r0,#-4]
     a.emit(0xe8bd_500f); // LDMIA sp!,{r0-r3,r12,lr}
 
     // This instruction is also the callback branch's PC+8 readback word.
