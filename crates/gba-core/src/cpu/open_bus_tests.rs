@@ -282,18 +282,21 @@ fn cold_iwram_thumb_reads_and_unused_fetches_do_not_reuse_arm_context() {
 }
 
 #[test]
-fn unused_stores_and_swaps_remain_atomic_diagnostics() {
+fn unused_stores_and_swaps_are_ignored_and_swaps_read_open_bus() {
     for instruction in [0xe580_1000, 0xe5c0_1000, 0xe1c0_10b0, 0xe100_1092] {
-        let mut bus = memory(instruction); // STR, STRB, STRH, SWP
+        let mut bus = memory(instruction); // STR, STRB, STRH, SWP r1,r2,[r0]
         let mut cpu = Cpu::new(ROM_START);
         cpu.registers[0] = UNUSED;
         cpu.registers[1] = 0x1234;
-        let before = cpu.clone();
-        assert_eq!(
-            cpu.step(&mut bus),
-            Err(CpuError::Memory(MemoryError::Unmapped(UNUSED)))
-        );
-        assert_eq!(cpu, before);
+        cpu.registers[2] = 0x5678;
+        let mut expected = cpu.clone();
+        expected.registers[15] += 4;
+        if instruction == 0xe100_1092 {
+            expected.registers[1] = DATA; // The swap's read sees the PC+8 open-bus word.
+        }
+        cpu.step(&mut bus).unwrap();
+        assert_cpu_arch_eq!(cpu, expected, "{instruction:#010x}");
+        // Nothing was stored; host inspection stays strict.
         assert_eq!(bus.read32(UNUSED), Err(MemoryError::Unmapped(UNUSED)));
     }
 }

@@ -102,6 +102,11 @@ impl fmt::Display for MemoryError {
 
 impl Error for MemoryError {}
 
+/// Address ranges with no device: CPU reads see open bus and writes are ignored.
+fn unused_memory(address: u32) -> bool {
+    matches!(address, 0x0000_4000..=0x01ff_ffff | 0x1000_0000..=0xffff_ffff)
+}
+
 fn vram_index(address: u32) -> usize {
     let offset = (address & 0x1ffff) as usize;
     if offset >= 0x18000 {
@@ -1016,9 +1021,12 @@ impl Memory {
             }
             return Ok(());
         }
-        if address < BIOS_SIZE as u32 || matches!(address >> 24, 0x08..=0x0d) {
-            // Only validated CPU/DMA writes reach here. Pay the bus cost but
-            // never modify the mapped ROM image or drive BIOS read history.
+        if address < BIOS_SIZE as u32
+            || matches!(address >> 24, 0x08..=0x0d)
+            || unused_memory(address)
+        {
+            // Only validated CPU/DMA writes reach here. Pay the bus cost but never
+            // modify the mapped ROM image, drive BIOS read history, or store unused data.
             return Ok(());
         }
         if address >> 24 == 0x03 {
@@ -1181,6 +1189,8 @@ impl Memory {
                 }
                 Ok(0)
             }
+            // Unused memory ignores CPU and DMA writes; host setup stays strict.
+            _ if access == WriteAccess::Emulated && unused_memory(address) => Ok(0),
             _ => Err(MemoryError::Unmapped(address)),
         }
     }

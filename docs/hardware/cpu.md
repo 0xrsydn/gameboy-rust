@@ -150,7 +150,8 @@ Limits remain explicit:
   DMA-to-CPU bus handoff, and disabled-RAM reads are not modeled here. GBATEK notes some unused slots read as zero.
   [DMA channel data](dma.md#retained-channel-data) is separate and never overrides a CPU snapshot.
 - Missing BIOS, truncated ROM, unsupported I/O, and save-memory accesses retain their existing diagnostics.
-- Unused-memory writes remain diagnostics rather than ignored hardware writes. Swaps to those ranges still fail.
+- CPU and DMA writes to unused memory (`0x00004000..0x01ffffff`, `0x10000000..0xffffffff`) are ignored, as on hardware,
+  and pay the nominal one-cycle access. A swap there reads the open-bus value and ignores its write. Host writes stay strict.
 - Writes to the mapped BIOS are a separate [ignored-write subset](bios.md#writes-to-the-mapped-bios), including swap write phases.
 - ARM/Thumb instruction buffering is persistent, but these data snapshots remain a separate bounded model.
   Thumb IWRAM bus-history samples do not share storage with retained instructions.

@@ -1,7 +1,7 @@
 //! Original BIOS-bus write probes. Images stay immutable; bus transfers still complete.
 use super::*;
 use crate::{
-    dma::{DmaError, DMA_BASE},
+    dma::DMA_BASE,
     io::{IF, TIMER_BASE},
     machine::{Machine, MachineError, StepKind},
     memory::{BIOS_SIZE, ROM_START},
@@ -81,24 +81,19 @@ fn bios_stores_ignore_data_in_both_states_all_modes_widths_and_address_lanes() {
 }
 
 #[test]
-fn ignored_block_stores_write_back_but_a_later_unmapped_word_rolls_back_the_instruction() {
+fn ignored_block_stores_write_back_across_the_bios_and_unused_boundary() {
     for thumb in [false, true] {
+        // The second word lands in the BIOS (0x3ffc) or in unused memory (0x4000).
         for base in [0x3ff8, 0x3ffc] {
             let (mut cpu, mut memory, image) =
                 setup(ROM_START, if thumb { 0xc006 } else { 0xe8a0_0006 }, thumb);
             cpu.registers[0] = base;
             cpu.registers[2] = !DATA;
-            let before = cpu.clone();
             let result = cpu.step_timed(&mut memory);
-            if base == 0x3ff8 {
-                assert_eq!(result.unwrap().data_cycles, 2);
-                assert_eq!(cpu.registers[0], base + 8);
-                assert_eq!(cpu.pc(), ROM_START + if thumb { 2 } else { 4 });
-            } else {
-                assert_eq!(result, Err(CpuError::Memory(MemoryError::Unmapped(0x4000))));
-                assert_eq!(cpu, before);
-                assert_eq!(cpu.step_timed(&mut memory), result);
-            }
+            assert_eq!(result.unwrap().data_cycles, 2);
+            assert_eq!(cpu.registers[0], base + 8);
+            assert_eq!(cpu.pc(), ROM_START + if thumb { 2 } else { 4 });
+            assert_eq!(memory.read32(0x4000), Err(MemoryError::Unmapped(0x4000)));
             unchanged(&memory, &image);
         }
     }
@@ -179,12 +174,8 @@ fn ignored_cpu_stores_still_advance_timers_and_preserve_strict_host_diagnostics(
 
 #[test]
 fn unmapped_bios_and_cartridge_destinations_remain_retryable_diagnostics() {
-    for (address, mapped_bios) in [
-        (0, false),
-        (0x4000, true),
-        (0x0100_0000, true),
-        (0x0d00_0000, true),
-    ] {
+    // Unused memory (0x4000 and above) ignores stores like hardware; see open_bus_tests.
+    for (address, mapped_bios) in [(0, false), (0x0d00_0000, true)] {
         let (mut cpu, mut memory, _) = setup(ROM_START, 0xe480_1004, false);
         if !mapped_bios {
             memory = Memory::new(
@@ -253,24 +244,20 @@ fn dma_ignored_writes_pay_cycles_complete_and_raise_the_normal_completion_irq() 
 }
 
 #[test]
-fn dma_bios_boundary_keeps_completed_units_and_retries_the_unmapped_destination() {
+fn dma_across_the_bios_and_unused_boundary_completes_without_writing() {
     let (cpu, mut memory, image) = setup(ROM_START, 0xeaff_fffe, false);
     memory.write32(RAM, DATA).unwrap();
     memory.write32(DMA_BASE, RAM).unwrap();
     memory.write32(DMA_BASE + 4, 0x3ffc).unwrap();
     memory.write32(DMA_BASE + 8, 0xc400_0002).unwrap();
     let mut machine = Machine::new(cpu, memory);
-    machine.step().unwrap();
-    let cycles = machine.cycles();
-    let timing = machine.last_timing();
-    let error = MachineError::Dma(DmaError::Memory {
-        channel: 0,
-        error: MemoryError::Unmapped(0x4000),
-    });
-    assert_eq!(machine.step(), Err(error.clone()));
-    assert_eq!(machine.step(), Err(error));
-    assert_eq!(machine.cycles(), cycles);
-    assert_eq!(machine.last_timing(), timing);
-    assert_eq!(machine.memory().read16(IF).unwrap(), 0);
+    assert_eq!(machine.step().unwrap(), StepKind::Dma { channel: 0 }); // BIOS word
+    assert_eq!(machine.step().unwrap(), StepKind::Dma { channel: 0 }); // Unused word
+    assert!(machine.last_timing().total() > 0);
+    assert_eq!(machine.memory().read16(IF).unwrap(), 0x100); // Completion IRQ request
+    assert_eq!(
+        machine.memory().read32(0x4000),
+        Err(MemoryError::Unmapped(0x4000))
+    );
     unchanged(machine.memory(), &image);
 }

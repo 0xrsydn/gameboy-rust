@@ -359,16 +359,13 @@ fn unsupported_data_regions_and_unused_stores_do_not_gain_fallbacks() {
         assert_eq!(cpu, before);
     }
     for instruction in [0x6001, 0x7001, 0x8001, 0xc006] {
-        // STR, STRB, STRH, STMIA
+        // STR, STRB, STRH, STMIA: unused memory ignores stores like hardware.
         let mut bus = program(ROM_START, instruction);
         let mut cpu = cpu(ROM_START);
         cpu.registers[1] = DATA;
-        let before = cpu.clone();
-        assert_eq!(
-            cpu.step(&mut bus),
-            Err(CpuError::Memory(MemoryError::Unmapped(UNUSED)))
-        );
-        assert_eq!(cpu, before);
+        cpu.step(&mut bus).unwrap();
+        assert_eq!(cpu.pc(), ROM_START + 2);
+        assert_eq!(bus.read32(UNUSED), Err(MemoryError::Unmapped(UNUSED)));
     }
 }
 
