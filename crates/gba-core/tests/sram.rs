@@ -70,7 +70,7 @@ fn byte_writes_commit_immediately_and_mirror_every_32_kib() {
 }
 
 #[test]
-fn halfword_and_word_accesses_remain_diagnostics() {
+fn host_halfword_and_word_accesses_remain_diagnostics() {
     let mut bus = memory(&[0xeaff_fffe]);
     for result in [
         bus.read16(SAVE_START).map(|_| ()),
@@ -119,14 +119,98 @@ fn byte_swap_reads_the_old_value_then_stores_atomically() {
     assert_eq!(machine.memory().read8(SAVE_START).unwrap(), 0x00);
 }
 
+/// LDR r0,=address; LDR r1,=value; then `instruction`; then loop.
+fn program_with(address: u32, value: u32, instruction: u32, image: &[u8]) -> Machine {
+    let mut bus = memory(&[
+        0xe59f_0008,
+        0xe59f_1008,
+        instruction,
+        0xeaff_fffe,
+        address,
+        value,
+    ]);
+    let mut full = vec![0xff; SIZE];
+    full[..image.len()].copy_from_slice(image);
+    bus.load_save_image(&full).unwrap();
+    let mut cpu = Cpu::new(ROM_START);
+    cpu.step(&mut bus).unwrap();
+    cpu.step(&mut bus).unwrap();
+    Machine::new(cpu, bus)
+}
+
+// Aligned results match hardware expectations published with the mGBA test suite
+// (memory suite, "SRAM store"/"SRAM load"). Unaligned stores were measured only as
+// leaving byte 0 untouched; the stored lane follows the ARM7 data-bus layout.
 #[test]
-fn failed_halfword_store_changes_nothing() {
-    let mut machine = program(SAVE_START, 0xe1c0_00b0); // STRH r0,[r0]
-    let before = machine.cpu().clone();
-    assert!(machine.step().is_err());
-    assert_eq!(machine.cpu(), &before);
-    assert!(!machine.memory().save_modified());
-    assert!(!machine.memory().save_write_pending());
+fn cpu_wide_stores_write_the_address_byte_lane() {
+    const VALUE: u32 = 0xa5b6_c7d8;
+    for (instruction, offset, byte) in [
+        (0xe580_1000, 0, 0xd8), // STR r1,[r0]
+        (0xe580_1000, 1, 0xc7),
+        (0xe580_1000, 2, 0xb6),
+        (0xe580_1000, 3, 0xa5),
+        (0xe1c0_10b0, 0, 0xd8), // STRH r1,[r0]
+        (0xe1c0_10b0, 1, 0xc7),
+        (0xe1c0_10b0, 2, 0xd8),
+        (0xe1c0_10b0, 3, 0xc7),
+    ] {
+        let mut machine = program_with(SAVE_START + offset, VALUE, instruction, &[]);
+        machine.step().unwrap();
+        let mut expected = [0xff; 4];
+        expected[offset as usize] = byte;
+        let image = machine.memory().save_image().unwrap();
+        assert_eq!(&image[..4], &expected, "{instruction:#010x} +{offset}");
+        assert!(machine.memory().save_modified());
+    }
+}
+
+#[test]
+fn cpu_wide_loads_repeat_the_addressed_byte_then_rotate() {
+    let image = *b"Game";
+    for (instruction, offset, value) in [
+        (0xe590_2000, 0, 0x4747_4747), // LDR r2,[r0]
+        (0xe590_2000, 1, 0x6161_6161),
+        (0xe590_2000, 3, 0x6565_6565),
+        (0xe1d0_20b0, 0, 0x4747), // LDRH r2,[r0]
+        (0xe1d0_20b0, 1, 0x6100_0061),
+        (0xe1d0_20f0, 0, 0x4747), // LDRSH r2,[r0]
+        (0xe1d0_20f0, 1, 0x61),   // Odd LDRSH loads a signed byte.
+    ] {
+        let mut machine = program_with(SAVE_START + offset, 0, instruction, &image);
+        machine.step().unwrap();
+        assert_eq!(
+            machine.cpu().registers()[2],
+            value,
+            "{instruction:#010x} +{offset}"
+        );
+    }
+    let mut machine = program_with(SAVE_START, 0, 0xe1d0_20f0, &[0x80]);
+    machine.step().unwrap();
+    assert_eq!(machine.cpu().registers()[2], 0xffff_8080);
+}
+
+#[test]
+fn thumb_wide_accesses_use_the_same_byte_lanes() {
+    // ADD r2,pc,#1; BX r2 enters Thumb at ROM+8, then STRH r1,[r0,#0]; LDR r3,[r0,#0].
+    let mut bus = memory(&[
+        0xe59f_0010,
+        0xe59f_1010,
+        0xe28f_2001,
+        0xe12f_ff12,
+        0x6803_8001,
+        0xe7fe_e7fe,
+        SAVE_START + 1,
+        0xa5b6_c7d8,
+    ]);
+    let mut cpu = Cpu::new(ROM_START);
+    for _ in 0..4 {
+        cpu.step(&mut bus).unwrap();
+    }
+    let mut machine = Machine::new(cpu, bus);
+    machine.step().unwrap();
+    assert_eq!(&machine.memory().save_image().unwrap()[..2], &[0xff, 0xc7]);
+    machine.step().unwrap();
+    assert_eq!(machine.cpu().registers()[3], 0xc7c7_c7c7);
 }
 
 #[test]

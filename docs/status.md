@@ -83,6 +83,7 @@ Update this file when a feature lands or a limit is removed.
 - Explicit Macronix Flash64/Flash128 identification, bank selection, delayed byte programming, sector/chip erase, and nominal DQ7 polling.
 - Transactional Flash completion and modification tracking, with exact-size core image loading and inspection.
 - Explicit 32 KiB byte-wide SRAM (`--save-type sram`), mirrored through the save window and readable from ROM code.
+  CPU halfword/word loads and stores use the 8-bit bus byte lanes; block transfers and DMA remain diagnostics.
 - Explicit 512-byte and 8 KiB serial EEPROM (`--save-type eeprom512|eeprom8k`) over DMA3 bitstreams, with nominal write busy time.
 - Optional desktop `--save-file` loading and clean-exit persistence, with exclusive locks, atomic installation, and unique previous-image backups.
 - Original ROM save/restart/load checks across processes, including native-window persistence on Darwin arm64.

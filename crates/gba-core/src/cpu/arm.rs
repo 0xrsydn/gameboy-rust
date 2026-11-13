@@ -172,14 +172,14 @@ impl Cpu {
             if byte {
                 u32::from(memory.read8(address)?)
             } else {
-                memory.read32(address & !3)?.rotate_right((address & 3) * 8)
+                memory.load32(address)?
             }
         } else {
             let value = self.operand_register(destination, 12);
             if byte {
                 memory.write8(address, value as u8)?;
             } else {
-                memory.write32(address & !3, value)?;
+                memory.store32(address, value)?;
             }
             value
         };
@@ -230,13 +230,13 @@ impl Cpu {
         let address = if pre { adjusted } else { base };
         let value = if load {
             match kind {
-                1 => u32::from(memory.read16(address & !1)?).rotate_right((address & 1) * 8),
+                1 => memory.load16(address)?,
                 2 => memory.read8(address)? as i8 as i32 as u32,
                 _ if address & 1 != 0 => memory.read8(address)? as i8 as i32 as u32,
-                _ => memory.read16(address)? as i16 as i32 as u32,
+                _ => memory.load16(address)? as u16 as i16 as i32 as u32,
             }
         } else {
-            memory.write16(address & !1, self.registers[destination] as u16)?;
+            memory.store16(address, self.registers[destination] as u16)?;
             0
         };
         if write_back {

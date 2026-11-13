@@ -288,25 +288,21 @@ impl Cpu {
         address: u32,
     ) -> Result<(), CpuError> {
         let value = match kind {
-            Transfer::StoreWord => {
-                return Ok(memory.write32(address & !3, self.registers[register])?)
-            }
+            Transfer::StoreWord => return Ok(memory.store32(address, self.registers[register])?),
             Transfer::StoreHalf => {
-                return Ok(memory.write16(address & !1, self.registers[register] as u16)?)
+                return Ok(memory.store16(address, self.registers[register] as u16)?)
             }
             Transfer::StoreByte => {
                 return Ok(memory.write8(address, self.registers[register] as u8)?)
             }
-            Transfer::LoadWord => memory.read32(address & !3)?.rotate_right((address & 3) * 8),
-            Transfer::LoadHalf => {
-                u32::from(memory.read16(address & !1)?).rotate_right((address & 1) * 8)
-            }
+            Transfer::LoadWord => memory.load32(address)?,
+            Transfer::LoadHalf => memory.load16(address)?,
             Transfer::LoadByte => u32::from(memory.read8(address)?),
             Transfer::LoadSignedByte => memory.read8(address)? as i8 as i32 as u32,
             Transfer::LoadSignedHalf if address & 1 != 0 => {
                 memory.read8(address)? as i8 as i32 as u32
             }
-            Transfer::LoadSignedHalf => memory.read16(address)? as i16 as i32 as u32,
+            Transfer::LoadSignedHalf => memory.load16(address)? as u16 as i16 as i32 as u32,
         };
         self.registers[register] = value;
         Ok(())

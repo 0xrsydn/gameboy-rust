@@ -1326,6 +1326,53 @@ impl Memory {
         self.iwram_bus.access(address, AccessWidth::Word, value);
         Ok(value)
     }
+
+    /// The 8-bit SRAM bus receives the unaligned address of CPU halfword/word accesses.
+    fn sram_lane(&self, address: u32) -> bool {
+        address >> 24 == 0x0e && self.cartridge_state().sram_mapped(address)
+    }
+
+    /// A CPU `LDR` at its own (possibly unaligned) address, with ARM7TDMI rotation.
+    /// SRAM returns the addressed byte on every lane in one 8-bit bus access.
+    pub fn load32(&self, address: u32) -> Result<u32, MemoryError> {
+        let value = if self.sram_lane(address) {
+            u32::from(self.read8(address)?) * 0x0101_0101
+        } else {
+            self.read32(address & !3)?
+        };
+        Ok(value.rotate_right((address & 3) * 8))
+    }
+
+    /// A CPU `LDRH` at its own address, rotated by the odd-address byte.
+    /// SRAM returns the addressed byte on both lanes in one 8-bit bus access.
+    pub fn load16(&self, address: u32) -> Result<u32, MemoryError> {
+        let value = if self.sram_lane(address) {
+            u32::from(self.read8(address)?) * 0x0101
+        } else {
+            u32::from(self.read16(address & !1)?)
+        };
+        Ok(value.rotate_right((address & 1) * 8))
+    }
+
+    /// A CPU `STR` at its own address. SRAM stores only the data-bus byte lane that
+    /// matches the address; other regions take the aligned word.
+    pub fn store32(&mut self, address: u32, value: u32) -> Result<(), MemoryError> {
+        if self.sram_lane(address) {
+            self.write8(address, (value >> ((address & 3) * 8)) as u8)
+        } else {
+            self.write32(address & !3, value)
+        }
+    }
+
+    /// A CPU `STRH` at its own address. The halfword drives both bus halves, so SRAM
+    /// stores its low byte at even addresses and its high byte at odd ones.
+    pub fn store16(&mut self, address: u32, value: u16) -> Result<(), MemoryError> {
+        if self.sram_lane(address) {
+            self.write8(address, (value >> ((address & 1) * 8)) as u8)
+        } else {
+            self.write16(address & !1, value)
+        }
+    }
 }
 
 #[cfg(test)]

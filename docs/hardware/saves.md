@@ -37,7 +37,14 @@ A browser frontend can use the same API with browser storage instead of filesyst
 The 32 KiB array repeats twice through the `0x0e000000..0x0e00ffff` save window; higher addresses stay unmapped.
 CPU byte stores take effect when the instruction's step completes. Reads later in the same step already see the new byte.
 Byte stores and loads may execute from ROM; the Flash work-RAM read restriction does not apply.
-Halfword and word reads and writes, and DMA transfers, remain diagnostics until 8-bit bus behavior for those widths is verified.
+SRAM sits on an 8-bit bus that receives the instruction's own, possibly unaligned, address.
+CPU halfword and word loads (`LDR`, `LDRH`, `LDRSH`) read that one byte and repeat it on every lane, then apply normal ARM7TDMI rotation.
+For example, `LDRH` at offset 1 of `"Ga"` yields `0x61000061`.
+CPU halfword and word stores (`STR`, `STRH`) write one byte: the data-bus lane that matches the address.
+A word store writes `value >> (8 * (address & 3))`; a halfword store drives both bus halves, so it writes its low byte at even addresses and its high byte at odd ones.
+Each access costs one 8-bit bus access.
+Aligned results match hardware expectations published with the [mGBA test suite](https://github.com/mgba-emu/suite); unaligned stores were measured only as leaving byte 0 untouched.
+Block transfers (`LDM`/`STM`), swaps wider than a byte, DMA transfers, and host halfword/word accesses remain diagnostics.
 SRAM shares the save window's WAITCNT wait states, save-image API, host persistence, and save states with Flash.
 A save state records the selected device. Restoring it into a machine with another save device is rejected as a cartridge setup mismatch.
 

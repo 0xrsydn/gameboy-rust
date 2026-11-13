@@ -78,6 +78,11 @@ impl Cartridge {
         (self.flash.is_some() || self.sram.is_some()) && (SAVE_START..=SAVE_END).contains(&address)
     }
 
+    /// SRAM sits on an 8-bit bus that sees the unaligned address of wider accesses.
+    pub(crate) fn sram_mapped(&self, address: u32) -> bool {
+        self.sram.is_some() && self.save_mapped(address)
+    }
+
     /// Flash reads are restricted to work-RAM code; SRAM has no such limit.
     pub(crate) fn flash_mapped(&self, address: u32) -> bool {
         self.flash.is_some() && self.save_mapped(address)
