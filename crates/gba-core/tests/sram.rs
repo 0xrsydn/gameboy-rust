@@ -204,6 +204,15 @@ fn block_transfers_and_swaps_use_the_same_byte_lanes() {
     machine.step().unwrap();
     assert_eq!(machine.cpu().registers()[2], 0x4747_4747);
     assert_eq!(machine.cpu().registers()[3], 0x2020_2020);
+    // A misaligned base keeps its low bits on SRAM's bus: LDMIA r0,{r2,r3} from +1.
+    let mut machine = program_with(SAVE_START + 1, 0, 0xe890_000c, &image);
+    machine.step().unwrap();
+    assert_eq!(machine.cpu().registers()[2], 0x6161_6161);
+    assert_eq!(machine.cpu().registers()[3], 0x4242_4242);
+    // STMIA r0,{r1} at +1 stores the lane for that address.
+    let mut machine = program_with(SAVE_START + 1, 0xa5b6_c7d8, 0xe880_0002, &[]);
+    machine.step().unwrap();
+    assert_eq!(&machine.memory().save_image().unwrap()[..2], &[0xff, 0xc7]);
     // STMIA r0,{r1}: one byte, the lane for the aligned address.
     let mut machine = program_with(SAVE_START + 4, 0xa5b6_c7d8, 0xe880_0002, &[]);
     machine.step().unwrap();

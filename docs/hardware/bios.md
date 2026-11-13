@@ -102,7 +102,9 @@ These routines follow the documented wait contract, not every known firmware imp
 CpuSet uses the low 21 bits of r2 as its halfword/word count, bit 24 for fill, and bit 26 for word width.
 CpuFastSet uses the same count/fill fields but always transfers words using eight-register block loads and stores.
 Fill reads its source value once. Zero count performs no source or destination accesses.
-Addresses align down to the transfer width; callers should still supply aligned addresses.
+Pointers are not aligned. Halfword copies use `LDRH`/`STRH` and word copies use one-register `LDM`/`STM`, so a misaligned
+halfword source reads rotated, and SRAM's 8-bit bus sees the low address bits; see [saves](saves.md#sram).
+This matches the hardware results of the [mGBA test suite](../public-mgba-suite.md)'s misaligned `swi B`/`swi C` cases.
 Sources below `0x02000000`, or ranges with a wrapping end address, return without copying.
 Other invalid accesses use normal memory diagnostics. Earlier successful writes remain committed if a later instruction fails.
 These copy services keep CPU IRQ delivery masked until return; device clocks and DMA continue throughout.

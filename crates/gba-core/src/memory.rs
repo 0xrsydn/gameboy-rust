@@ -1279,6 +1279,7 @@ impl Memory {
                     self.record_access(address, AccessWidth::Byte);
                     continue;
                 }
+                let address = address & !3;
                 self.write_index::<4>(address, self.write_access())?;
                 let bytes = value.to_le_bytes();
                 Self::validate_io_values(&mut audio, address, &bytes)?;
@@ -1388,6 +1389,16 @@ impl Memory {
             self.read32(address & !3)?
         };
         Ok(value.rotate_right((address & 3) * 8))
+    }
+
+    /// One word of a CPU `LDM` at its own address. Unlike `LDR`, it never rotates; other
+    /// regions take the aligned word, while SRAM's 8-bit bus reads the addressed byte.
+    pub fn load_multiple(&self, address: u32) -> Result<u32, MemoryError> {
+        if self.sram_lane(address) {
+            Ok(u32::from(self.read8(address)?) * 0x0101_0101)
+        } else {
+            self.read32(address & !3)
+        }
     }
 
     /// A CPU `LDRH` at its own address, rotated by the odd-address byte.

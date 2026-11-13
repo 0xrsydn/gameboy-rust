@@ -415,7 +415,9 @@ fn copying_to_video_ram_uses_halfword_and_word_bus_writes() {
 }
 
 #[test]
-fn copy_addresses_align_down_and_overlaps_use_instruction_order() {
+fn copy_pointers_follow_cpu_misalignment_and_overlaps_use_instruction_order() {
+    // Word copies use block transfers, which align. Halfword copies use LDRH, which
+    // rotates an odd halfword, and STRH, which aligns down.
     for word in [false, true] {
         let (mut machine, return_pc) = call(
             0x0b,
@@ -426,7 +428,7 @@ fn copy_addresses_align_down_and_overlaps_use_instruction_order() {
         finish(&mut machine, return_pc);
         assert_eq!(
             machine.memory().read32(DEST).unwrap(),
-            if word { 0x1234_abcd } else { 0x1234_0000 }
+            if word { 0x1234_abcd } else { 0x0012_0000 }
         );
     }
     let (mut machine, return_pc) = call(0x0b, false, [SOURCE, SOURCE + 2, 4]);

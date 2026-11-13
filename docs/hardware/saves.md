@@ -47,11 +47,12 @@ CPU halfword and word stores (`STR`, `STRH`) write one byte: the data-bus lane t
 A word store writes `value >> (8 * (address & 3))`; a halfword store drives both bus halves, so it writes its low byte at even addresses and its high byte at odd ones.
 Each access costs one 8-bit bus access.
 Aligned results match hardware expectations published with the [mGBA test suite](https://github.com/mgba-emu/suite); unaligned stores were measured only as leaving byte 0 untouched.
-`LDM`/`STM` and word swaps use the same lanes for each word. DMA does too: a DMA1–3 source reads the repeated byte, and a
+`LDM`/`STM` and word swaps use the same lanes for each word. A misaligned `LDM`/`STM` base keeps its low bits on
+SRAM's bus, so each word uses base + 4n with those bits; other regions align it down. DMA uses the same lanes too: a DMA1–3 source reads the repeated byte, and a
 DMA3 destination stores the address's lane, as the suite's "SRAM load/store" DMA results show. DMA0–2 destinations mask
 away from SRAM. Host halfword/word accesses remain diagnostics.
-The CpuSet/CpuFastSet services of the replacement BIOS align their addresses, so misaligned calls do not reproduce the
-real firmware's lane results; the suite's memory test reports these as its remaining failures.
+The replacement BIOS's CpuSet/CpuFastSet pass misaligned pointers straight to these instructions, so misaligned calls
+give the suite's hardware results.
 SRAM shares the save window's WAITCNT wait states, save-image API, host persistence, and save states with Flash.
 A save state records the selected device. Restoring it into a machine with another save device is rejected as a cartridge setup mismatch.
 

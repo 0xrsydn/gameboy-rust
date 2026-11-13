@@ -240,7 +240,7 @@ pub fn image() -> Vec<u8> {
     a.emit(0xe92d_0ff0); // STMDB sp!,{r4-r11} (60 bytes total SVC stack use)
     a.emit(0xe312_0401); // TST r2,#0x01000000
     a.branch(0, "fast_copy_loop");
-    a.emit(0xe590_4000); // LDR r4,[r0] (read fill value once)
+    a.emit(0xe890_0010); // LDMIA r0,{r4} (read fill value once)
     for register in 5..=11 {
         a.emit(0xe1a0_0004 | register << 12);
     } // MOV rN,r4
@@ -310,9 +310,9 @@ fn emit_count(a: &mut ArmImage) {
 fn emit_copy_checks(a: &mut ArmImage, word: bool) {
     a.emit(0xe353_0000); // CMP r3,#0
     a.branch(0, "return");
-    a.emit(if word { 0xe3c0_0003 } else { 0xe3c0_0001 }); // BIC r0,r0,#alignment mask
-    a.emit(if word { 0xe3c1_1003 } else { 0xe3c1_1001 }); // BIC r1,r1,#alignment mask
-                                                          // Reject protected source ranges and wrapping end addresses before writing.
+    // Pointers are not aligned here. Block transfers and LDRH/STRH apply the CPU's own
+    // misalignment rules, which SRAM's 8-bit bus exposes.
+    // Reject protected source ranges and wrapping end addresses before writing.
     a.emit(0xe350_0402); // CMP r0,#0x02000000
     a.branch(3, "return"); // BLO
     a.emit(if word { 0xe090_c103 } else { 0xe090_c083 }); // ADDS r12,r0,r3,LSL #2/#1
@@ -328,15 +328,15 @@ fn emit_copy(a: &mut ArmImage, word: bool, labels: [&'static str; 4]) {
     a.emit(0xe312_0401); // TST r2,#0x01000000 (fixed source)
     a.branch(1, fill);
     a.label(copy_loop);
-    a.emit(if word { 0xe490_2004 } else { 0xe0d0_20b2 }); // LDR/LDRH r2,[r0],#width
-    a.emit(if word { 0xe481_2004 } else { 0xe0c1_20b2 }); // STR/STRH r2,[r1],#width
+    a.emit(if word { 0xe8b0_0004 } else { 0xe0d0_20b2 }); // LDMIA r0!,{r2} / LDRH r2,[r0],#2
+    a.emit(if word { 0xe8a1_0004 } else { 0xe0c1_20b2 }); // STMIA r1!,{r2} / STRH r2,[r1],#2
     a.emit(0xe253_3001); // SUBS r3,r3,#1
     a.branch(1, copy_loop);
     a.branch(14, "return");
     a.label(fill);
-    a.emit(if word { 0xe590_2000 } else { 0xe1d0_20b0 }); // Read fixed source once.
+    a.emit(if word { 0xe890_0004 } else { 0xe1d0_20b0 }); // Read fixed source once.
     a.label(fill_loop);
-    a.emit(if word { 0xe481_2004 } else { 0xe0c1_20b2 });
+    a.emit(if word { 0xe8a1_0004 } else { 0xe0c1_20b2 });
     a.emit(0xe253_3001);
     a.branch(1, fill_loop);
     a.branch(14, "return");
