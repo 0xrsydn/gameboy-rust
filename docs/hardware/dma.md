@@ -32,13 +32,13 @@ Supported triggers:
   at the pending start. Repeat does not keep it running. This raised the mGBA suite's timing results from 1792 to 1824
   without changing any memory or DMA result; mGBA's own cost attribution (charging a store's following fetch to the
   next instruction) lowered them, so cycles count with this emulator's attribution.
-- VBlank and HBlank transfers wait the same 3 cycles after their display edge (mGBA schedules HBlank transfers that way; VBlank is assumed alike): the transfer is
+- VBlank and HBlank transfers wait the same 3 cycles after their display edge (as mGBA schedules both): the transfer is
   ready at the first step boundary at least 3 cycles after line 160 begins or after cycle 1,006 of a visible line.
   A clock batch that ends past the edge has already spent part of the wait; HALT idles through the rest. The mGBA
   suite's "DMA Prefetch" test passes with a wait of 1 to 4 cycles and fails with 0 or with 5 or more, so the value
   inside that range is mGBA's, not a measurement.
-- VBlank: ready on entry to line 160.
-- HBlank: ready at HBlank entry on visible lines 0–159 only.
+- VBlank: requested on entry to line 160.
+- HBlank: requested at HBlank entry on visible lines 0–159 only.
 
 Blanking triggers do not depend on DISPSTAT IRQ enables or forced blank.
 Enabling during an existing blank period waits for the next edge.

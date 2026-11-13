@@ -446,8 +446,10 @@ impl Memory {
     /// Finish the instruction/IRQ entry that started while running. A STOP store
     /// still pays its full nominal cost before later steps freeze the system.
     pub(crate) fn complete_cpu_step(&mut self, cycles: u32) {
-        // IRQ entry consumes the resume too, without executing an instruction.
+        // IRQ entry consumes the resume too, without executing an instruction, and its
+        // vector fetch replaces whatever a transfer left on the bus.
         self.cpu_resume_nonsequential = false;
+        self.dma_bus = None;
         self.complete_timer_step(cycles);
     }
 
@@ -959,6 +961,7 @@ impl Memory {
         if !self.stopped() {
             self.gamepak_prefetch.advance(cycles);
         }
+        self.dma_bus = None; // A transfer's data does not outlast an idle period.
         self.advance_cycles(cycles);
     }
 

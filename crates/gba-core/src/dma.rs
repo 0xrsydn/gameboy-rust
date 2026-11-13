@@ -166,6 +166,7 @@ impl Dma {
                         & if index == 3 { 0xffe0 } else { 0xf7e0 };
                 if !channel.enabled() {
                     channel.active = false;
+                    channel.start_delay = 0; // A cancelled transfer has no start to wait for.
                 } else if !was_enabled {
                     let mask = !(channel.width().bytes() - 1);
                     channel.current_source = channel.source & mask;

@@ -978,3 +978,17 @@ fn cpu_enabled_immediate_transfers_wait_three_cycles_from_the_enabling_instructi
         );
     }
 }
+
+#[test]
+fn disabling_a_blank_transfer_during_its_start_delay_leaves_a_loadable_state() {
+    let mut machine = machine();
+    configure(machine.memory_mut(), 0, SOURCE, DEST, 1, 0x2000); // HBlank.
+    machine.memory_mut().advance_cycles(HBLANK_START); // The edge: delay just begun.
+    machine.memory_mut().write16(base(0) + 10, 0).unwrap();
+    assert_eq!(machine.step().unwrap(), StepKind::Instruction);
+    let state = machine.save_state().unwrap();
+    machine.load_state(&state).unwrap();
+    // Re-enabling waits for the next edge and its own full delay.
+    configure(machine.memory_mut(), 0, SOURCE, DEST, 1, 0x2000);
+    assert_eq!(machine.step().unwrap(), StepKind::Instruction);
+}
