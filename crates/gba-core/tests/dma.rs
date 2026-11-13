@@ -889,3 +889,54 @@ fn vblank_runner_stops_at_event_before_newly_requested_dma_executes() {
     units(&mut machine, 3, 1);
     assert_eq!(machine.memory().read16(DEST).unwrap(), 0x1234);
 }
+
+// An immediate transfer enabled by a CPU store starts at the first step boundary at least
+// three cycles after that instruction began, as mGBA schedules it.
+#[test]
+fn cpu_enabled_immediate_transfers_wait_three_cycles_from_the_enabling_instruction() {
+    let dma3 = DMA_BASE + 3 * DMA_STRIDE;
+    let code = [
+        0xe59f_0010, // LDR r0,=DMA3 base
+        0xe59f_1010, // LDR r1,=enable, 32-bit, one unit
+        0xe580_1008, // STR r1,[r0,#8]
+        0xe590_2008, // LDR r2,[r0,#8] (control readback)
+        0xeaff_fffe, // B .
+        0,
+        dma3,
+        0x8400_0001,
+    ];
+    for in_iwram in [false, true] {
+        let mut bus = Memory::new(words(&code)).unwrap();
+        let start = if in_iwram {
+            for (index, word) in code.into_iter().enumerate() {
+                bus.write32(0x0300_1000 + index as u32 * 4, word).unwrap();
+            }
+            0x0300_1000
+        } else {
+            ROM_START
+        };
+        bus.write32(SOURCE, 0x1234_5678).unwrap();
+        bus.write32(dma3, SOURCE).unwrap();
+        bus.write32(dma3 + 4, SOURCE + 0x100).unwrap();
+        let mut machine = Machine::new(Cpu::new(start), bus);
+        for _ in 0..3 {
+            assert_eq!(machine.step().unwrap(), StepKind::Instruction);
+        }
+        let next = machine.step().unwrap();
+        if in_iwram {
+            // The 2-cycle IWRAM store leaves the delay pending: the readback runs first.
+            assert_eq!(next, StepKind::Instruction);
+            assert_eq!(machine.cpu().registers()[2] >> 31, 1);
+            assert_eq!(machine.step().unwrap(), StepKind::Dma { channel: 3 });
+        } else {
+            // A store fetched from ROM takes longer than the delay: the transfer goes first.
+            assert_eq!(next, StepKind::Dma { channel: 3 });
+            machine.step().unwrap();
+            assert_eq!(machine.cpu().registers()[2] >> 31, 0);
+        }
+        assert_eq!(
+            machine.memory().read32(SOURCE + 0x100).unwrap(),
+            0x1234_5678
+        );
+    }
+}

@@ -67,6 +67,8 @@ struct Channel {
     current_destination: u32,
     remaining: u32,
     active: bool,
+    // Cycles before an immediate transfer enabled by the CPU may start; see START_DELAY.
+    start_delay: u8,
     first: bool,
     // Unknown at synthetic startup. Enable/disable does not reset retained data.
     data_latch: Option<u32>,
@@ -171,6 +173,7 @@ impl Dma {
                     channel.remaining = channel.initial_count(index);
                     channel.first = true;
                     channel.active = channel.start_timing() == 0;
+                    channel.start_delay = if channel.active { START_DELAY } else { 0 };
                 }
             }
             _ => unreachable!("DMA register byte"),
@@ -218,7 +221,7 @@ impl Dma {
                     control: channel.control,
                 });
             }
-            if channel.active {
+            if channel.active && channel.start_delay == 0 {
                 return Ok(Some(Transfer {
                     channel: index,
                     source: channel.current_source,
@@ -290,6 +293,39 @@ fn replace_byte(previous: u32, byte: u32, value: u8) -> u32 {
     (previous & !(0xff << shift)) | (u32::from(value) << shift)
 }
 
+/// An immediate transfer enabled by a CPU store starts at the first step boundary at least
+/// this many cycles after that instruction began, as mGBA schedules it. A store taking
+/// three or more cycles (from ROM, say) lets the transfer start right after it; a faster
+/// store lets the next instruction run first.
+pub(crate) const START_DELAY: u8 = 3;
+
+impl Dma {
+    /// Count down pending start delays as cycles elapse.
+    pub(crate) fn elapse(&mut self, cycles: u32) {
+        for channel in &mut self.channels {
+            channel.start_delay = channel
+                .start_delay
+                .saturating_sub(cycles.min(u32::from(u8::MAX)) as u8);
+        }
+    }
+
+    /// Host (and DMA) writes start transfers at once; only CPU stores pay the delay.
+    pub(crate) fn expedite(&mut self) {
+        for channel in &mut self.channels {
+            channel.start_delay = 0;
+        }
+    }
+
+    /// Cycles until a delayed transfer may start, to bound HALT idling.
+    pub(crate) fn next_start_cycles(&self) -> Option<u32> {
+        self.channels
+            .iter()
+            .filter(|channel| channel.active && channel.start_delay != 0)
+            .map(|channel| u32::from(channel.start_delay))
+            .min()
+    }
+}
+
 fn save_channel(channel: &Channel, writer: &mut Writer) {
     let Channel {
         source,
@@ -300,6 +336,7 @@ fn save_channel(channel: &Channel, writer: &mut Writer) {
         current_destination,
         remaining,
         active,
+        start_delay,
         first,
         data_latch,
     } = channel;
@@ -311,6 +348,7 @@ fn save_channel(channel: &Channel, writer: &mut Writer) {
     writer.u32(*current_destination);
     writer.u32(*remaining);
     writer.bool(*active);
+    writer.u8(*start_delay);
     writer.bool(*first);
     writer.option(data_latch.as_ref(), |value, writer| writer.u32(*value));
 }
@@ -329,6 +367,7 @@ fn load_channel(
         current_destination,
         remaining,
         active,
+        start_delay,
         first,
         data_latch,
     } = channel;
@@ -340,6 +379,7 @@ fn load_channel(
     *current_destination = reader.u32()?;
     *remaining = reader.u32()?;
     *active = reader.bool()?;
+    *start_delay = reader.u8()?;
     *first = reader.bool()?;
     *data_latch = reader.option(Reader::u32)?;
 
@@ -354,6 +394,8 @@ fn load_channel(
         || *control & !control_mask != 0
         || *remaining > max_remaining
         || (*active && (*remaining == 0 || *control & 0x8000 == 0))
+        || *start_delay > START_DELAY
+        || (*start_delay != 0 && !*active)
     {
         return Err(SnapshotError::Corrupt("DMA channel"));
     }
@@ -395,6 +437,7 @@ mod snapshot_tests {
                     current_destination: 0x0300_3000,
                     remaining: 0x1234,
                     active: true,
+                    start_delay: 0,
                     first: true,
                     data_latch: Some(0x1122_3344),
                 },
@@ -407,6 +450,7 @@ mod snapshot_tests {
                     current_destination: 0x0600_2344,
                     remaining: 0x2345,
                     active: true,
+                    start_delay: 0,
                     first: false,
                     data_latch: None,
                 },
@@ -419,6 +463,7 @@ mod snapshot_tests {
                     current_destination: 0x0600_4000,
                     remaining: 5,
                     active: true,
+                    start_delay: 0,
                     first: false,
                     data_latch: Some(0x5566_7788),
                 },
@@ -431,6 +476,7 @@ mod snapshot_tests {
                     current_destination: 0x0800_6000,
                     remaining: 0x4567,
                     active: false,
+                    start_delay: 0,
                     first: true,
                     data_latch: None,
                 },

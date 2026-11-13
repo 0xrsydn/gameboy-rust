@@ -404,6 +404,7 @@ impl Io {
             .iter()
             .filter_map(|timer| timer.next_overflow(self.timer_phase))
             .chain(self.serial.next_event_cycles())
+            .chain(self.dma.next_start_cycles())
             .fold(self.display.next_event_cycles(), u32::min)
     }
 
@@ -472,6 +473,10 @@ impl Io {
         self.master_enable && self.enable & self.pending != 0
     }
 
+    pub(crate) fn expedite_dma(&mut self) {
+        self.dma.expedite();
+    }
+
     pub(crate) fn next_dma(&self) -> Result<Option<Transfer>, DmaError> {
         self.dma.next()
     }
@@ -518,6 +523,7 @@ impl Io {
     }
 
     pub(crate) fn advance(&mut self, cycles: u32, advance_timers: bool) {
+        self.dma.elapse(cycles);
         // Hardware state tracks time even when host-side frame capture is disabled.
         let position = self.display.position();
         let phase = u32::from(position.scanline) * CYCLES_PER_LINE + u32::from(position.line_cycle);

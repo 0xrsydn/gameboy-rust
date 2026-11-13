@@ -26,7 +26,12 @@ Disable the channel before changing its width, address modes, or start timing; l
 
 Supported triggers:
 
-- Immediate: ready after the enabling instruction; repeat does not keep it running.
+- Immediate: ready at the first step boundary at least 3 cycles after the enabling CPU instruction began, as mGBA
+  schedules it. A store taking 3 or more cycles (from ROM, say) lets the transfer start right after it; a 2-cycle
+  store from internal RAM lets the next instruction run first. Host and DMA writes start it at once. HALT idling stops
+  at the pending start. Repeat does not keep it running. This raised the mGBA suite's timing results from 1792 to 1824
+  without changing any memory or DMA result; mGBA's own cost attribution (charging a store's following fetch to the
+  next instruction) lowered them, so cycles count with this emulator's attribution.
 - VBlank: ready on entry to line 160.
 - HBlank: ready at HBlank entry on visible lines 0–159 only.
 
@@ -57,7 +62,7 @@ Cancellation can add one data cycle at the final halfword phase. DMA never consu
 Only successful units commit queue progress; WAITCNT destinations apply configuration changes after the transfer.
 Exact startup/completion placement remains nominal, not independently verified prefetch arbitration.
 See [CPU resume timing](cpu.md#nominal-cpu-resume-after-dma) for failure, idle, and refill rules.
-Startup scheduling delays, channel-resumption costs, a full CPU fetch pipeline, and display-bus contention remain unmodeled.
+Channel-resumption costs, a full CPU fetch pipeline, and display-bus contention remain unmodeled.
 
 Special timing supports DMA1/FIFO A and DMA2/FIFO B with four-word blocks, forced word width, and fixed destinations.
 Timer-driven requests, repeat, and completion IRQs are described in [Direct Sound](audio.md).

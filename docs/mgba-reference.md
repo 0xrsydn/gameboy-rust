@@ -105,9 +105,11 @@ With a local Pokémon FireRed dump (not distributed), lockstep matches 1,021 ins
   enable bit (`0x84000000`) because its transfer has not started yet; this emulator has already finished it (`0x04000000`).
   GBATEK documents a short DMA start delay; the game's following branch differs.
   Deferring immediate DMA until after the next instruction matched mGBA here, but cost 194 memory and 56 timing results
-  in the mGBA suite, whose DMA results are read right after each copy. Hardware starts the transfer about two cycles
-  after the write and pauses the CPU inside the next instruction; this emulator interleaves DMA and CPU only at
-  instruction boundaries, so the change was not adopted. Cycle-level DMA arbitration is the real fix.
+  in the mGBA suite, whose DMA results are read right after each copy. mGBA's actual rule is cycle-based: the transfer
+  starts at the first instruction boundary at least 3 cycles after the enabling instruction began. That rule is now
+  [modeled](hardware/dma.md) and raised the suite's timing results. FireRed's readback still differs, because mGBA
+  charges a store's following ROM fetch to the next instruction (store 2 cycles, load 11) while this emulator charges it
+  to the store (5 and 8). Adopting mGBA's attribution lowered the suite's memory and timing results, so it was not.
 
 ## Limits
 

@@ -1112,6 +1112,9 @@ impl Memory {
                 }
                 self.io.write8(byte_address, byte);
             }
+            if (DMA_BASE..=DMA_END).contains(&address) && self.write_access() == WriteAccess::Host {
+                self.io.expedite_dma();
+            }
             if address & !3 == crate::io::WAITCNT {
                 // CPU changes are speculative with their timing transaction; host/DMA changes are immediate.
                 if let Some(mut trace) = self.cpu_timing.get() {
