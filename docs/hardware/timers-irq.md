@@ -34,6 +34,9 @@ This start delay reproduces the [mGBA test suite](../public-mgba-suite.md)'s har
 Without it, every calibration case read two too many. The same delay applies to prescaled timers; the suite scores
 identically with or without it there, so that part is unverified. Host setup writes outside machine steps start counting at once.
 The delay is part of save states.
+
+IRQs are taken at the first instruction boundary after `IME && IE & IF`, and HALT wakes at once; hardware delays both.
+A [delay model experiment](../research/irq-delay.md) did not yet improve suite agreement and was not adopted.
 Block transfers preserve distinct word phases; combined reload/control writes merge at one phase, with reload bytes first.
 
 The transaction also owns timer IF bits. Reads see overflows through the current access; acknowledgements clear earlier timer requests.

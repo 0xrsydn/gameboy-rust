@@ -71,7 +71,8 @@ All 20 calibration results now pass. SIO timing regressed: each normal-mode case
 handler in this emulator's replacement BIOS, whose IRQ dispatch is already known to be slower than hardware (Timer IRQ
 read `0x56` where hardware reads `0x51`). Its earlier exact match therefore combined offsetting errors. With the
 minimal dispatch, Timer IRQ reads `0x4e` and SIO timing is ten cycles low: interrupts are now taken too early. Hardware
-delays IRQ entry after a request; mGBA models seven cycles (`GBA_IRQ_DELAY`). That delay is the next open item.
+delays IRQ entry after a request; mGBA models seven cycles (`GBA_IRQ_DELAY`). A [delay sweep](research/irq-delay.md)
+found no clear optimum yet, because the replacement BIOS's IntrWait and Halt paths also differ from hardware.
 
 "So far" means a core diagnostic stopped the sub-suite before it finished; later tests did not run.
 Treat these numbers as a dated snapshot, not a claim about any game.
