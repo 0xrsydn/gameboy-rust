@@ -37,7 +37,8 @@ Passing tests are not logged. The suite writes a `<sub-suite> test: <test name>`
 Pass counts come from memory. At this revision, the `suites` table of 14 `struct TestSuite` pointers is at ROM `0x0803d868`.
 Each struct holds `passes` and `totalResults` pointers at offsets 20 and 24.
 A sub-suite is finished when `totalResults` is nonzero and has stopped changing.
-The video sub-suite is visual only and reports no counts.
+The video sub-suite keeps no counters. Each of its screens draws the tested effect ("actual") and, on Right, a
+picture of the hardware result built from static tiles ("expected"); Start hides the label sprite.
 
 The suite also probes mGBA's debug port at `0x04fff780`. On hardware that address is unused I/O, read as open bus.
 This emulator does not implement mGBA's debug port, so the suite runs in its hardware mode.
@@ -55,6 +56,8 @@ direnv exec . cargo run --locked --release -p gba-diff --example mgba_suite_scor
 
 It prints one row per sub-suite and the `: FAIL` lines the suite wrote to SRAM, each prefixed with its test name
 (`<test name> | <configuration>: Got ...`). `--log PATH` writes every failure line to a file.
+For the video sub-suite it opens each screen, hides the label, captures the actual and expected pictures from this
+emulator, and reports how many screens are pixel-identical; a differing screen is listed with its pixel count.
 It exits 0 when every counted sub-suite settled.
 `--frame-cap` (default 18000) bounds a sub-suite that never settles; that case exits 1, because a timeout is never a pass.
 The tool reports the suite's own counters and adds no verdict of its own.
@@ -81,7 +84,7 @@ Each sub-suite started from a fresh boot. These results came from a local probe 
 | 10 | SIO read | 1 / 6 so far | 90 / 90 | — |
 | 11 | SIO timing | 4 / 4 | 4 / 4 | — |
 | 12 | Misc. edge | 4 / 12 | 8 / 12 | — |
-| 13 | Video | visual only | visual only | — |
+| 13 | Video | visual only | 6 / 7 screens | — |
 
 The current column is the latest local run. Since the baseline, the sub-suites that used to stop were fixed
 (unused-memory writes, SRAM's 8-bit bus in DMA and block transfers, I/O read policy, misaligned BIOS copies, BIOS
@@ -123,7 +126,7 @@ per sub-suite. It reproduces the Current column exactly:
 | 10 | SIO register R/W | 90 / 90 |
 | 11 | SIO timing | 4 / 4 |
 | 12 | Misc. edge | 8 / 12 |
-| 13 | Video | visual only |
+| 13 | Video | 6 / 7 screens |
 
 The recorded `: FAIL` lines list the remaining mismatches by test name. The numbers no longer depend on an
 uncommitted local probe.
@@ -152,4 +155,33 @@ Every sub-suite now runs to completion. Every counted sub-suite except Misc. edg
   paths read 1,235 cycles apart, not the expected 1,232. The polling loops behind "Flip" 3, 4, and 5 share one
   8-cycle period and identical code between them, so those results must agree modulo 8; the expected values are 5, 3,
   and 3 modulo 8, which no fixed instruction timing of this binary produces. The expectations were presumably recorded from a
-  different build. "Flip" 4 to 6 pass. Running the same ROM in mGBA would confirm this; that has not been done here.
+  different build. "Flip" 4 to 6 pass. mGBA 0.10.5 running the same ROM also reads `0x4D3` for "Hblank".
+- Video: six of seven screens are pixel-identical to their expected pictures, after the
+  [delayed background enable](hardware/video.md). "Layer toggle 2" differs in 16 pixels: on two lines hardware
+  starts the background partway along the row, and rows here are composed whole.
+
+## mGBA 0.10.5 on the same ROM
+
+Measured 2026-11-13 on Linux x86_64 with the pinned [reference build](mgba-reference.md), driving `mgba-ref` through
+the same menu presses and reading the same counters. mGBA is a reference, not ground truth; the suite's expectations
+are. Its current development version scores differently from this release.
+
+| # | Sub-suite | This emulator | mGBA 0.10.5 |
+| ---: | --- | ---: | ---: |
+| 0 | Memory | 1552 / 1552 | 1546 / 1552 |
+| 1 | I/O read | 130 / 130 | 128 / 130 |
+| 2 | Timing | 2020 / 2020 | 1768 / 2020 |
+| 3 | Timer count-up | 936 / 936 | 639 / 936 |
+| 4 | Timer IRQ | 90 / 90 | 70 / 90 |
+| 5 | Shifter | 140 / 140 | 140 / 140 |
+| 6 | Carry | 93 / 93 | 93 / 93 |
+| 7 | Multiply long | 72 / 72 | 52 / 72 |
+| 8 | BIOS math | 615 / 615 | 615 / 615 |
+| 9 | DMA | 1244 / 1244 | 1228 / 1244 |
+| 10 | SIO register R/W | 90 / 90 | 26 / 90 |
+| 11 | SIO timing | 4 / 4 | 0 / 4 |
+| 12 | Misc. edge | 8 / 12 | 3 / 12 |
+| 13 | Video (screens identical) | 6 / 7 | 3 / 7 |
+
+A high score here says the emulator matches the cases this suite measures. It says nothing about games: mGBA runs
+the commercial library, and this emulator has not been verified on it.

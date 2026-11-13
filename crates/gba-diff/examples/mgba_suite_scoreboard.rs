@@ -16,12 +16,14 @@ use gba_core::{
     cartridge::SaveDevice,
     input::{Button, Buttons},
     machine::Machine,
+    video::Framebuffer,
 };
 
 /// `struct TestSuite` pointer table in the pinned ROM revision.
 const SUITES_TABLE: u32 = 0x0803_d868;
 /// Offsets inside `struct TestSuite`: name, run, list, show, nTests, passes, total.
 const NAME_OFFSET: u32 = 0;
+const TEST_COUNT_OFFSET: u32 = 16;
 const PASSES_OFFSET: u32 = 20;
 const TOTAL_RESULTS_OFFSET: u32 = 24;
 const SRAM_BASE: u32 = 0x0e00_0000;
@@ -37,6 +39,8 @@ const BOOT_FRAMES: usize = 60;
 const KEY_TAP_FRAMES: usize = 2;
 /// Suites in the pinned revision; the pointer table has this many entries.
 const SUITE_COUNT: usize = 14;
+/// Frames to let a visual test's menu or picture settle before the next step.
+const VIDEO_SETTLE_FRAMES: usize = 20;
 
 const USAGE: &str =
     "usage: mgba-suite-scoreboard --rom PATH [--settle FRAMES] [--frame-cap FRAMES] [--log PATH]";
@@ -83,6 +87,8 @@ struct Suite {
     total_results: u32,
     /// False for the visual-only suite, whose counters are not live IWRAM variables.
     counted: bool,
+    /// Entries in the sub-suite's own test list.
+    tests: u32,
 }
 
 /// Read a little-endian word from the loaded ROM image at `address`.
@@ -123,6 +129,7 @@ fn read_suites(rom: &[u8]) -> Result<Vec<Suite>, String> {
             passes,
             total_results,
             counted,
+            tests: rom_u32(rom, entry + TEST_COUNT_OFFSET)?,
         });
     }
     Ok(suites)
@@ -245,6 +252,55 @@ fn score_suite(
     Ok((score, sram_failures(&machine)?))
 }
 
+fn frames(machine: &mut Machine, count: usize) -> Result<(), String> {
+    for _ in 0..count {
+        run_frame(machine)?;
+    }
+    Ok(())
+}
+
+fn capture(machine: &Machine) -> Result<Framebuffer, String> {
+    let mut frame = Framebuffer::default();
+    match machine.memory().present_frame(&mut frame) {
+        Ok(true) => Ok(frame),
+        Ok(false) => Err("no captured frame".to_owned()),
+        Err(error) => Err(format!("{error:?}")),
+    }
+}
+
+/// Open one screen of the visual sub-suite and count the pixels in which its
+/// "actual" rendering differs from the "expected" picture the ROM draws for it.
+/// Both come from this emulator: the expected picture uses only static tiles,
+/// so a count of zero means the tested effect was rendered as on hardware.
+fn score_video(rom: &[u8], index: usize, test: u32) -> Result<usize, String> {
+    let mut machine = bios::boot(rom.to_vec()).map_err(|error| error.to_string())?;
+    machine.memory_mut().set_save_device(SaveDevice::Sram);
+    machine.memory_mut().set_scanline_rendering(true);
+    frames(&mut machine, BOOT_FRAMES)?;
+    for _ in 0..index {
+        tap(&mut machine, Button::Down)?;
+    }
+    tap(&mut machine, Button::A)?;
+    frames(&mut machine, VIDEO_SETTLE_FRAMES)?;
+    for _ in 0..test {
+        tap(&mut machine, Button::Down)?;
+    }
+    tap(&mut machine, Button::A)?;
+    frames(&mut machine, VIDEO_SETTLE_FRAMES)?;
+    tap(&mut machine, Button::Start)?; // Hide the "actual"/"expected" label sprite.
+    frames(&mut machine, VIDEO_SETTLE_FRAMES)?;
+    let actual = capture(&machine)?;
+    tap(&mut machine, Button::Right)?;
+    frames(&mut machine, VIDEO_SETTLE_FRAMES)?;
+    let expected = capture(&machine)?;
+    Ok(actual
+        .pixels()
+        .iter()
+        .zip(expected.pixels())
+        .filter(|(actual, expected)| actual != expected)
+        .count())
+}
+
 fn main() -> ExitCode {
     let args: Vec<String> = env::args().skip(1).collect();
     let options = match parse_args(&args) {
@@ -282,10 +338,27 @@ fn main() -> ExitCode {
     let mut failed = false;
     for (index, suite) in suites.iter().enumerate() {
         if !suite.counted {
+            let mut differing = Vec::new();
+            for test in 0..suite.tests {
+                match score_video(&rom, index, test) {
+                    Ok(0) => {}
+                    Ok(pixels) => differing.push(format!("screen {test}: {pixels} pixels differ")),
+                    Err(error) => {
+                        differing.push(format!("screen {test}: {error}"));
+                        failed = true;
+                    }
+                }
+            }
             println!(
-                "{index:<3} {:<20} {:>10} {:>10} {:>8}  visual only",
-                suite.name, "-", "-", "-"
+                "{index:<3} {:<20} {:>10} {:>10} {:>8}  actual against expected picture",
+                suite.name,
+                suite.tests as usize - differing.len(),
+                suite.tests,
+                "-"
             );
+            if !differing.is_empty() {
+                failures.push((suite.name.clone(), differing));
+            }
             continue;
         }
         let started = Instant::now();
