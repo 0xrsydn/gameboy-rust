@@ -344,6 +344,14 @@ Thumb `BL` charges one source fetch for each half; only its suffix adds the targ
 Multiply costs vary with the incoming multiplier's upper bytes; accumulate and long forms add internal cycles.
 ARM uses Rs for this calculation. Thumb multiply uses the incoming destination register.
 Multiply internal cycles leave the following fetch N. Swaps also leave N after their data/internal work.
+
+Flag-setting multiplies set N and Z from the result and leave V unchanged. ARM documents C as "meaningless", but
+hardware sets it from the Booth multiplier's carry-save adders. `cpu/multiply.rs` implements the model by zaydlang and
+calc84maniac: after early termination, C is bit 31 of the final carry word; after all four iterations, it is the final
+Booth digit's injected carry for `MUL`/`MLA` (multiplier bits 31–30 equal `10`) and bit 63 of the carry word for long forms.
+It matches the [mGBA test suite](../public-mgba-suite.md)'s multiply-long results and, locally, every flag-setting multiply
+in the public [SingleStepTests ARM7TDMI vectors](https://github.com/SingleStepTests/ARM7TDMI); the vectors are not
+committed (see the ignored test in `cpu/multiply.rs`).
 Successful target refills end with S, overriding sequence breaks from preceding data/internal work.
 IRQ entry uses the interrupted buffer's incoming kind before replacing that buffer.
 

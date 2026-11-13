@@ -123,7 +123,7 @@ impl Cpu {
             let signed = instruction & (1 << 22) != 0;
             let multiplier = self.registers[((instruction >> 8) & 15) as usize];
             return Summary {
-                internal: multiply_cycles(multiplier, signed)
+                internal: super::multiply::iterations(multiplier, signed)
                     + 1
                     + u32::from(instruction & (1 << 21) != 0),
                 ..Summary::default()
@@ -132,7 +132,7 @@ impl Cpu {
         if instruction & 0x0fc0_00f0 == 0x0000_0090 {
             let multiplier = self.registers[((instruction >> 8) & 15) as usize];
             return Summary {
-                internal: multiply_cycles(multiplier, true)
+                internal: super::multiply::iterations(multiplier, true)
                     + u32::from(instruction & (1 << 21) != 0),
                 ..Summary::default()
             };
@@ -167,7 +167,10 @@ impl Cpu {
                 let internal = match opcode {
                     2 | 3 | 4 | 7 => 1,
                     // Thumb MUL maps the incoming destination to ARM's Rs.
-                    13 => multiply_cycles(self.registers[(instruction & 7) as usize], true),
+                    13 => super::multiply::iterations(
+                        self.registers[(instruction & 7) as usize],
+                        true,
+                    ),
                     _ => 0,
                 };
                 Summary {
@@ -202,15 +205,4 @@ impl Cpu {
             _ => Summary::default(),
         }
     }
-}
-
-fn multiply_cycles(value: u32, signed: bool) -> u32 {
-    for bytes in 1..=3 {
-        let mask = u32::MAX << (bytes * 8);
-        let high = value & mask;
-        if high == 0 || signed && high == mask {
-            return bytes;
-        }
-    }
-    4
 }

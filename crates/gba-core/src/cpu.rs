@@ -19,6 +19,7 @@ macro_rules! assert_cpu_arch_eq {
 mod alu;
 mod arm;
 mod exception;
+mod multiply;
 mod pipeline;
 mod status;
 mod thumb;

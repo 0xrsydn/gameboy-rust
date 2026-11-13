@@ -56,7 +56,7 @@ Each sub-suite started from a fresh boot. Repository tooling for this run does n
 | 4 | Timer IRQ | 0 / 90 | 44 / 90 | — |
 | 5 | Shifter | 140 / 140 | 140 / 140 | — |
 | 6 | Carry | 93 / 93 | 93 / 93 | — |
-| 7 | Multiply long | 52 / 72 | 52 / 72 | — |
+| 7 | Multiply long | 52 / 72 | 72 / 72 | — |
 | 8 | BIOS math | 20 / 30 so far | 615 / 615 | — |
 | 9 | DMA | 12 / 12 so far | 1244 / 1244 | — |
 | 10 | SIO read | 1 / 6 so far | 90 / 90 | — |

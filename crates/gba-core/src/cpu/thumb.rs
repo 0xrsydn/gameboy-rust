@@ -2,6 +2,7 @@
 
 use super::{
     alu::{self, Shift},
+    multiply::{self, Form},
     Cpu, CpuError,
 };
 use crate::memory::Memory;
@@ -234,11 +235,12 @@ impl Cpu {
             }
             9 => self.thumb_result(destination, 2, 0, b, self.flags.carry), // NEG
             13 => {
+                // Rd is the multiplier, Rs the multiplicand.
                 let result = a.wrapping_mul(b);
                 self.registers[destination] = result;
                 self.flags.negative = result >> 31 != 0;
                 self.flags.zero = result == 0;
-                // Preserve unspecified multiply carry, matching the ARM core policy.
+                self.flags.carry = multiply::carry(Form::Short, b, a, 0);
             }
             _ => self.thumb_result(destination, opcode, a, b, self.flags.carry),
         }

@@ -268,6 +268,12 @@ Optional classifier-assisted debugging:
 - [What is Codemode](https://lucumr.pocoo.org/2026/10/6/codemode/), for bounded harness-side orchestration and game-debugging examples.
 - Installed Pi documentation for Codemode, classifiers, skills, prompt templates, settings, configuration, providers, and project trust. See [the local workflow](jev-debugging.md).
 
+Multiply carry flag:
+
+- [Solving the Mystery of ARM7TDMI Multiply Carry Flag](https://bmchtech.github.io/post/multiply/), zaydlang (2024), for the Booth/carry-save multiplier model.
+- [NanoBoyAdvance arithmetic handlers](https://github.com/nba-emu/NanoBoyAdvance/blob/master/src/nba/src/arm/handlers/arithmetic.inl), for the compact form of that model by zaydlang and calc84maniac (zlib license). `cpu/multiply.rs` is an original Rust implementation of it.
+- [SingleStepTests ARM7TDMI](https://github.com/SingleStepTests/ARM7TDMI) (MIT), whose multiply vectors were used locally for verification and are not committed.
+
 Use [GBATEK](https://problemkaputt.de/gbatek.htm) and ARM7TDMI documentation for further hardware work.
 Only use game ROMs that you may lawfully use. Do not commit game ROMs, BIOS files, or game assets.
 The ignore file excludes `roms/`, common game ROM extensions, and save files.

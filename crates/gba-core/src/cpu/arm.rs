@@ -1,5 +1,6 @@
 use super::{
     alu::{self, Shift},
+    multiply::{self, Form},
     Cpu, CpuError,
 };
 use crate::memory::Memory;
@@ -260,15 +261,15 @@ impl Cpu {
             return Err(self.unsupported(instruction));
         }
         // Rd may equal Rm: every operand is read before the destination is written.
-        let mut result = self.registers[rm].wrapping_mul(self.registers[rs]);
-        if accumulate {
-            result = result.wrapping_add(self.registers[rn]);
-        }
+        let (multiplicand, multiplier) = (self.registers[rm], self.registers[rs]);
+        let addend = if accumulate { self.registers[rn] } else { 0 };
+        let result = multiplicand.wrapping_mul(multiplier).wrapping_add(addend);
         self.registers[rd] = result;
         if instruction & (1 << 20) != 0 {
             self.flags.negative = result >> 31 != 0;
             self.flags.zero = result == 0;
-            // ARM7 carry is unspecified after multiply; preserve it deterministically.
+            self.flags.carry =
+                multiply::carry(Form::Short, multiplicand, multiplier, u64::from(addend));
         }
         self.registers[15] = self.pc().wrapping_add(4);
         Ok(())
@@ -282,21 +283,31 @@ impl Cpu {
         if [hi, lo, rs, rm].contains(&15) || hi == lo {
             return Err(self.unsupported(instruction));
         }
-        let mut result = if instruction & (1 << 22) != 0 {
-            (i64::from(self.registers[rm] as i32) * i64::from(self.registers[rs] as i32)) as u64
+        let (multiplicand, multiplier) = (self.registers[rm], self.registers[rs]);
+        let signed = instruction & (1 << 22) != 0;
+        let product = if signed {
+            (i64::from(multiplicand as i32) * i64::from(multiplier as i32)) as u64
         } else {
-            u64::from(self.registers[rm]) * u64::from(self.registers[rs])
+            u64::from(multiplicand) * u64::from(multiplier)
         };
-        if instruction & (1 << 21) != 0 {
-            let accumulator = (u64::from(self.registers[hi]) << 32) | u64::from(self.registers[lo]);
-            result = result.wrapping_add(accumulator);
-        }
+        let accumulator = if instruction & (1 << 21) != 0 {
+            (u64::from(self.registers[hi]) << 32) | u64::from(self.registers[lo])
+        } else {
+            0
+        };
+        let result = product.wrapping_add(accumulator);
         self.registers[hi] = (result >> 32) as u32;
         self.registers[lo] = result as u32;
         if instruction & (1 << 20) != 0 {
             self.flags.negative = result >> 63 != 0;
             self.flags.zero = result == 0;
-            // Unspecified multiply C/V outputs are preserved, not hardware-verified.
+            let form = if signed {
+                Form::SignedLong
+            } else {
+                Form::UnsignedLong
+            };
+            self.flags.carry = multiply::carry(form, multiplicand, multiplier, accumulator);
+            // V is unaffected.
         }
         self.registers[15] = self.pc().wrapping_add(4);
         Ok(())

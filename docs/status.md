@@ -142,7 +142,7 @@ Thumb BIOS execution retains the full word at `(PC+4) & ~3`, not a repeated half
 Missing lookahead invalidates that history; protected reads with unknown history remain diagnostics.
 Exact refill and BIOS data-access ordering remain unmodeled. The Thumb rule has source-based, not physical-hardware validation.
 This is not a full fetch pipeline. The original BIOS reproduces documented boundary readback words, not all firmware side effects.
-Multiply flags N/Z are implemented. Unspecified multiply C/V outputs are preserved deterministically, not hardware-verified.
+Multiply flags N/Z and the multiplier's carry are implemented from a hardware-fuzzed model; V is preserved.
 Instruction and memory errors are development diagnostics, not emulated CPU exceptions.
 Block transfers validate all accesses before committing register, RAM, or I/O changes.
 This diagnostic policy does not reproduce partial transfers during hardware data aborts.

@@ -459,7 +459,8 @@ fn multiply_and_accumulate_wrap_and_set_only_defined_flags() {
         assert_eq!(cpu.registers[2], expected);
         assert_eq!(cpu.flags.negative, expected >> 31 != 0);
         assert_eq!(cpu.flags.zero, expected == 0);
-        assert!(cpu.flags.carry); // Deterministic policy for unspecified output.
+        // The Booth multiplier's carry: clear for these early-terminating multipliers.
+        assert!(!cpu.flags.carry);
         assert!(cpu.flags.overflow);
     }
 }

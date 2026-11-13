@@ -198,7 +198,11 @@ fn all_sixteen_register_alu_opcodes_decode_correctly() {
         assert_eq!(cpu.flags.negative, result >> 31 != 0);
         assert_eq!(cpu.flags.zero, result == 0);
         assert_eq!(cpu.flags.overflow, ![5, 6, 9, 10, 11].contains(&opcode));
-        assert_eq!(cpu.flags.carry, ![2, 3, 4, 5, 7, 9, 11].contains(&opcode));
+        // MUL (13) takes the Booth multiplier's carry, clear for 0x34 * 2.
+        assert_eq!(
+            cpu.flags.carry,
+            ![2, 3, 4, 5, 7, 9, 11, 13].contains(&opcode)
+        );
     }
 }
 
@@ -248,7 +252,7 @@ fn adc_sbc_and_neg_handle_boundary_values() {
 }
 
 #[test]
-fn multiply_wraps_and_preserves_the_unspecified_carry_policy() {
+fn multiply_wraps_and_sets_carry_from_the_final_booth_digit() {
     let mut memory = program(&[0x4348]); // MUL r0,r1
     let mut cpu = thumb_cpu();
     cpu.registers[0] = 0x8000_0000;
