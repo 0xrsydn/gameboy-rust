@@ -2,7 +2,7 @@
 use super::*;
 use crate::{
     dma::{DMA_BASE, DMA_STRIDE},
-    io::{IE, IME, TIMER_BASE, WAITCNT},
+    io::{IE, IME, IRQ_DELAY, TIMER_BASE, WAITCNT},
     machine::{Machine, StepKind},
     memory::{BIOS_SIZE, ROM_START},
     timing::StepTiming,
@@ -28,6 +28,7 @@ fn pending_irq(memory: &mut Memory) {
     memory.write16(IME, 1).unwrap();
     memory.write32(TIMER_BASE, 0x00c0_ffff).unwrap();
     memory.advance_cycles(1);
+    memory.advance_cycles(IRQ_DELAY); // The CPU sees the request this much later.
     memory.write16(TIMER_BASE + 2, 0).unwrap();
 }
 

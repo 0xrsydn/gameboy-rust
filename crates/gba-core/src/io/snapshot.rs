@@ -13,11 +13,15 @@ impl Snapshot for Timer {
             counter,
             control,
             delay,
+            stale_reload,
+            stopping,
         } = self;
         writer.u16(*reload);
         writer.u16(*counter);
         writer.u8(*control);
         writer.u8(*delay);
+        writer.option(stale_reload.as_ref(), |value, writer| writer.u16(*value));
+        writer.option(stopping.as_ref(), |control, writer| writer.u8(*control));
     }
 
     fn load(&mut self, reader: &mut Reader<'_>) -> Result<(), SnapshotError> {
@@ -26,11 +30,15 @@ impl Snapshot for Timer {
             counter,
             control,
             delay,
+            stale_reload,
+            stopping,
         } = self;
         *reload = reader.u16()?;
         *counter = reader.u16()?;
         *control = reader.u8()?;
         *delay = reader.u8()?;
+        *stale_reload = reader.option(Reader::u16)?;
+        *stopping = reader.option(Reader::u8)?;
         if *control & !TIMER_CONTROL_MASK != 0 {
             return Err(SnapshotError::Corrupt("timer control"));
         }
@@ -70,6 +78,7 @@ impl Snapshot for Io {
             timer_phase,
             enable,
             pending,
+            irq_wait,
             master_enable,
             waitcnt,
             dispcnt,
@@ -96,6 +105,7 @@ impl Snapshot for Io {
         writer.u16(*timer_phase);
         writer.u16(*enable);
         writer.u16(*pending);
+        writer.option(irq_wait.as_ref(), |wait, writer| writer.u32(*wait));
         writer.bool(*master_enable);
         writer.u16(*waitcnt);
         writer.u16(*dispcnt);
@@ -124,6 +134,7 @@ impl Snapshot for Io {
             timer_phase,
             enable,
             pending,
+            irq_wait,
             master_enable,
             waitcnt,
             dispcnt,
@@ -150,6 +161,7 @@ impl Snapshot for Io {
         *timer_phase = reader.u16()?;
         *enable = reader.u16()?;
         *pending = reader.u16()?;
+        *irq_wait = reader.option(Reader::u32)?;
         *master_enable = reader.bool()?;
         *waitcnt = reader.u16()?;
         *dispcnt = reader.u16()?;

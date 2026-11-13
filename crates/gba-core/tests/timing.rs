@@ -142,10 +142,10 @@ fn stored_prefetch_phi_and_save_wait_settings_do_not_change_rom_bus_costs() {
 
 #[test]
 fn wait_states_change_when_a_timer_interrupt_is_sampled() {
-    // 20-cycle timer: four 6-cycle fetches or five 4-cycle fetches.
+    // 20-cycle timer, seen by the CPU at cycle 23: four 6-cycle fetches or six 4-cycle fetches.
     // IRQ entry adds one old-state ROM fetch and the two-cycle BIOS vector pair.
     for (waitcnt, entry_step, instructions, cycles, irq_cycles) in
-        [(0, 5, 4, 32, 8), (0x18, 6, 5, 26, 6)]
+        [(0, 5, 4, 32, 8), (0x18, 7, 6, 30, 6)]
     {
         let mut memory = Memory::new(0xe280_0001_u32.to_le_bytes().repeat(64)).unwrap();
         memory.write16(WAITCNT, waitcnt).unwrap();

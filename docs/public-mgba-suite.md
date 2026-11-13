@@ -71,15 +71,15 @@ Each sub-suite started from a fresh boot. These results came from a local probe 
 | 0 | Memory | 43 / 44 so far | 1552 / 1552 | — |
 | 1 | I/O read | 4 / 40 so far | 130 / 130 | — |
 | 2 | Timing | 1660 / 2020 | 2020 / 2020 | — |
-| 3 | Timers | 362 / 936 | 587 / 936 | — |
-| 4 | Timer IRQ | 0 / 90 | 44 / 90 | — |
+| 3 | Timers | 362 / 936 | 936 / 936 | — |
+| 4 | Timer IRQ | 0 / 90 | 90 / 90 | — |
 | 5 | Shifter | 140 / 140 | 140 / 140 | — |
 | 6 | Carry | 93 / 93 | 93 / 93 | — |
 | 7 | Multiply long | 52 / 72 | 72 / 72 | — |
 | 8 | BIOS math | 20 / 30 so far | 615 / 615 | — |
 | 9 | DMA | 12 / 12 so far | 1244 / 1244 | — |
 | 10 | SIO read | 1 / 6 so far | 90 / 90 | — |
-| 11 | SIO timing | 4 / 4 | 0 / 4 | — |
+| 11 | SIO timing | 4 / 4 | 4 / 4 | — |
 | 12 | Misc. edge | 4 / 12 | 6 / 12 | — |
 | 13 | Video | visual only | visual only | — |
 
@@ -113,20 +113,19 @@ per sub-suite. It reproduces the Current column exactly:
 | 0 | Memory | 1552 / 1552 |
 | 1 | I/O read | 130 / 130 |
 | 2 | Timing | 2020 / 2020 |
-| 3 | Timer count-up | 587 / 936 |
-| 4 | Timer IRQ | 44 / 90 |
+| 3 | Timer count-up | 936 / 936 |
+| 4 | Timer IRQ | 90 / 90 |
 | 5 | Shifter | 140 / 140 |
 | 6 | Carry | 93 / 93 |
 | 7 | Multiply long | 72 / 72 |
 | 8 | BIOS math | 615 / 615 |
 | 9 | DMA | 1244 / 1244 |
 | 10 | SIO register R/W | 90 / 90 |
-| 11 | SIO timing | 0 / 4 |
+| 11 | SIO timing | 4 / 4 |
 | 12 | Misc. edge | 6 / 12 |
 | 13 | Video | visual only |
 
-The recorded `: FAIL` lines list the remaining mismatches by test name. The timer count-up lines show one-low and
-one-high values, and the Timer IRQ lines read `0x4e` where hardware reads `0x51`. The numbers no longer depend on an
+The recorded `: FAIL` lines list the remaining mismatches by test name. The numbers no longer depend on an
 uncommitted local probe.
 
 The table was re-measured on Linux x86_64 after the Timing fixes below; a ROM built there from the pinned revision
@@ -137,12 +136,13 @@ with the `devkitpro/devkitarm` image has the same SHA-256 as the Darwin build. T
 - Opcode prefetch pauses during DMA and keeps its queue, with a one-cycle stall at one halfword phase, and a
   ROM-to-ROM transfer writes its first unit sequentially (136 results); see [DMA](hardware/dma.md).
 
+Timers (587 to 936), Timer IRQ (44 to 90), and SIO timing (0 to 4) then followed from the
+[request delay, timer stop latency, and reload latch](hardware/timers-irq.md#request-delay-stop-latency-and-reload-latch),
+with the HALT wake cost and IntrWait's exit path fitted to them.
+
 ## Remaining failures
 
-Every sub-suite now runs to completion. Memory, I/O read, timing, shifter, carry, multiply long, BIOS math, DMA, and
-SIO read pass every result. What remains is cycle-level timing:
+Every sub-suite now runs to completion. Every counted sub-suite except Misc. edge passes every result. What remains is cycle-level timing:
 
-- Timers, Timer IRQ, and SIO timing: IRQ entry delay and the replacement BIOS's IntrWait/Halt wake path; see the
-  [IRQ delay experiment](research/irq-delay.md).
 - Misc. edge: open bus left by a DMA while the CPU runs from the prefetch buffer, and a 3-cycle difference between two
   identical HALT wake paths (HBlank flag polling).

@@ -2,7 +2,7 @@
 use super::*;
 use crate::{
     dma::{DMA_BASE, DMA_STRIDE},
-    io::{HALTCNT, IE, IME, TIMER_BASE, WAITCNT},
+    io::{HALTCNT, IE, IME, IRQ_DELAY, TIMER_BASE, WAITCNT},
     machine::{Machine, StepKind},
     memory::{BIOS_SIZE, ROM_CAPACITY, ROM_START},
     timing::AccessKind,
@@ -280,6 +280,7 @@ fn irq_uses_retained_incoming_kind_before_invalidating_the_interrupted_buffer() 
             memory.write16(IME, 1).unwrap();
             memory.write32(TIMER_BASE, 0x00c0_ffff).unwrap();
             memory.advance_cycles(1);
+            memory.advance_cycles(IRQ_DELAY); // The CPU sees the request this much later.
             let n = instruction != if thumb { THUMB_NOP } else { ARM_NOP };
             let expected = match (thumb, n) {
                 (true, true) => 7,
@@ -345,6 +346,8 @@ fn missing_current_slot_and_masked_irq_preserve_the_pending_cpu_sequence() {
         memory.write16(IME, 1).unwrap();
         memory.write32(TIMER_BASE, 0x00c0_ffff).unwrap();
         memory.advance_cycles(1);
+        memory.advance_cycles(IRQ_DELAY); // The CPU sees the request this much later.
+        assert!(memory.irq_pending());
         cpu.irq_disabled = true;
         let before = cpu.clone();
         assert_eq!(cpu.take_irq_timed(&mut memory), None);

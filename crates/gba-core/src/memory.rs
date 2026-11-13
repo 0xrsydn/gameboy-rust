@@ -1229,7 +1229,8 @@ impl Memory {
                 return Ok(());
             }
             if address & !3 == KEYINPUT {
-                self.io.write_keypad(address, &bytes);
+                self.io
+                    .write_keypad(address, &bytes, self.step_elapsed.get());
                 return Ok(());
             }
             for (offset, byte) in bytes.into_iter().enumerate() {
@@ -1252,6 +1253,9 @@ impl Memory {
             if (DMA_BASE..=DMA_END).contains(&address) && self.write_access() == WriteAccess::Host {
                 self.io.expedite_dma();
             }
+            // A request that this write creates is dated at the access, inside a step.
+            self.io
+                .update_irq_line(self.step_active.get().then(|| self.step_elapsed.get()));
             if address & !3 == crate::io::WAITCNT {
                 // CPU changes are speculative with their timing transaction; host/DMA changes are immediate.
                 if let Some(mut trace) = self.cpu_timing.get() {

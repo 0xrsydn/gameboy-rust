@@ -2,7 +2,7 @@
 use super::*;
 use crate::{
     dma::{DMA_BASE, DMA_STRIDE},
-    io::{IE, IME, TIMER_BASE},
+    io::{IE, IME, IRQ_DELAY, TIMER_BASE},
     machine::{Machine, StepKind},
     memory::{BIOS_SIZE, ROM_START},
 };
@@ -199,6 +199,7 @@ fn swi_and_machine_irq_refill_arm_vectors_before_handler_execution() {
                 .write32(TIMER_BASE, 0x00c0_ffff)
                 .unwrap();
             machine.memory_mut().advance_cycles(1);
+            machine.memory_mut().advance_cycles(IRQ_DELAY); // The CPU sees the request this much later.
         }
         assert_eq!(
             machine.step().unwrap(),

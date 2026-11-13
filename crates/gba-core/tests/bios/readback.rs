@@ -185,6 +185,8 @@ fn irq_callback_and_return_have_distinct_image_derived_readback() {
             machine.memory_mut().write16(IE, 1).unwrap();
             machine.memory_mut().write16(IME, 1).unwrap();
             machine.memory_mut().advance_cycles(VBLANK_START);
+            assert!(!machine.memory().irq_pending());
+            machine.memory_mut().advance_cycles(3); // The CPU sees the request three cycles later.
             assert_eq!(machine.step().unwrap(), StepKind::IrqEntry);
             let dispatch = reach_exit(&mut machine, prefix, 100);
             assert_eq!(machine.memory().read32(dispatch + 4).unwrap(), 0xe8bd_500f);

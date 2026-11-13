@@ -3,7 +3,7 @@ use super::*;
 use crate::{
     cpu::Cpu,
     dma::DMA_STRIDE,
-    io::{IE, IME, TIMER_BASE, WAITCNT},
+    io::{IE, IME, IRQ_DELAY, TIMER_BASE, WAITCNT},
     machine::{Machine, StepKind},
     timing::TimingEvent,
 };
@@ -251,6 +251,7 @@ fn irq_entry_records_the_incoming_source_and_vector_pair_without_executing_code(
     memory.write16(IME, 1).unwrap();
     memory.write32(TIMER_BASE, 0x00c0_ffff).unwrap();
     memory.advance_cycles(1);
+    memory.advance_cycles(IRQ_DELAY); // The CPU sees the request this much later.
     let mut machine = Machine::new(cpu, memory);
     let start = machine.cycles();
     assert_eq!(machine.step().unwrap(), StepKind::IrqEntry);

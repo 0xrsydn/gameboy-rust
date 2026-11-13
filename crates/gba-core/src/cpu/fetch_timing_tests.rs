@@ -210,7 +210,8 @@ fn refills_charge_one_source_fetch_and_two_target_fetches() {
 #[test]
 fn machine_advances_boundary_fetch_cost_before_sampling_the_next_irq() {
     let (cpu, mut memory) = program(false, ROM_START - 4, 32);
-    memory.write32(TIMER_BASE, 0x00c0_fffb).unwrap(); // Overflow after five cycles.
+    // Overflow after three cycles; the CPU sees it three later, as the six-cycle fetch ends.
+    memory.write32(TIMER_BASE, 0x00c0_fffd).unwrap();
     memory.write16(IE, 8).unwrap();
     memory.write16(IME, 1).unwrap();
     let mut machine = Machine::new(cpu, memory);

@@ -6,6 +6,7 @@ use std::{error::Error, fmt};
 use crate::{
     cpu::{Cpu, CpuError},
     dma::DmaError,
+    io::HALT_WAKE_CYCLES,
     memory::Memory,
     timing::StepTiming,
 };
@@ -171,11 +172,16 @@ impl Machine {
             return Ok(StepKind::Dma { channel });
         }
         if self.memory.halted() {
-            let timing = StepTiming {
+            let mut timing = StepTiming {
                 idle_cycles: self.memory.next_event_cycles(),
                 ..StepTiming::default()
             };
             self.memory.advance_halt_cycles(timing.total());
+            if !self.memory.halted() && !self.memory.stopped() {
+                // The CPU restarts a few cycles after the request line wakes it.
+                self.memory.advance_halt_cycles(HALT_WAKE_CYCLES);
+                timing.idle_cycles += HALT_WAKE_CYCLES;
+            }
             self.last_timing = timing;
             return Ok(StepKind::HaltIdle);
         }

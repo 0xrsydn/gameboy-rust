@@ -249,6 +249,10 @@ fn alias_io_load_reads_at_data_completion_before_irq_delivery() {
     assert_eq!(machine.cycles(), 8); // PC+8 fetch: 6 code + 1 I/O data + 1 internal
     assert_ne!(machine.memory().read32(TIMER_BASE).unwrap(), expected);
     assert_eq!(machine.memory().read16(IF).unwrap(), 8);
+    // Raised at cycle 6, the request reaches the CPU at cycle 9.
+    assert!(!machine.memory().irq_pending());
+    machine.memory_mut().advance_cycles(1);
+    assert!(machine.memory().irq_pending());
     assert_eq!(machine.step().unwrap(), StepKind::IrqEntry);
     assert_eq!(machine.cpu().registers()[0], expected);
     assert_eq!(machine.cpu().pc(), 0x18);

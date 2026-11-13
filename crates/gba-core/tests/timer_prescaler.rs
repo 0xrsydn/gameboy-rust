@@ -86,7 +86,7 @@ fn leaving_cascade_joins_the_existing_divider_instead_of_starting_a_new_period()
 }
 
 #[test]
-fn halt_stops_at_the_shared_edge_and_stop_freezes_the_divider_until_keypad_wake() {
+fn halt_idles_to_the_shared_edge_and_stop_freezes_the_divider_until_keypad_wake() {
     let mut memory = Memory::new(Vec::new()).unwrap();
     memory.advance_cycles(63);
     start(&mut memory, 0, 0xffff, 0xc1);
@@ -97,6 +97,10 @@ fn halt_stops_at_the_shared_edge_and_stop_freezes_the_divider_until_keypad_wake(
     assert_eq!(machine.last_timing().idle_cycles, 1);
     assert_eq!(machine.cycles(), 64);
     assert_eq!(machine.memory().read16(IF).unwrap(), 8);
+    assert!(machine.halted()); // The overflow reaches HALT three cycles later.
+    assert_eq!(machine.step().unwrap(), StepKind::HaltIdle);
+    assert_eq!(machine.last_timing().idle_cycles, 6); // Arrival plus the wake latency.
+    assert_eq!(machine.cycles(), 70);
     assert!(!machine.halted());
 
     let mut memory = Memory::new(Vec::new()).unwrap();

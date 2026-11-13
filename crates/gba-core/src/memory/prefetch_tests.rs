@@ -3,7 +3,7 @@ use super::{timing_event_tests::prepared, *};
 use crate::{
     cpu::Cpu,
     dma::DMA_STRIDE,
-    io::{HALTCNT, IE, IME, TIMER_BASE, WAITCNT},
+    io::{HALTCNT, IE, IME, IRQ_DELAY, TIMER_BASE, WAITCNT},
     machine::{Machine, StepKind},
     timing::TimingEvent,
 };
@@ -307,6 +307,7 @@ fn irq_source_uses_queued_code_and_bios_vector_fetches_advance_the_rom_stream() 
     memory.write16(IME, 1).unwrap();
     memory.write32(TIMER_BASE, 0x00c0_ffff).unwrap();
     memory.advance_cycles(1);
+    memory.advance_cycles(IRQ_DELAY); // The CPU sees the request this much later.
     let mut machine = Machine::new(cpu, memory);
     assert_eq!(machine.step().unwrap(), StepKind::IrqEntry);
     assert_eq!(machine.last_timing().code_cycles, 6); // Source 4 plus vector 1+1.

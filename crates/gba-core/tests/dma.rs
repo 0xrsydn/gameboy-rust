@@ -525,6 +525,12 @@ fn dma_completion_irq_enters_handler_acknowledges_and_returns_without_skipping_c
         assert_eq!(machine.memory().read16(IF).unwrap(), 0); // Not yet complete.
         units(&mut machine, channel, 1);
         assert_eq!(machine.memory().read16(IF).unwrap(), mask);
+        // The completion request reaches the CPU three cycles after the last unit.
+        assert!(!machine.memory().irq_pending());
+        machine.memory_mut().advance_cycles(2);
+        assert!(!machine.memory().irq_pending());
+        machine.memory_mut().advance_cycles(1);
+        assert!(machine.memory().irq_pending());
         assert_eq!(machine.step().unwrap(), StepKind::IrqEntry);
         assert_eq!(machine.cpu().mode(), Mode::Irq);
         assert_eq!(machine.cpu().registers()[14], ROM_START + 12);

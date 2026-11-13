@@ -88,6 +88,14 @@ pub(crate) enum IoRead {
 /// Host setup writes outside machine steps start counting at once.
 pub(crate) const TIMER_START_DELAY: u8 = 2;
 
+/// Cycles between an interrupt request (`IE & IF` becoming nonzero) and the CPU or a HALT
+/// seeing it. Fitted to the mGBA test suite's hardware-verified Timer IRQ results, together
+/// with the timer stop latency and reload latch; see docs/hardware/timers-irq.md.
+pub(crate) const IRQ_DELAY: u32 = 3;
+/// Cycles a HALT stays idle after the request line reaches it, before the CPU resumes.
+/// Fitted to the suite's SIO timing results with this firmware's Halt service.
+pub(crate) const HALT_WAKE_CYCLES: u32 = 3;
+
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 struct Timer {
     reload: u16,
@@ -95,6 +103,12 @@ struct Timer {
     control: u8,
     /// Remaining start-delay cycles; see `TIMER_START_DELAY`.
     delay: u8,
+    /// The reload value before an emulated write, still used by an overflow in the
+    /// cycle right after that write.
+    stale_reload: Option<u16>,
+    /// The control value before an emulated write stopped the timer. The timer still
+    /// counts the cycle after that write, with its old prescaler.
+    stopping: Option<u8>,
 }
 
 impl Timer {
@@ -109,6 +123,10 @@ impl Timer {
 
     fn write8(&mut self, address: u32, value: u8, index: usize, start_delay: u8) {
         if address & 2 == 0 {
+            // Host setup writes (no start delay) take effect at once.
+            if start_delay != 0 && self.stale_reload.is_none() {
+                self.stale_reload = Some(self.reload);
+            }
             self.reload = replace_byte(self.reload, address, value);
         } else if address & 1 == 0 {
             self.set_control(value, index, start_delay);
@@ -130,6 +148,9 @@ impl Timer {
             self.counter = self.reload;
             self.delay = start_delay;
         }
+        // Host setup writes (no start delay) stop a timer at once.
+        self.stopping =
+            (self.enabled() && value & 0x80 == 0 && start_delay != 0).then_some(self.control);
         self.control = value;
     }
 
@@ -150,6 +171,30 @@ impl Timer {
     /// Advance without looping once per cycle or overflow. Return the number of
     /// overflows, not just a boolean, so cascaded timers receive every pulse.
     fn advance(&mut self, cycles: u32, previous_overflows: u64, phase: u16) -> u64 {
+        if cycles == 0 {
+            return 0;
+        }
+        if let Some(running) = self.stopping.take() {
+            // A cascaded timer has no clock edge of its own in that one cycle.
+            let stopped = std::mem::replace(&mut self.control, running);
+            let overflows = self.count(1, 0, phase);
+            self.control = stopped;
+            return overflows;
+        }
+        if let Some(stale) = self.stale_reload.take() {
+            // Only a prescaled timer can overflow in one specific cycle; a cascaded
+            // timer takes the new value at once.
+            if self.enabled() && !self.count_up() {
+                let fresh = std::mem::replace(&mut self.reload, stale);
+                let first = self.count(1, 0, phase);
+                self.reload = fresh;
+                return first + self.count(cycles - 1, 0, (phase + 1) & 1023);
+            }
+        }
+        self.count(cycles, previous_overflows, phase)
+    }
+
+    fn count(&mut self, cycles: u32, previous_overflows: u64, phase: u16) -> u64 {
         if !self.enabled() {
             return 0;
         }
@@ -196,6 +241,9 @@ pub(crate) struct Io {
     timer_phase: u16,
     enable: u16,
     pending: u16,
+    /// Cycles until an asserted interrupt request reaches the CPU and HALT; zero once it
+    /// has. `None` while `IE & IF` is zero.
+    irq_wait: Option<u32>,
     master_enable: bool,
     waitcnt: u16,
     dispcnt: u16,
@@ -377,6 +425,9 @@ impl Io {
             }
             _ => {} // Unused I/O bytes ignore writes.
         }
+        if self.enable & self.pending == 0 {
+            self.irq_wait = None; // The bus dates a new request; see `update_irq_line`.
+        }
         self.wake_if_requested();
     }
 
@@ -393,7 +444,7 @@ impl Io {
         // STOP uses the live keypad condition, not a stale IF latch.
         let wake = match self.power {
             PowerState::Running => false,
-            PowerState::Halt => self.enable & self.pending != 0,
+            PowerState::Halt => self.irq_line(),
             PowerState::Stop => self.enable & (1 << 12) != 0 && self.keypad.wake_condition(),
         };
         if wake {
@@ -409,7 +460,26 @@ impl Io {
             .filter_map(|timer| timer.next_overflow(self.timer_phase))
             .chain(self.serial.next_event_cycles())
             .chain(self.dma.next_start_cycles())
+            .chain(self.irq_wait.filter(|&wait| wait != 0))
             .fold(self.display.next_event_cycles(), u32::min)
+    }
+
+    /// Whether a request has been asserted long enough for the CPU and HALT to see it.
+    /// IME and CPSR.I are applied by the callers.
+    fn irq_line(&self) -> bool {
+        self.enable & self.pending != 0 && self.irq_wait.unwrap_or(0) == 0
+    }
+
+    /// Re-evaluate the request line after `IE` or `IF` may have changed. A request that
+    /// begins now is dated `offset` cycles into the current step; `None` is host setup,
+    /// which is visible at once. A request that stays asserted keeps its date.
+    pub(crate) fn update_irq_line(&mut self, offset: Option<u32>) {
+        if self.enable & self.pending == 0 {
+            self.irq_wait = None;
+        } else if self.irq_wait.is_none() {
+            self.irq_wait = Some(offset.map_or(0, |offset| offset + IRQ_DELAY));
+        }
+        self.wake_if_requested();
     }
 
     pub(crate) fn display_position(&self) -> DisplayPosition {
@@ -423,13 +493,14 @@ impl Io {
         } else if self.keypad.set_buttons(buttons) {
             self.pending |= 1 << 12;
         }
-        self.wake_if_requested();
+        self.update_irq_line(Some(0));
     }
 
     /// Commit one validated byte/halfword/word access in the keypad block.
     /// KEYINPUT writes are ignored. Sample once after both KEYCNT bytes merge,
     /// never on a transient low-byte value during a halfword or word write.
-    pub(crate) fn write_keypad(&mut self, address: u32, bytes: &[u8]) {
+    /// A request this creates is dated `offset` cycles into the current step.
+    pub(crate) fn write_keypad(&mut self, address: u32, bytes: &[u8], offset: u32) {
         debug_assert!(address >= KEYINPUT && address + bytes.len() as u32 <= KEYCNT + 2);
         let mut control = self.keypad.control();
         let mut touched = false;
@@ -447,7 +518,7 @@ impl Io {
                 self.pending |= 1 << 12;
             }
         }
-        self.wake_if_requested();
+        self.update_irq_line(Some(offset));
     }
 
     pub(crate) fn display_control(&self) -> u16 {
@@ -474,7 +545,7 @@ impl Io {
     }
 
     pub(crate) fn irq_pending(&self) -> bool {
-        self.master_enable && self.enable & self.pending != 0
+        self.master_enable && self.irq_line()
     }
 
     pub(crate) fn expedite_dma(&mut self) {
@@ -487,7 +558,7 @@ impl Io {
 
     pub(crate) fn complete_dma_unit(&mut self, channel: usize, data_latch: u32) {
         self.pending |= self.dma.complete_unit(channel, data_latch);
-        self.wake_if_requested();
+        self.update_irq_line(Some(0));
     }
 
     pub(crate) fn timer_step(&self) -> TimerStep {
@@ -502,7 +573,7 @@ impl Io {
         self.timers = step.timers;
         self.timer_phase = step.phase;
         self.pending = (self.pending & !STAGED_IRQ_MASK) | step.pending;
-        self.wake_if_requested();
+        self.update_irq_line(Some(step.raised_at()));
     }
 
     fn advance_timer_bank(
@@ -527,6 +598,9 @@ impl Io {
     }
 
     pub(crate) fn advance(&mut self, cycles: u32, advance_timers: bool) {
+        // Requests dated earlier in this step come closer; requests this batch raises
+        // are dated at its end.
+        self.irq_wait = self.irq_wait.map(|wait| wait.saturating_sub(cycles));
         self.dma.elapse(cycles);
         // Hardware state tracks time even when host-side frame capture is disabled.
         let position = self.display.position();
@@ -594,7 +668,18 @@ impl Io {
             self.audio_capture.dropped = self.audio_capture.dropped.saturating_add(dropped);
             self.dma.trigger_sound(self.audio.take_requests());
         }
-        self.wake_if_requested();
+        self.update_irq_line(Some(0));
+    }
+
+    /// Cycles until the first interrupt-enabled prescaled timer overflows, if that is
+    /// within `cycles`. Cascaded timers are dated by their caller at the batch end.
+    fn first_timer_irq(timers: &[Timer; 4], phase: u16, cycles: u32) -> Option<u32> {
+        timers
+            .iter()
+            .filter(|timer| timer.control & 0x40 != 0)
+            .filter_map(|timer| timer.next_overflow(phase))
+            .filter(|&overflow| overflow <= cycles)
+            .min()
     }
 }
 

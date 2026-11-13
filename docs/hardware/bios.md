@@ -110,11 +110,14 @@ That is the whole dispatch path: no pointer checks, so IRQ latency matches hardw
 As with any ARMv4 PC load, address bits 0–1 are ignored and the callback always runs as ARM code.
 A null pointer branches to the reset vector in IRQ mode; the reset code traps there instead of rebooting.
 Before this, extra pointer checks made the mGBA suite's Timer IRQ handler stop the timer at `0x56` instead of hardware's `0x51`;
-it now stops at `0x4e`, three cycles early, because the CPU-side IRQ entry delay is not modeled yet.
+it stopped at `0x4e` until the [request delay](timers-irq.md#request-delay-stop-latency-and-reload-latch) was modeled, and now stops at `0x51`.
 The callback must preserve r4–r11, acknowledge handled IF bits, and return with `BX lr`.
 For interrupt waits, it must also OR the handled bits into the halfword at `0x03007ff8`.
 Acknowledging IF alone does not complete IntrWait. Nested IRQs are not supported; callbacks may call other services.
 The dispatcher restores registers and returns with `SUBS pc, lr, #4`.
+
+The path from a recorded flag back to IntrWait's caller is shaped and padded to the firmware's cost: the suite's Timer
+count-up tests synchronize on that return, and only one length passes all of them.
 
 IntrWait consumes only the selected BIOS RAM flags; other flags remain set.
 With `r0=0`, a previously recorded selected flag permits immediate return.

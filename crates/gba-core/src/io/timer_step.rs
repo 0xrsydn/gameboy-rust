@@ -1,6 +1,7 @@
 //! Staged timer, audio, and serial clocks for one instruction, IRQ entry, or DMA unit.
 //! Other devices remain on the instruction-boundary scheduler.
 use super::{Io, Timer, IF, TIMER_BASE, TIMER_START_DELAY};
+use crate::audio::capture::{SampleBatch, SampleClock, STEP_SAMPLES};
 
 pub(super) const STAGED_IRQ_MASK: u16 = 0xf8;
 
@@ -13,7 +14,70 @@ pub(crate) struct TimerStep {
     pub(super) timers: [Timer; 4],
     pub(super) phase: u16,
     pub(super) pending: u16,
+    /// `IE` when the shadow was staged, to date the first request it raises.
+    enable: u16,
+    raised_at: Option<u32>,
     elapsed: u32,
+}
+
+/// The clocks one step stages, borrowed either from a `TimerStep` or from `Io` itself.
+struct Staged<'a> {
+    audio: &'a mut crate::audio::Audio,
+    sample_clock: &'a mut SampleClock,
+    samples: &'a mut SampleBatch,
+    serial: &'a mut super::Serial,
+    timers: &'a mut [Timer; 4],
+    phase: &'a mut u16,
+    pending: &'a mut u16,
+    enable: u16,
+    raised_at: &'a mut Option<u32>,
+}
+
+impl Staged<'_> {
+    /// Advance from `from` cycles into the step by `cycles`. Record when the first new
+    /// enabled request occurred: serial completion and prescaled timer overflows at their
+    /// exact cycle, a cascaded overflow at the end of its batch.
+    #[inline]
+    fn advance(self, from: u32, cycles: u32) {
+        let Self {
+            audio,
+            sample_clock,
+            samples,
+            serial,
+            timers,
+            phase,
+            pending,
+            enable,
+            raised_at,
+        } = self;
+        // Dating a request needs the timers as they were before the batch. Requests are
+        // rare, so keep a copy and compute the overflow cycle only when one is raised.
+        let mut raise = |bits: u16, at: &dyn Fn() -> u32| {
+            if bits & enable & !*pending != 0 && raised_at.is_none() {
+                *raised_at = Some(at());
+            }
+            *pending |= bits;
+        };
+        // An unclocked serial port has no event and its advance does nothing.
+        if let Some(completion) = serial.next_event_cycles() {
+            raise(serial.advance(cycles), &|| from + completion.min(cycles));
+        }
+        let mut base = from;
+        let capacity = STEP_SAMPLES - samples.len;
+        let dropped = sample_clock.advance(cycles, capacity, |count, sample| {
+            let before = (*timers, *phase);
+            let bits = Io::advance_timer_bank(timers, phase, audio, count);
+            raise(bits, &|| {
+                base + Io::first_timer_irq(&before.0, before.1, count).unwrap_or(count)
+            });
+            base += count;
+            if sample {
+                samples.samples[samples.len] = audio.level();
+                samples.len += 1;
+            }
+        });
+        samples.dropped = samples.dropped.saturating_add(dropped);
+    }
 }
 
 impl TimerStep {
@@ -26,6 +90,8 @@ impl TimerStep {
             timers: io.timers,
             phase: io.timer_phase,
             pending: io.pending & STAGED_IRQ_MASK,
+            enable: io.enable,
+            raised_at: None,
             elapsed: 0,
         }
     }
@@ -37,29 +103,29 @@ impl TimerStep {
             || matches!(address, TIMER_BASE..=0x0400_010f | IF)
     }
 
+    /// Cycles into the step at which this shadow first raised an enabled request, or the
+    /// time it has reached if it raised none.
+    pub(super) fn raised_at(&self) -> u32 {
+        self.raised_at.unwrap_or(self.elapsed)
+    }
+
     pub(crate) fn advance_to(&mut self, elapsed: u32) {
         assert!(elapsed >= self.elapsed, "timer step time must be monotonic");
         if elapsed == self.elapsed {
             return; // Several lanes of one access observe the same staged time.
         }
-        self.pending |= self.serial.advance(elapsed - self.elapsed);
-        let dropped = self.sample_clock.advance(
-            elapsed - self.elapsed,
-            crate::audio::capture::STEP_SAMPLES - self.samples.len,
-            |count, sample| {
-                self.pending |= Io::advance_timer_bank(
-                    &mut self.timers,
-                    &mut self.phase,
-                    &mut self.audio,
-                    count,
-                );
-                if sample {
-                    self.samples.samples[self.samples.len] = self.audio.level();
-                    self.samples.len += 1;
-                }
-            },
-        );
-        self.samples.dropped = self.samples.dropped.saturating_add(dropped);
+        Staged {
+            audio: &mut self.audio,
+            sample_clock: &mut self.sample_clock,
+            samples: &mut self.samples,
+            serial: &mut self.serial,
+            timers: &mut self.timers,
+            phase: &mut self.phase,
+            pending: &mut self.pending,
+            enable: self.enable,
+            raised_at: &mut self.raised_at,
+        }
+        .advance(self.elapsed, elapsed - self.elapsed);
         self.elapsed = elapsed;
     }
 
@@ -98,30 +164,24 @@ impl Io {
     /// Advance the staged devices in place for a step that never observed them.
     /// This must equal staging a `TimerStep`, advancing it once, and committing it.
     pub(crate) fn advance_staged_devices(&mut self, cycles: u32) {
-        let mut pending = self.serial.advance(cycles);
-        let mut batch = crate::audio::capture::SampleBatch::default();
-        let mut clock = self.audio_capture.clock;
-        let dropped = clock.advance(
-            cycles,
-            crate::audio::capture::STEP_SAMPLES,
-            |count, sample| {
-                pending |= Io::advance_timer_bank(
-                    &mut self.timers,
-                    &mut self.timer_phase,
-                    &mut self.audio,
-                    count,
-                );
-                if sample {
-                    batch.samples[batch.len] = self.audio.level();
-                    batch.len += 1;
-                }
-            },
-        );
-        batch.dropped = dropped;
-        self.audio_capture.commit(clock, batch);
+        let mut samples = SampleBatch::default();
+        let mut sample_clock = self.audio_capture.clock;
+        let mut raised_at = None;
+        Staged {
+            audio: &mut self.audio,
+            sample_clock: &mut sample_clock,
+            samples: &mut samples,
+            serial: &mut self.serial,
+            timers: &mut self.timers,
+            phase: &mut self.timer_phase,
+            pending: &mut self.pending,
+            enable: self.enable,
+            raised_at: &mut raised_at,
+        }
+        .advance(0, cycles);
+        self.audio_capture.commit(sample_clock, samples);
         self.dma.trigger_sound(self.audio.take_requests());
-        self.pending |= pending;
-        self.wake_if_requested();
+        self.update_irq_line(Some(raised_at.unwrap_or(cycles)));
     }
 }
 

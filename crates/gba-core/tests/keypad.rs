@@ -233,7 +233,7 @@ fn machine(masked: bool) -> Machine {
 }
 
 #[test]
-fn keypad_wakes_halt_only_through_ie_and_ignores_ime_and_cpu_masks_for_wake() {
+fn keypad_wakes_halt_three_cycles_later_only_through_ie_and_ignores_ime_and_cpu_masks() {
     for masked in [false, true] {
         for ie in [0, IRQ] {
             for ime in [0, 1] {
@@ -250,10 +250,16 @@ fn keypad_wakes_halt_only_through_ie_and_ignores_ime_and_cpu_masks_for_wake() {
                 assert_eq!(m.cpu(), &before);
                 assert_eq!(m.cycles(), cycles);
                 assert_eq!(m.last_timing(), timing);
+                assert!(m.halted()); // An enabled request still takes three cycles to arrive.
+                assert_eq!(m.step().unwrap(), StepKind::HaltIdle);
                 assert_eq!(m.halted(), ie == 0);
-                let expected = if ie == 0 {
-                    StepKind::HaltIdle
-                } else if ime != 0 && !masked {
+                if ie == 0 {
+                    continue;
+                }
+                // Three cycles for the request to arrive, three more for the CPU to restart.
+                assert_eq!(m.last_timing().idle_cycles, 6);
+                assert_eq!(m.cycles(), cycles + 6);
+                let expected = if ime != 0 && !masked {
                     StepKind::IrqEntry
                 } else {
                     StepKind::Instruction
@@ -285,6 +291,10 @@ fn control_write_can_wake_halt_with_an_already_held_key() {
     m.memory_mut().write16(IE, IRQ).unwrap();
     m.memory_mut().write8(HALTCNT, 0).unwrap();
     m.memory_mut().write16(KEYCNT, 0x4001).unwrap();
+    assert!(pending(m.memory()));
+    assert!(m.halted()); // The new sample's request arrives three cycles later.
+    assert_eq!(m.step().unwrap(), StepKind::HaltIdle);
+    assert_eq!(m.last_timing().idle_cycles, 6); // Arrival plus the wake latency.
     assert!(!m.halted());
     assert_eq!(m.step().unwrap(), StepKind::Instruction); // IME remains zero.
 }
@@ -312,6 +322,11 @@ fn keypad_irq_entry_and_return_restore_arm_and_thumb_instruction_state() {
         mem.write16(IE, IRQ).unwrap();
         mem.write16(IME, 1).unwrap();
         press(&mut mem, 1);
+        // The CPU sees the request three cycles after the key edge.
+        mem.advance_cycles(2);
+        assert!(!mem.irq_pending());
+        mem.advance_cycles(1);
+        assert!(mem.irq_pending());
         let mut m = Machine::new(cpu, mem);
         assert_eq!(m.step().unwrap(), StepKind::IrqEntry);
         assert_eq!(m.cpu().mode(), Mode::Irq);
@@ -352,7 +367,7 @@ fn prepared(instruction: u32, destination: u32, value: u32) -> Machine {
 }
 
 #[test]
-fn cpu_store_samples_keys_then_irq_enters_on_the_following_step() {
+fn cpu_store_samples_keys_then_irq_enters_three_cycles_after_the_store() {
     for (instruction, address, value) in [
         (0xe1c0_10b0, KEYCNT, 0x4001),
         (0xe580_1000, KEYINPUT, 0x4001_ffff),
@@ -365,6 +380,11 @@ fn cpu_store_samples_keys_then_irq_enters_on_the_following_step() {
         assert_eq!(m.cpu().pc(), ROM_START + 12);
         assert_eq!(m.memory().read16(KEYCNT).unwrap(), 0x4001);
         assert_eq!(m.memory().read16(KEYINPUT).unwrap(), 0x3fe);
+        // The request is dated at the store's bus access, which ends that step. The
+        // following branch takes longer than the three-cycle delay.
+        assert!(!m.memory().irq_pending());
+        assert_eq!(m.step().unwrap(), StepKind::Instruction);
+        assert!(m.memory().irq_pending());
         assert_eq!(m.step().unwrap(), StepKind::IrqEntry);
     }
 }
@@ -413,6 +433,10 @@ fn failed_block_store_does_not_commit_key_control_irq_history_or_halt_wake() {
     assert!(m.halted());
     m.memory_mut().write16(KEYCNT, 0xc001).unwrap();
     assert!(pending(m.memory())); // Failure did not consume the first AND sample.
+                                  // The request reaches HALT three cycles later.
+    m.memory_mut().advance_cycles(2);
+    assert!(m.halted());
+    m.memory_mut().advance_cycles(1);
     assert!(!m.halted());
 }
 
@@ -499,6 +523,9 @@ fn original_bios_intrwait_can_sleep_until_keypad_callback_records_the_request() 
     }
     assert!(m.halted());
     press(m.memory_mut(), 1);
+    assert!(m.halted()); // The request arrives three cycles later.
+    assert_eq!(m.step().unwrap(), StepKind::HaltIdle);
+    assert_eq!(m.last_timing().idle_cycles, 6); // Arrival plus the wake latency.
     assert!(!m.halted());
     let mut irq_entries = 0;
     for _ in 0..300 {

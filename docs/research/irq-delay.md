@@ -92,3 +92,27 @@ What is still missing, and why the switch was not turned into a model:
 Suggested implementation: keep a device clock and a `ready_at` time for the line in `Io`; date staged timer and serial
 requests at their exact phase; bound HALT idle by `ready_at`; charge the extra entry cycle; add the reload latch to
 `Timer`. Then fit the HALT wake cost against SIO timing and Hblank.
+
+## Adopted model (2026-11-13)
+
+The suggested implementation was built the same day and all of Timers (936), Timer IRQ (90), and SIO timing (4)
+pass. Two readings above were corrected on the way:
+
+- Fact 2 is the **timer stop latency**, not an IRQ entry cycle. With exact request dating, an extra entry cycle left
+  every multi-IRQ count-up case one off, because it lengthens every handler round trip; stopping the timer one cycle
+  late changes only the stop value. The stopped timer must keep its old prescaler for that cycle.
+- The earlier Timers comparison between the two readings was confounded by end-of-instruction dating.
+
+Two constants were then fitted, each with a single sharp optimum:
+
+| HALT wake cycles | 0 | 1 | 2 | 3 | 4 | 5 | 6 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| SIO timing (of 4) | 0 | 0 | 0 | 4 | 0 | 0 | 0 |
+
+| IntrWait exit, cycles against the old path | −7 | −6 | −5 | −4 | −3 | −2 | −1 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Timers (of 936), HALT wake 3 | 903 | 920 | 936 | 918 | 911 | 897 | 880 |
+
+Sampling the line earlier inside multi-cycle instructions was also tried and scored lower in every variant.
+The same six Misc. edge results fail before and after the model ("Break", "Read", "Hblank", and "Flip" 1 to 3). The rules are documented in
+[timers and interrupts](../hardware/timers-irq.md#request-delay-stop-latency-and-reload-latch).

@@ -4,7 +4,7 @@ use crate::{
     cpu::Cpu,
     display::HBLANK_START,
     dma::DMA_STRIDE,
-    io::{DISPSTAT, HALTCNT, IE, IF, IME, TIMER_BASE, WAITCNT},
+    io::{DISPSTAT, HALTCNT, HALT_WAKE_CYCLES, IE, IF, IME, IRQ_DELAY, TIMER_BASE, WAITCNT},
     machine::{Machine, StepKind},
 };
 
@@ -64,7 +64,7 @@ fn byte_halfword_and_word_lanes_share_one_completed_access() {
 }
 
 #[test]
-fn starting_and_stopping_timers_take_effect_after_the_store_bus_cycle() {
+fn timers_start_two_cycles_and_stop_one_cycle_after_the_store_bus_cycle() {
     for running in [false, true] {
         let control = if running { 0 } else { 0x0080_0000 };
         let (cpu, mut memory) =
@@ -80,11 +80,11 @@ fn starting_and_stopping_timers_take_effect_after_the_store_bus_cycle() {
             if running { 7 } else { 0 }
         );
         // Store left N: this ROM fetch costs eight cycles. A machine start counts after
-        // its two-cycle start delay: 8 - 2.
+        // its two-cycle start delay: 8 - 2. A machine stop still counts the next cycle.
         machine.step().unwrap();
         assert_eq!(
             machine.memory().read16(TIMER_BASE).unwrap(),
-            if running { 7 } else { 6 }
+            if running { 8 } else { 6 }
         );
         assert_eq!(machine.cycles(), 15);
     }
@@ -158,6 +158,9 @@ fn cascades_and_timer_irq_bits_are_visible_at_the_read_phase() {
     let mut machine = Machine::new(cpu, memory);
     assert_eq!(machine.step().unwrap(), StepKind::Instruction);
     assert_eq!(machine.cpu().registers()[0], 0x0008_0008); // Word IE+IF, coherent timer flag.
+                                                           // The flag set at cycle 6 reaches the CPU at cycle 9, one past this eight-cycle load.
+    assert!(!machine.memory().irq_pending());
+    assert_eq!(machine.step().unwrap(), StepKind::Instruction);
     assert_eq!(machine.step().unwrap(), StepKind::IrqEntry);
 }
 
@@ -315,7 +318,8 @@ fn bios_power_store_pays_its_cycles_and_new_timer_irq_wakes_only_halt() {
         machine.step().unwrap();
         assert_eq!(machine.cycles(), 2);
         assert_eq!(machine.memory().read16(IF).unwrap(), 8);
-        assert!(!machine.halted());
+        // The overflow at cycle 1 reaches HALT at cycle 4, after the store completes.
+        assert_eq!(machine.halted(), !stop);
         assert_eq!(machine.stopped(), stop);
         if stop {
             let before = machine.memory().io.timer_step();
@@ -323,6 +327,14 @@ fn bios_power_store_pays_its_cycles_and_new_timer_irq_wakes_only_halt() {
             assert_eq!(machine.memory().io.timer_step(), before);
             assert_eq!(machine.cycles(), 2);
         } else {
+            // Idle is bounded by the next overflow, then by the request's arrival.
+            assert_eq!(machine.step().unwrap(), StepKind::HaltIdle);
+            assert_eq!(machine.last_timing().idle_cycles, 1);
+            assert!(machine.halted());
+            assert_eq!(machine.step().unwrap(), StepKind::HaltIdle);
+            assert_eq!(machine.last_timing().idle_cycles, 1 + HALT_WAKE_CYCLES);
+            assert!(!machine.halted());
+            assert_eq!(machine.cycles(), 7);
             assert_eq!(machine.step().unwrap(), StepKind::Instruction);
         }
     }
@@ -399,6 +411,13 @@ fn halt_after_a_machine_timer_start_uses_the_committed_shared_phase() {
     assert_eq!(machine.step().unwrap(), StepKind::HaltIdle);
     assert_eq!(machine.last_timing().idle_cycles, 65); // The next /64 edge is t=128.
     assert_eq!(machine.cycles(), 128);
+    assert!(machine.halted()); // The overflow reaches HALT IRQ_DELAY cycles later.
+    assert_eq!(machine.step().unwrap(), StepKind::HaltIdle);
+    assert_eq!(
+        machine.last_timing().idle_cycles,
+        IRQ_DELAY + HALT_WAKE_CYCLES
+    );
+    assert_eq!(machine.cycles(), 134);
     assert!(!machine.halted());
 }
 

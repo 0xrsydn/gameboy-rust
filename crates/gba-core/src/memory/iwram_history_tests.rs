@@ -3,7 +3,7 @@ use super::*;
 use crate::{
     cpu::Cpu,
     dma::DMA_STRIDE,
-    io::{IE, IME, TIMER_BASE},
+    io::{IE, IME, IRQ_DELAY, TIMER_BASE},
     machine::{Machine, StepKind},
 };
 
@@ -153,6 +153,7 @@ fn accepted_irq_and_bios_fetches_preserve_local_lanes_until_actual_iwram_access(
         .write32(TIMER_BASE, 0x00c0_ffff)
         .unwrap();
     machine.memory_mut().advance_cycles(1);
+    machine.memory_mut().advance_cycles(IRQ_DELAY); // The CPU sees the request this much later.
     assert_eq!(machine.step().unwrap(), StepKind::IrqEntry);
     assert_eq!(machine.memory().iwram_bus.committed_word(), Some(WORD));
     machine.step().unwrap();

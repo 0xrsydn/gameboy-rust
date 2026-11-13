@@ -214,19 +214,24 @@ pub fn image() -> Vec<u8> {
     a.emit(0xe58c_3000); // STR r3,[r12] (IME=0)
     a.emit(0xe1d2_30b0); // LDRH r3,[r2]
     a.emit(0xe113_0001); // TST r3,r1
-    a.branch(1, "wait_done");
+    a.branch(0, "wait_halt");
+    // The path from a recorded flag back to the caller is shaped and padded so the mGBA
+    // test suite's timer tests, which synchronize on this return, match hardware.
+    a.emit(0xe1c3_3001); // BIC r3,r3,r1 (consume selected flags only)
+    a.emit(0xe1c2_30b0); // STRH r3,[r2]
+    a.emit(0xe3a0_3001); // MOV r3,#1
+    a.emit(0xe58c_3000); // STR r3,[r12]
+    pad(&mut a, INTR_WAIT_EXIT_PAD);
+    a.emit(0xe8bd_000f); // LDMIA sp!,{r0-r3}
+    a.emit(0xe28d_d008); // ADD sp,sp,#8 (saved r12 and lr; neither was changed)
+    emit_supervisor_exit(&mut a);
+    a.label("wait_halt");
     a.literal(0, HALTCNT);
     a.emit(0xe3a0_3000); // MOV r3,#0
     a.emit(0xe5c0_3000); // STRB r3,[r0] (HALT)
     a.emit(0xe3a0_3001); // MOV r3,#1
     a.emit(0xe58c_3000); // STR r3,[r12] (IME=1, allow IRQ callback to record flags)
     a.branch(14, "wait_loop");
-    a.label("wait_done");
-    a.emit(0xe1c3_3001); // BIC r3,r3,r1 (consume selected flags only)
-    a.emit(0xe1c2_30b0); // STRH r3,[r2]
-    a.emit(0xe3a0_3001); // MOV r3,#1
-    a.emit(0xe58c_3000); // STR r3,[r12]
-    a.branch(14, "return");
 
     a.label("cpu_set");
     emit_count(&mut a);
@@ -331,6 +336,9 @@ fn emit_supervisor_exit(a: &mut ArmImage) {
     a.emit(0xe1b0_f00e); // MOVS pc,lr
     a.prefetch_tail(0xe3a0_2004); // SWI return protected-read word.
 }
+
+/// Measured against the suite's Timer count-up results; see docs/hardware/bios.md.
+const INTR_WAIT_EXIT_PAD: usize = 1;
 
 /// Single-cycle `MOV r0,r0` padding that matches the firmware's measured fixed costs.
 fn pad(a: &mut ArmImage, cycles: usize) {

@@ -35,8 +35,26 @@ Without it, every calibration case read two too many. The same delay applies to 
 identically with or without it there, so that part is unverified. Host setup writes outside machine steps start counting at once.
 The delay is part of save states.
 
-IRQs are taken at the first instruction boundary after `IME && IE & IF`, and HALT wakes at once; hardware delays both.
-A [delay model experiment](../research/irq-delay.md) did not yet improve suite agreement and was not adopted.
+### Request delay, stop latency, and reload latch
+
+Four rules are fitted to the [mGBA test suite](../public-mgba-suite.md)'s hardware-verified Timer IRQ, Timer count-up,
+and SIO timing results. With them all three sub-suites pass in full. The
+[experiment notes](../research/irq-delay.md) record how each was isolated.
+
+- **Request delay.** When `IE & IF` becomes nonzero, the CPU and HALT see the request three cycles later. The CPU then
+  takes it at the next instruction boundary, if IME and CPSR allow. A request that stays asserted keeps its date; IME
+  changes apply at once. Prescaled timer overflows and serial completions are dated at their exact cycle inside the
+  instruction. Display, DMA, keypad, and cascaded-timer requests are dated at the end of the device batch that raised
+  them, and emulated writes to IE, IF, or DISPSTAT at their bus access.
+- **HALT wake.** HALT stays idle until the delayed request reaches it, then three cycles more before the CPU resumes.
+  This constant is fitted together with this firmware's Halt service, so it is not an isolated hardware fact.
+- **Stop latency.** A timer that an emulated write disables counts one more cycle, with its old prescaler.
+- **Reload latch.** An overflow in the cycle right after an emulated reload write still reloads the previous value.
+  The counter then overflows again a cycle later with the new one.
+
+Host setup writes outside machine steps do none of this: a request they create is visible at once, and timers stop
+and take reload values immediately. Key presses and host keypad-control writes are the exception: they model an
+external event, so the request they raise is delayed like any other. All four states are part of save states.
 Block transfers preserve distinct word phases; combined reload/control writes merge at one phase, with reload bytes first.
 
 The transaction also owns timer IF bits. Reads see overflows through the current access; acknowledgements clear earlier timer requests.
@@ -48,7 +66,7 @@ IRQ delivery still waits until the next machine step. A committed timer request 
 Successful steps commit timers, the shared divider phase, audio/serial state, and timer/serial IF bits.
 Failed steps discard staged counters, divider progress, device writes, FIFO consumption, serial shifts, and requests.
 Display and other device clocks then advance once, without advancing timers again.
-Display and remaining devices still use the bulk scheduler. Mid-instruction display events, general bus arbitration, and IRQ synchronization delays remain unmodeled.
+Display and remaining devices still use the bulk scheduler. Mid-instruction display events and general bus arbitration remain unmodeled; display requests are dated at the end of their batch.
 [Direct Sound](audio.md) consumes selected timer overflows in the timer transaction; sound DMA requests commit at step boundaries.
 The same transaction advances both PSG pulse oscillators, the noise counter, and their shared 512 Hz sequencer independently of the general-purpose timers.
 It also advances [normal serial transfers](serial.md) with nominal internal clocks. External-clock requests cannot progress without a clock source.

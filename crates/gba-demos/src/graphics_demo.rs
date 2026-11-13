@@ -447,7 +447,12 @@ mod tests {
             assert_eq!(demo.machine().cpu().mode(), Mode::System);
             assert!(demo.machine().cpu().pc() < ROM_START);
             assert_eq!(demo.machine().cpu().cpsr() & 0x80, 0);
-            assert!(!demo.machine().halted()); // VBlank wakes HALT while the wait service has IME=0.
+            // VBlank reaches HALT three cycles after its edge, while the wait service has
+            // IME=0; the waking idle step also pays the three-cycle wake latency.
+            assert!(demo.machine().halted());
+            assert_eq!(demo.machine.step().unwrap(), StepKind::HaltIdle);
+            assert_eq!(demo.machine().last_timing().idle_cycles, 6);
+            assert!(!demo.machine().halted());
             let mut entries = 0;
             for _ in 0..200 {
                 // Back in the demo's own code, not in its IRQ callback (IRQ mode).

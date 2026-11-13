@@ -172,7 +172,7 @@ fn gpio_gates_the_clock_and_leaving_normal_mode_requires_cancellation() {
 }
 
 #[test]
-fn halt_stops_at_serial_completion_and_delivery_obeys_ime() {
+fn halt_wakes_three_cycles_after_serial_completion_and_delivery_obeys_ime() {
     for ime in [0, 1] {
         let mut bus = memory();
         bus.write16(IE, 0x80).unwrap();
@@ -182,8 +182,12 @@ fn halt_stops_at_serial_completion_and_delivery_obeys_ime() {
         let mut machine = Machine::new(Cpu::new(ROM_START), bus);
         assert_eq!(machine.step().unwrap(), StepKind::HaltIdle);
         assert_eq!(machine.cycles(), 64);
-        assert!(!machine.halted());
         assert_eq!(machine.memory().read16(IF).unwrap(), 0x80);
+        assert!(machine.halted()); // Idle ends at completion; the request arrives later.
+        assert_eq!(machine.step().unwrap(), StepKind::HaltIdle);
+        assert_eq!(machine.last_timing().idle_cycles, 6); // Arrival plus the wake latency.
+        assert_eq!(machine.cycles(), 70);
+        assert!(!machine.halted());
         assert_eq!(
             machine.step().unwrap(),
             if ime == 0 {

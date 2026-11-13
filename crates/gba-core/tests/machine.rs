@@ -22,6 +22,9 @@ fn timer(bus: &mut Memory) {
 fn pending_timer(bus: &mut Memory) {
     timer(bus);
     bus.advance_cycles(1);
+    assert!(!bus.irq_pending());
+    bus.advance_cycles(3); // The CPU sees the overflow three cycles later.
+    assert!(bus.irq_pending());
     bus.write16(TIMER_BASE + 2, 0).unwrap();
 }
 
@@ -66,8 +69,9 @@ fn timer_demo_configures_hardware_in_cpu_code_and_handles_exactly_one_irq() {
     assert_eq!(machine.memory().read16(IF).unwrap(), 0);
     assert_eq!(machine.memory().read16(TIMER_BASE + 2).unwrap(), 0);
     // Start no longer pays its preceding nine cycles; stop now pays its two bus cycles.
-    // A machine start also waits two cycles before counting.
-    assert_eq!(machine.memory().read16(TIMER_BASE).unwrap(), 0xfff2);
+    // A machine start also waits two cycles before counting, and a machine stop still
+    // counts the cycle after its store.
+    assert_eq!(machine.memory().read16(TIMER_BASE).unwrap(), 0xfff3);
     for _ in 0..100 {
         assert_eq!(machine.step().unwrap(), StepKind::Instruction);
     }
@@ -132,6 +136,14 @@ fn ime_and_ie_gate_pending_device_requests_until_cpu_enables_them() {
         machine.memory_mut().write16(register, 0).unwrap();
         assert!(!machine.memory().irq_pending());
         assert_eq!(machine.step().unwrap(), StepKind::Instruction);
+        if register == IE {
+            // The store's bus access ends the step; a request that IE creates is seen
+            // three cycles after it. IME gates an old request at once.
+            assert!(!machine.memory().irq_pending());
+            machine.memory_mut().advance_cycles(2);
+            assert!(!machine.memory().irq_pending());
+            machine.memory_mut().advance_cycles(1);
+        }
         assert!(machine.memory().irq_pending());
         assert_eq!(machine.step().unwrap(), StepKind::IrqEntry);
     }

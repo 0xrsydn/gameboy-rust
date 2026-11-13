@@ -3,7 +3,7 @@ use super::*;
 use crate::{
     dma::{DMA_BASE, DMA_STRIDE},
     input::Buttons,
-    io::{HALTCNT, IE, IME, KEYCNT, TIMER_BASE, WAITCNT},
+    io::{HALTCNT, HALT_WAKE_CYCLES, IE, IME, IRQ_DELAY, KEYCNT, TIMER_BASE, WAITCNT},
     machine::{Machine, StepKind},
     memory::{BIOS_SIZE, ROM_START},
 };
@@ -251,10 +251,12 @@ fn branch_refill_and_irq_entry_consume_resume_without_an_extra_nominal_access() 
     let mut bus = Memory::with_bios(0xe1a0_0000_u32.to_le_bytes().repeat(80), bios).unwrap();
     configure(&mut bus, 3, RAM, DEST, 1);
     bus.write16(DMA_BASE + 3 * DMA_STRIDE + 10, 0xc400).unwrap();
-    bus.write16(IE, 1 << 11).unwrap();
     bus.write16(IME, 1).unwrap();
     let mut machine = Machine::new(cpu, bus);
     assert_eq!(machine.step().unwrap(), StepKind::Dma { channel: 3 });
+    // A request enabled during the transfer would reach the CPU IRQ_DELAY cycles after
+    // completion, behind the resumed instruction. A host IE write is visible at once.
+    machine.memory_mut().write16(IE, 1 << 11).unwrap();
     assert_eq!(machine.step().unwrap(), StepKind::IrqEntry);
     // Source N=8 + BIOS pair 2.
     assert_eq!(machine.last_timing().code_cycles, 10);
@@ -287,6 +289,14 @@ fn halt_and_stop_idle_do_not_consume_a_completed_dma_resume() {
                 .unwrap();
             machine.memory_mut().write8(HALTCNT, 0).unwrap();
             assert_eq!(machine.step().unwrap(), StepKind::HaltIdle);
+            assert_eq!(machine.last_timing().idle_cycles, 16);
+            assert!(machine.halted()); // The overflow reaches HALT IRQ_DELAY cycles later.
+            assert_eq!(machine.step().unwrap(), StepKind::HaltIdle);
+            assert_eq!(
+                machine.last_timing().idle_cycles,
+                IRQ_DELAY + HALT_WAKE_CYCLES
+            );
+            assert!(!machine.halted());
         }
         assert_eq!(machine.step().unwrap(), StepKind::Instruction);
         assert_eq!(machine.last_timing().code_cycles, 8);
@@ -299,7 +309,8 @@ fn halt_and_stop_idle_do_not_consume_a_completed_dma_resume() {
 fn resumed_n_cost_advances_devices_and_defers_irq_to_the_following_step() {
     let (cpu, mut bus) = program(false, PC, 0xe1a0_0000);
     dma(&mut bus);
-    bus.write32(TIMER_BASE, 0x00c0_fff9).unwrap(); // Overflow after seven cycles.
+    // Overflow after five cycles; the CPU sees it IRQ_DELAY later, as the N access ends.
+    bus.write32(TIMER_BASE, 0x00c0_fffb).unwrap();
     bus.write16(IE, 8).unwrap();
     bus.write16(IME, 1).unwrap();
     let mut machine = Machine::new(cpu, bus);

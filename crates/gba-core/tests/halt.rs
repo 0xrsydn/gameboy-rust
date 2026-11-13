@@ -25,6 +25,21 @@ fn pending_timer(bus: &mut Memory) {
     bus.write16(TIMER_BASE + 2, 0).unwrap();
 }
 
+/// Interrupt-line delay plus HALT wake latency: the idle cycles of the step that wakes
+/// when nothing else is scheduled before the request arrives.
+const WAKE_IDLE: u32 = 3 + 3;
+
+/// A timer overflowing every cycle bounds each idle step to one cycle, so the request
+/// raised by the first step arrives in the fourth, which also pays the wake latency.
+fn idle_through_every_cycle_overflows(machine: &mut Machine) {
+    for (idle, halted) in [(1, true), (1, true), (1, true), (1 + 3, false)] {
+        assert_eq!(machine.step().unwrap(), StepKind::HaltIdle);
+        assert_eq!(machine.last_timing().idle_cycles, idle);
+        assert_eq!(machine.halted(), halted);
+    }
+    assert_eq!(machine.cycles(), 7);
+}
+
 fn halt(machine: &mut Machine) {
     // Bare bus writes are explicit host/debug setup, not CPU-originated accesses.
     machine.memory_mut().write8(HALTCNT, 0).unwrap();
@@ -177,7 +192,7 @@ fn ie_gates_wake_but_ime_does_not_and_wake_is_not_reversed_by_acknowledgement() 
 }
 
 #[test]
-fn timer_wakes_at_exact_overflow_without_ime_and_resumes_next_instruction() {
+fn timer_wakes_three_cycles_after_overflow_without_ime_and_resumes_next_instruction() {
     let mut machine = machine();
     machine
         .memory_mut()
@@ -190,6 +205,12 @@ fn timer_wakes_at_exact_overflow_without_ime_and_resumes_next_instruction() {
     assert_eq!(machine.last_timing().idle_cycles, 10);
     assert_eq!(machine.cpu(), &before);
     assert_eq!(machine.cycles(), 10);
+    assert_eq!(machine.memory().read16(IF).unwrap(), 8);
+    assert!(machine.halted()); // The overflow has not reached HALT yet.
+    assert_eq!(machine.step().unwrap(), StepKind::HaltIdle);
+    assert_eq!(machine.last_timing().idle_cycles, WAKE_IDLE);
+    assert_eq!(machine.cpu(), &before);
+    assert_eq!(machine.cycles(), 16);
     assert!(!machine.halted());
     assert!(!machine.memory().irq_pending());
     assert_eq!(machine.memory().read16(IF).unwrap(), 8);
@@ -208,8 +229,7 @@ fn cpsr_irq_mask_blocks_handler_but_not_halt_wake() {
     bus.write16(IME, 1).unwrap();
     bus.write8(HALTCNT, 0).unwrap();
     let mut machine = Machine::new(Cpu::at_reset(), bus);
-    assert_eq!(machine.step().unwrap(), StepKind::HaltIdle);
-    assert!(!machine.halted());
+    idle_through_every_cycle_overflows(&mut machine);
     assert!(machine.memory().irq_pending());
     assert_eq!(machine.step().unwrap(), StepKind::Instruction);
     assert_eq!(machine.cpu().mode(), Mode::Supervisor);
@@ -226,7 +246,7 @@ fn unmasked_wake_enters_irq_before_executing_resumed_instruction() {
     machine.memory_mut().write16(IE, 8).unwrap();
     machine.memory_mut().write16(IME, 1).unwrap();
     halt(&mut machine);
-    assert_eq!(machine.step().unwrap(), StepKind::HaltIdle);
+    idle_through_every_cycle_overflows(&mut machine);
     assert_eq!(machine.step().unwrap(), StepKind::IrqEntry);
     assert_eq!(machine.cpu().mode(), Mode::Irq);
     assert_eq!(machine.cpu().pc(), 0x18);
@@ -248,7 +268,7 @@ fn wake_irq_returns_to_thumb_without_skipping_instruction() {
     bus.write16(IME, 1).unwrap();
     bus.write8(HALTCNT, 0).unwrap();
     let mut machine = Machine::new(cpu, bus);
-    assert_eq!(machine.step().unwrap(), StepKind::HaltIdle);
+    idle_through_every_cycle_overflows(&mut machine);
     assert_eq!(machine.step().unwrap(), StepKind::IrqEntry);
     assert_eq!(machine.cpu().spsr(), Some(0x3f));
     machine.memory_mut().write16(TIMER_BASE + 2, 0).unwrap();
@@ -261,7 +281,7 @@ fn wake_irq_returns_to_thumb_without_skipping_instruction() {
 }
 
 #[test]
-fn all_display_interrupt_sources_can_wake_halt_at_their_edges() {
+fn all_display_interrupt_sources_can_wake_halt_three_cycles_after_their_edges() {
     for (control, mask, edge) in [
         (8, 1, VBLANK_START),
         (0x10, 2, HBLANK_START),
@@ -275,8 +295,12 @@ fn all_display_interrupt_sources_can_wake_halt_at_their_edges() {
         assert_eq!(machine.step().unwrap(), StepKind::HaltIdle);
         assert_eq!(machine.last_timing().idle_cycles, 1);
         assert_eq!(machine.cycles(), u64::from(edge));
-        assert!(!machine.halted());
         assert_eq!(machine.memory().read16(IF).unwrap(), mask);
+        assert!(machine.halted());
+        assert_eq!(machine.step().unwrap(), StepKind::HaltIdle);
+        assert_eq!(machine.last_timing().idle_cycles, WAKE_IDLE);
+        assert_eq!(machine.cycles(), u64::from(edge + WAKE_IDLE));
+        assert!(!machine.halted());
     }
 }
 
@@ -309,7 +333,20 @@ fn idle_scheduling_accounts_for_timer_prescaler_phase() {
         assert_eq!(machine.step().unwrap(), StepKind::HaltIdle);
         assert_eq!(machine.last_timing().idle_cycles, 1);
         assert_eq!(machine.cycles(), u64::from(divisor));
-        assert!(!machine.halted());
+        assert!(machine.halted());
+        // The request arrives three cycles later. Only the unprescaled timer overflows
+        // again before then, splitting that wait into single-cycle steps.
+        let waits: &[u32] = if divisor == 1 {
+            &[1, 1, 1 + 3]
+        } else {
+            &[3 + 3]
+        };
+        for (index, &idle) in waits.iter().enumerate() {
+            assert_eq!(machine.step().unwrap(), StepKind::HaltIdle);
+            assert_eq!(machine.last_timing().idle_cycles, idle);
+            assert_eq!(machine.halted(), index + 1 != waits.len());
+        }
+        assert_eq!(machine.cycles(), u64::from(divisor + WAKE_IDLE));
     }
 }
 
@@ -326,13 +363,18 @@ fn cascaded_timer_wakes_only_on_predecessor_overflow() {
         .unwrap(); // Two pulses, IRQ on.
     machine.memory_mut().write16(IE, 0x10).unwrap();
     halt(&mut machine);
-    for expected in [true, false] {
+    for expected in [0, 0x10] {
         assert_eq!(machine.step().unwrap(), StepKind::HaltIdle);
         assert_eq!(machine.last_timing().idle_cycles, 10);
-        assert_eq!(machine.halted(), expected);
+        assert_eq!(machine.memory().read16(IF).unwrap(), expected);
+        assert!(machine.halted());
     }
-    assert_eq!(machine.memory().read16(IF).unwrap(), 0x10);
     assert_eq!(machine.cycles(), 20);
+    // The cascaded overflow reaches HALT three cycles later.
+    assert_eq!(machine.step().unwrap(), StepKind::HaltIdle);
+    assert_eq!(machine.last_timing().idle_cycles, WAKE_IDLE);
+    assert!(!machine.halted());
+    assert_eq!(machine.cycles(), 26);
 }
 
 #[test]
@@ -426,6 +468,9 @@ fn blank_triggered_dma_continues_during_halt_and_completion_can_wake() {
     assert_eq!(machine.step().unwrap(), StepKind::Dma { channel: 0 });
     assert_eq!(machine.memory().read16(0x0300_0000).unwrap(), 0x1234);
     assert_eq!(machine.memory().read16(IF).unwrap(), 0x100);
+    assert!(machine.halted()); // The completion request is dated at the end of the unit.
+    assert_eq!(machine.step().unwrap(), StepKind::HaltIdle);
+    assert_eq!(machine.last_timing().idle_cycles, WAKE_IDLE);
     assert!(!machine.halted());
     assert_eq!(machine.step().unwrap(), StepKind::Instruction);
 }
@@ -538,7 +583,7 @@ fn thumb_halt_stores_use_the_executing_address_for_bios_access() {
 }
 
 #[test]
-fn halt_store_finishes_and_can_wake_during_its_own_cycles() {
+fn halt_store_finishes_and_a_request_during_its_cycles_wakes_three_cycles_later() {
     let mut machine = store_machine(0x100, 0xe5c1_0000, HALTCNT, 0, false);
     machine
         .memory_mut()
@@ -548,7 +593,16 @@ fn halt_store_finishes_and_can_wake_during_its_own_cycles() {
     assert_eq!(machine.step().unwrap(), StepKind::Instruction);
     assert_eq!(machine.cpu().pc(), 0x10c);
     assert_eq!(machine.cycles(), 2);
-    assert!(!machine.halted());
+    assert_eq!(machine.memory().read16(IF).unwrap(), 8);
+    // The overflow at cycle 1 reaches HALT at cycle 4; each idle step is bounded by the
+    // next overflow, and the one that wakes also pays the wake latency.
+    for (idle, halted) in [(1, true), (1 + 3, false)] {
+        assert!(machine.halted());
+        assert_eq!(machine.step().unwrap(), StepKind::HaltIdle);
+        assert_eq!(machine.last_timing().idle_cycles, idle);
+        assert_eq!(machine.halted(), halted);
+    }
+    assert_eq!(machine.cycles(), 7);
     assert_eq!(machine.step().unwrap(), StepKind::Instruction);
     assert_eq!(machine.cpu().registers()[2], 1);
 }
@@ -676,6 +730,11 @@ fn externally_advanced_clock_can_wake_halt_without_cpu_execution() {
     halt(&mut machine);
     let before = machine.cpu().clone();
     machine.memory_mut().advance_cycles(16);
+    assert_eq!(machine.memory().read16(IF).unwrap(), 8);
+    assert!(machine.halted()); // The line reaches HALT three cycles after the overflow.
+    machine.memory_mut().advance_cycles(2);
+    assert!(machine.halted());
+    machine.memory_mut().advance_cycles(1);
     assert!(!machine.halted());
     assert_eq!(machine.cpu(), &before);
     assert_eq!(machine.last_timing(), StepTiming::default());

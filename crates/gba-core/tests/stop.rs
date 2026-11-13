@@ -147,6 +147,11 @@ fn stale_keypad_and_timer_if_flags_cannot_wake_stop() {
     m.memory_mut().write16(IE, KEY_IRQ | 8).unwrap();
     m.memory_mut().write16(IME, 1).unwrap();
     assert_eq!(m.memory().read16(IF).unwrap(), KEY_IRQ | 8);
+    // The key request was raised with IE set, so the CPU sees it three cycles later.
+    // STOP freezes that wait with the clock; let it elapse first.
+    assert!(!m.memory().irq_pending());
+    m.memory_mut().advance_cycles(3);
+    assert!(m.memory().irq_pending());
     stop(m.memory_mut());
     assert!(m.stopped());
     assert_eq!(m.step().unwrap(), StepKind::StopIdle);

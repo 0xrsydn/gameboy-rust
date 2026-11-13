@@ -2,7 +2,7 @@
 use super::*;
 use crate::{
     dma::{DMA_BASE, DMA_STRIDE},
-    io::{IE, IME, TIMER_BASE},
+    io::{IE, IME, IRQ_DELAY, TIMER_BASE},
     machine::{Machine, StepKind},
     memory::ROM_START,
 };
@@ -413,6 +413,7 @@ fn accepted_irq_preserves_local_history_before_any_handler_iwram_access() {
         .write32(TIMER_BASE, 0x00c0_ffff)
         .unwrap();
     machine.memory_mut().advance_cycles(1);
+    machine.memory_mut().advance_cycles(IRQ_DELAY); // The CPU sees the request this much later.
     assert_eq!(machine.step().unwrap(), StepKind::IrqEntry);
     // Probe the paused instruction with a separate CPU, without executing BIOS.
     interrupted.step(machine.memory_mut()).unwrap();
