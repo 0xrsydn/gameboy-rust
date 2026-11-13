@@ -112,13 +112,21 @@ def prepare(output, tarball=None, download=fetch, build=True):
         return output
     objects = output / "build"
     flags = os.environ.get("CFLAGS", "")
-    # Newer SDKs flag APIs above mGBA's old deployment target; they are unused here.
-    flags += " -Wno-error=unguarded-availability -Wno-error=unguarded-availability-new"
+    if sys.platform == "darwin":
+        # Newer SDKs flag APIs above mGBA's old deployment target; they are unused here.
+        # GCC rejects these Clang options, so other hosts must not pass them.
+        flags += " -Wno-error=unguarded-availability -Wno-error=unguarded-availability-new"
     # BGR555 rendering blends 5-bit channels like hardware; the 32-bit renderer rounds at
     # 8 bits and differs from hardware by one step in some blends.
     flags += " " + COLOR_FLAG
+    options = list(CMAKE_OPTIONS)
+    # mGBA builds with LTO. GCC's LTO objects are only usable from an archive made
+    # by its own wrappers; plain ar leaves the archive without a symbol index.
+    wrappers = {"AR": shutil.which("gcc-ar"), "RANLIB": shutil.which("gcc-ranlib")}
+    if sys.platform != "darwin" and all(wrappers.values()):
+        options += [f"-DCMAKE_{name}={path}" for name, path in wrappers.items()]
     run(["cmake", "-S", str(source), "-B", str(objects), f"-DCMAKE_C_FLAGS={flags}"]
-        + CMAKE_OPTIONS, output / "cmake-configure.log")
+        + options, output / "cmake-configure.log")
     run(["cmake", "--build", str(objects), "-j", str(os.cpu_count() or 2)],
         output / "cmake-build.log")
     run(["cc", "-O2", "-std=gnu11", "-Wall", COLOR_FLAG, f"-I{source / 'include'}",

@@ -23,7 +23,8 @@ The destination must be new, and outside the repository or inside the ignored `r
 The script downloads mGBA 0.10.5 (`tools/mgba-reference.lock.json` pins its size and SHA-256), extracts it with path checks,
 and builds a static library without frontends, OpenGL, scripting, debuggers, or optional libraries.
 It writes `mgba-ref`, plus `mgba-perf` for speed comparison with this emulator's `--bench-frames` mode. Use `--tarball PATH` for an offline copy of the same tarball.
-Build logs stay in the destination. Verified on Darwin arm64 with Nix cmake 4.4.
+Build logs stay in the destination. Verified on Darwin arm64 and on Linux x86_64 (GCC 16) with Nix cmake 4.4.
+On Linux the script omits two Clang-only warning flags and archives with `gcc-ar`, which mGBA's LTO objects need.
 
 ## Frame comparison
 
