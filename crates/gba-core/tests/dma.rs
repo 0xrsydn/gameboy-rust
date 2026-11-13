@@ -634,9 +634,37 @@ fn video_palette_mirrors_and_mapped_io_use_the_normal_bus() {
 }
 
 #[test]
+fn special_timing_is_harmless_until_it_would_transfer() {
+    // DMA0 special timing never triggers, as in mGBA: a whole frame passes untouched.
+    let mut machine = machine();
+    configure(machine.memory_mut(), 0, SOURCE, DEST, 1, 0x3000);
+    machine.memory_mut().write32(SOURCE, 0x1234_5678).unwrap();
+    assert!(machine.run_until_vblank(400_000).is_ok());
+    assert_eq!(machine.memory().read32(DEST).unwrap(), 0);
+    assert!(enabled(&machine, 0));
+    // DMA3 video capture is unmodeled: its first visible HBlank request is reported.
+    let mut capture = self::machine();
+    configure(capture.memory_mut(), 3, SOURCE, DEST, 1, 0x3000);
+    let error = (0..400_000)
+        .find_map(|_| capture.step().err())
+        .expect("video capture request");
+    assert!(matches!(
+        error,
+        MachineError::Dma(DmaError::UnsupportedControl { channel: 3, .. })
+    ));
+    assert_eq!(capture.memory().read32(DEST).unwrap(), 0);
+}
+
+#[test]
 fn unsupported_controls_are_explicit_and_leave_state_and_time_unchanged() {
+    // Immediate transfers with the prohibited source mode, or DMA3's Game Pak DRQ bit.
     for channel in 0..4 {
-        for control in [0x180, 0x3000, 0x3800] {
+        let controls: &[u16] = if channel == 3 {
+            &[0x180, 0x980]
+        } else {
+            &[0x180]
+        };
+        for &control in controls {
             let mut machine = machine();
             configure(machine.memory_mut(), channel, SOURCE, DEST, 1, control);
             let before = machine.cpu().clone();
@@ -843,7 +871,7 @@ fn frame_runner_counts_dma_units_obeys_limits_and_reports_dma_errors() {
     assert_eq!(machine.run_until_vblank(1).unwrap(), 1);
     assert_eq!(machine.memory().display_position().scanline, 160);
     assert_eq!(machine.cpu().pc(), ROM_START);
-    configure(machine.memory_mut(), 0, SOURCE, DEST, 1, 0x3000);
+    configure(machine.memory_mut(), 0, SOURCE, DEST, 1, 0x180);
     assert!(matches!(
         machine.run_until_vblank(1),
         Err(FrameRunError::Dma(_))

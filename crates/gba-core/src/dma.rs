@@ -180,11 +180,14 @@ impl Dma {
     /// Blanking requests are edges, not queued jobs. An active channel ignores
     /// further edges until its current block completes.
     pub(crate) fn trigger(&mut self, vblank: bool, hblank: bool) {
-        for channel in &mut self.channels {
+        for (index, channel) in self.channels.iter_mut().enumerate() {
+            // DMA3 special timing (video capture) is unmodeled: its HBlank request makes
+            // the channel ready so `next` reports it instead of silently never running.
             if channel.enabled()
                 && !channel.active
                 && ((vblank && channel.start_timing() == 1)
-                    || (hblank && channel.start_timing() == 2))
+                    || (hblank && channel.start_timing() == 2)
+                    || (hblank && channel.start_timing() == 3 && index == 3))
             {
                 channel.active = true;
             }
@@ -201,13 +204,15 @@ impl Dma {
     }
 
     /// Select the highest-priority ready channel without changing its state.
-    /// Unsupported enabled modes report a diagnostic rather than silently waiting.
+    /// An unsupported mode reports a diagnostic when it would transfer. Programming one
+    /// is harmless until then (the mGBA suite writes and restores every control bit);
+    /// DMA0 special timing never triggers, as in mGBA.
     pub(crate) fn next(&self) -> Result<Option<Transfer>, DmaError> {
         for (index, channel) in self.channels.iter().enumerate() {
             if !channel.enabled() {
                 continue;
             }
-            if channel.unsupported(index) {
+            if channel.active && channel.unsupported(index) {
                 return Err(DmaError::UnsupportedControl {
                     channel: index,
                     control: channel.control,

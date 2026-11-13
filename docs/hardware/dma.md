@@ -61,7 +61,9 @@ Startup scheduling delays, channel-resumption costs, a full CPU fetch pipeline, 
 
 Special timing supports DMA1/FIFO A and DMA2/FIFO B with four-word blocks, forced word width, and fixed destinations.
 Timer-driven requests, repeat, and completion IRQs are described in [Direct Sound](audio.md).
-Other special-mode pairings, video capture, Game Pak DRQ, and prohibited source mode 3 return `DmaError::UnsupportedControl`.
+Other special-mode pairings, video capture, Game Pak DRQ, and prohibited source mode 3 return `DmaError::UnsupportedControl`
+when the channel would transfer, not when it is programmed: the mGBA suite writes and restores every control bit.
+DMA0 special timing never triggers, as in mGBA. DMA3 special timing (video capture) is reported at its first visible HBlank.
 DMA reads below work RAM reuse known channel data as described below. They never expose BIOS bytes.
 DMA writes to DMA registers return `DmaError::RegisterDestination`; self-modifying transfers are not supported.
 Writes into the mapped 16 KiB BIOS [complete without changing its image](bios.md#writes-to-the-mapped-bios).

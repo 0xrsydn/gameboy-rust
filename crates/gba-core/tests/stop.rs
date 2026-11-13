@@ -209,7 +209,8 @@ fn dma_is_frozen_before_work_or_diagnostics_and_resumes_before_cpu_after_wake() 
         m.memory_mut()
             .write32(
                 DMA_BASE + 8,
-                if invalid { 0xb400_0001 } else { 0x8400_0001 },
+                // Prohibited source mode 3 with immediate timing is unsupported.
+                if invalid { 0x8580_0001 } else { 0x8400_0001 },
             )
             .unwrap();
         stop(m.memory_mut());
@@ -227,7 +228,7 @@ fn dma_is_frozen_before_work_or_diagnostics_and_resumes_before_cpu_after_wake() 
                 m.step(),
                 Err(MachineError::Dma(DmaError::UnsupportedControl {
                     channel: 0,
-                    control: 0xb400
+                    control: 0x8580
                 }))
             );
         } else {

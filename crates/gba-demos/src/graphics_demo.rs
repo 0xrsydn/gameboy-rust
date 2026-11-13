@@ -406,10 +406,10 @@ mod tests {
         use gba_core::dma::DMA_BASE;
 
         let mut demo = GraphicsDemo::new().unwrap();
-        // An unsupported special-mode request fails before any CPU instruction.
+        // An immediate transfer with the prohibited source mode fails before any CPU instruction.
         demo.machine
             .memory_mut()
-            .write16(DMA_BASE + 10, 0xb000)
+            .write16(DMA_BASE + 10, 0x8180)
             .unwrap();
         let mut frame = Framebuffer::default();
         frame.clear(0x1f);
