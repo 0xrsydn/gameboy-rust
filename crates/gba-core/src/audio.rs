@@ -104,11 +104,6 @@ impl Audio {
     }
 
     pub(crate) fn unsupported(&self, address: u32, value: u8) -> Option<&'static str> {
-        if (self.enabled && address == SOUNDCNT_H && value & 3 == 3)
-            || (address == SOUNDCNT_X && value & 0x80 != 0 && self.control & 3 == 3)
-        {
-            return Some("reserved PSG volume selection");
-        }
         if self.enabled && (0x0400_0070..=0x0400_0075).contains(&address) {
             self.wave_channel.unsupported(address - 0x0400_0070, value)
         } else {
@@ -302,7 +297,9 @@ impl Audio {
             }
         }
         let psg_control = self.psg[16];
-        let ratio = [1, 2, 4, 0][usize::from(self.control & 3)];
+        // GBATEK calls ratio 3 prohibited; hardware stores it (mGBA suite I/O read) and
+        // mGBA mixes it at 200%. That level is mGBA's choice, not a hardware measurement.
+        let ratio = [1, 2, 4, 8][usize::from(self.control & 3)];
         for (side, level) in sides.iter_mut().enumerate() {
             let mut psg_sample = 0;
             for (index, pulse) in self.pulses.iter().enumerate() {

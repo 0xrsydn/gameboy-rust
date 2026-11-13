@@ -144,19 +144,19 @@ fn sequencer_divider_runs_while_master_off_and_enable_resets_only_step() {
 }
 
 #[test]
-fn reserved_psg_ratio_errors_are_atomic_including_enable_after_disabled_configuration() {
+fn prohibited_psg_ratio_is_stored_and_mixes_at_twice_full_volume() {
     let mut bus = bus();
     start(&mut bus);
-    let before = bus.audio_level();
-    let error = bus.write32(MIX, 0x00030000).unwrap_err();
-    assert!(error.to_string().contains("reserved PSG volume selection"));
+    let full = bus.audio_level();
+    // Hardware stores ratio 3 (mGBA suite I/O read); mGBA mixes it at 200%.
+    bus.write16(SOUNDCNT_H, 3).unwrap();
+    assert_eq!(bus.read16(SOUNDCNT_H).unwrap(), 3);
     assert_eq!(bus.read16(MIX).unwrap(), 0x1177);
-    assert_eq!(bus.read16(SOUNDCNT_H).unwrap(), 2);
-    assert_eq!(bus.audio_level(), before);
+    let double = bus.audio_level();
+    assert_ne!(double, full);
     bus.write16(SOUNDCNT_X, 0).unwrap();
-    bus.write16(SOUNDCNT_H, 3).unwrap(); // Disabled sound still retains these bits.
-    assert!(bus.write16(SOUNDCNT_X, 0x80).is_err());
-    assert_eq!(bus.read16(SOUNDCNT_X).unwrap(), 0);
+    bus.write16(SOUNDCNT_X, 0x80).unwrap(); // Enabling with ratio 3 is accepted.
+    assert_eq!(bus.read16(SOUNDCNT_X).unwrap() & 0x80, 0x80);
 }
 
 #[test]

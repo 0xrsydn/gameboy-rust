@@ -220,6 +220,8 @@ Each active pulse or noise channel contributes a centered signed amplitude, `+vo
 Each pair selects right/left respectively.
 The mixer sums routed PSG amplitudes on each side, then multiplies by that side's volume field plus one.
 `SOUNDCNT_H` applies the PSG ratio: 25%, 50%, or 100%, using one arithmetic right shift after summation.
+GBATEK calls ratio 3 prohibited. Hardware stores and reads it back (mGBA suite I/O read); it mixes at 200% as in mGBA,
+which is mGBA's choice rather than a hardware measurement.
 Rounding each PSG channel separately would produce different low-volume levels and is not used.
 At full stereo volume, each pulse/noise channel spans `-120..120`; wave spans `-128..112`, before mixing with Direct Sound.
 This centered mixer follows GBATEK's signed range and the NanoBoyAdvance comparison; exact analog offset is not modeled.
@@ -307,7 +309,7 @@ Original tests cover signed samples, byte order, queue capacity, partial writes,
 They also cover cascaded timers, DMA block/repeat behavior, source progress, completion IRQs, HALT/STOP, and clock batching.
 CPU/DMA failure tests verify transactional rollback and sound writes at bus completion.
 BIOS tests cover disabled FIFO reset and the supported wave-bank policy.
-Pulse tests cover every frequency/duty pair, waveform batching, status, length, envelope, sweep, mixing, and reserved-volume diagnostics.
+Pulse tests cover every frequency/duty pair, waveform batching, status, length, envelope, sweep, mixing, and the stored ratio 3.
 They also check bus-completion status reads, retrigger timing, clock ownership, and rollback with both pulse channels running.
 Channel 2 tests cover register gaps, absence of sweep, independent state, shared sequencer phase, and sum-before-rounding mixing.
 Original CPU/DMA tests verify channel 2 activation and rollback when a later block-store value is unsupported.

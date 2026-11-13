@@ -139,7 +139,7 @@ fn master_enable_store_does_not_replay_earlier_timer_edges() {
 
 #[test]
 fn failed_cpu_load_rolls_back_timer_audio_and_pending_refill_requests() {
-    let (cpu, mut memory) = prepared(false, &[0xe8910005], &[(1, SOUNDBIAS)]); // LDM: bias then unmapped 8c.
+    let (cpu, mut memory) = prepared(false, &[0xe8910005], &[(1, 0x0400_07fc)]); // LDM: open bus at 0x7fc, then unmodeled memory control fails.
     sound(&mut memory, 1);
     memory.write32(FIFO_A, 0x04030201).unwrap();
     let audio = memory.io.audio;
@@ -179,9 +179,9 @@ fn failed_dma_source_and_destination_restore_audio_after_speculative_timer_edges
 fn arm_block_store_rejects_later_reserved_ratio_before_committing_noise_trigger() {
     let (cpu, mut memory) = prepared(
         false,
-        &[0xe8a0000e],
-        &[(0, 0x04000078), (1, 0xf000), (2, 0x8008), (3, 0x00030000)],
-    ); // STMIA r0!,{r1-r3}: noise configuration/trigger, then reserved PSG ratio.
+        &[0xe8a0_0006],
+        &[(0, 0x04000070), (1, 0xa0), (2, 0x8000)],
+    ); // STMIA r0!,{r1,r2}: 64-sample wave mode, then an unsupported trigger.
     memory.write16(SOUNDCNT_X, 0x80).unwrap();
     let audio = memory.io.audio;
     let mut machine = Machine::new(cpu, memory);
@@ -191,7 +191,7 @@ fn arm_block_store_rejects_later_reserved_ratio_before_committing_noise_trigger(
             .step()
             .unwrap_err()
             .to_string()
-            .contains("reserved PSG volume selection"));
+            .contains("64-sample wave playback"));
         assert_eq!(machine.memory().io.audio, audio);
         assert_eq!(machine.cpu(), &cpu);
         assert_eq!(machine.cycles(), 0);
