@@ -50,7 +50,7 @@ Each sub-suite started from a fresh boot. Repository tooling for this run does n
 | # | Sub-suite | Passed / results | Current | Stopped by |
 | ---: | --- | ---: | ---: | --- |
 | 0 | Memory | 43 / 44 so far | 1511 / 1552 | — (misaligned BIOS copies remain) |
-| 1 | I/O read | 4 / 40 so far | 4 / 40 so far | CPU read of unused register slot `0x04000058` |
+| 1 | I/O read | 4 / 40 so far | 130 / 130 | — |
 | 2 | Timing | 1660 / 2020 | 1680 / 2020 | — |
 | 3 | Timers | 362 / 936 | 596 / 936 | — |
 | 4 | Timer IRQ | 0 / 90 | 44 / 90 | — |

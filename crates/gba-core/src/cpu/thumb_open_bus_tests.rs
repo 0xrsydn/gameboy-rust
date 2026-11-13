@@ -343,7 +343,7 @@ fn unsupported_data_regions_and_unused_stores_do_not_gain_fallbacks() {
     for address in [
         0,
         0x3ffc,
-        0x0400_00e0,
+        0x0400_0800,
         ROM_START + 12,
         0x0e00_0000,
         0x0fff_fffc,

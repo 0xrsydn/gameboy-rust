@@ -346,7 +346,7 @@ fn waitcnt_store_charges_old_code_settings_and_new_settings_apply_next_step() {
 #[test]
 fn failed_data_access_discards_trace_before_retry() {
     let (mut cpu, mut memory) = arm(0xe8b0_0006); // LDMIA r0!,{r1,r2}
-    cpu.registers[0] = 0x0400_0054;
+    cpu.registers[0] = 0x0400_07fc; // Open bus, then unmodeled memory control fails.
     let before = cpu.clone();
     assert!(cpu.step_timed(&mut memory).is_err());
     assert_eq!(cpu, before);

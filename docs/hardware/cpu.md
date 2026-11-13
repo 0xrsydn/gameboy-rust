@@ -146,8 +146,10 @@ Limits remain explicit:
 
 - Thumb open bus uses the supported region rules below, including persistent internal-RAM lane history.
 - [BIOS-protected reads](bios.md#cpu-bios-read-protection) use separate retained ARM PC+8 or aligned Thumb PC+4 word snapshots.
-- Unused slots inside the I/O register block (`0x04000000..0x040003ff`), write-only I/O reads, general
-  DMA-to-CPU bus handoff, and disabled-RAM reads are not modeled here. GBATEK notes some unused slots read as zero.
+- CPU reads inside the I/O register block follow the mGBA suite's hardware I/O read table: write-only registers read
+  open bus (DMA word counts read zero), and an unused halfword reads zero when the low half of its word is a readable
+  register, open bus otherwise. `BGxCNT` bits 4–5 are stored and read back. General DMA-to-CPU bus handoff and
+  disabled-RAM reads are not modeled here.
   [DMA channel data](dma.md#retained-channel-data) is separate and never overrides a CPU snapshot.
 - Missing BIOS, truncated ROM, unsupported I/O, and save-memory accesses retain their existing diagnostics.
 - CPU and DMA writes to unused memory (`0x00004000..0x01ffffff`, `0x10000000..0xffffffff`) are ignored, as on hardware,

@@ -237,7 +237,8 @@ BIOS protection uses separate retained BIOS fetch snapshots as described in [BIO
 Host inspection and instruction fetches remain strict. Other unmapped reads return errors.
 CPU and DMA writes to unused I/O addresses and to unused memory are ignored, as on hardware; host writes there stay strict.
 CPU reads above the I/O register block (`0x04000400..0x04ffffff`) return open bus like other unused memory.
-The unmodeled internal memory control register at `0x04xx0800` and unused slots inside the register block remain diagnostics.
+CPU reads of write-only registers and unused slots inside the register block return open bus or zero, per the mGBA suite's hardware I/O read table.
+The unmodeled internal memory control register at `0x04xx0800` remains a diagnostic.
 CPU and DMA reads beyond the power-of-two ROM chip return the Game Pak halfword-address pattern; reads inside a trimmed image's chip, host reads, and instruction fetches past the image return errors.
 Direct memory-bus halfword and word accesses require alignment.
 CPU load/store instructions apply ARM7TDMI alignment and rotation rules before accessing the bus.

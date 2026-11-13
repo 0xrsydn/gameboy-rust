@@ -26,7 +26,7 @@ fn samples_before_store_completion_keep_old_level_and_publish_only_once() {
 #[test]
 fn failed_cpu_and_dma_steps_discard_speculative_samples_and_phase() {
     for dma in [false, true] {
-        let (cpu, mut memory) = prepared(false, &[0xe8910005], &[(1, SOUNDBIAS)]); // LDM reads unmapped 8c.
+        let (cpu, mut memory) = prepared(false, &[0xe8910005], &[(1, 0x0400_07fc)]); // LDM: open bus at 0x7fc, then unmodeled memory control fails.
         memory.set_audio_capture(true);
         memory.advance_cycles(508);
         if dma {

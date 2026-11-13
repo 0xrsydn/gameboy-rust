@@ -34,8 +34,8 @@ fn controls_mask_unused_bits_and_merge_byte_and_word_writes() {
     let mut m = setup();
     m.write32(BG0CNT, u32::MAX).unwrap();
     m.write32(BG2CNT, u32::MAX).unwrap();
-    assert_eq!(m.read32(BG0CNT).unwrap(), 0xdfcf_dfcf);
-    assert_eq!(m.read32(BG2CNT).unwrap(), 0xffcf_ffcf);
+    assert_eq!(m.read32(BG0CNT).unwrap(), 0xdfff_dfff);
+    assert_eq!(m.read32(BG2CNT).unwrap(), 0xffff_ffff);
     m.write8(BG0CNT, 0x81).unwrap();
     m.write8(BG0CNT + 1, 0x10).unwrap();
     assert_eq!(m.read16(BG0CNT).unwrap(), 0x1081);

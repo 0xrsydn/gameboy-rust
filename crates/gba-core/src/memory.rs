@@ -904,6 +904,17 @@ impl Memory {
                 operation: "Flash CPU read outside work RAM",
             });
         }
+        if address >> 24 == 0x04 && address & 0x00ff_fc00 == 0 && self.cpu_access.is_some() {
+            match Io::read_policy(address) {
+                crate::io::IoRead::Register => {}
+                crate::io::IoRead::Zero => return Ok(0),
+                crate::io::IoRead::OpenBus => {
+                    if let Some(word) = self.cpu_access.and_then(|access| access.prefetch) {
+                        return Ok((word >> ((address & 3) * 8)) as u8);
+                    }
+                }
+            }
+        }
         if address >> 24 == 0x04 {
             if let Some(step) = self.timer_step.get() {
                 if Serial::mapped(address) {

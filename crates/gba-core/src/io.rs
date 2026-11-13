@@ -72,6 +72,14 @@ pub const HALTCNT: u32 = 0x0400_0301;
 
 const IRQ_MASK: u16 = 0x3fff;
 
+/// CPU read behavior of an I/O-block halfword; see `Io::read_policy`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum IoRead {
+    Register,
+    OpenBus,
+    Zero,
+}
+
 /// Cycles after an emulated enabling write before a timer counts its first divider
 /// edge. Matches the mGBA test suite's hardware-verified timer calibration
 /// (ARM IWRAM reads 0 right after starting; ARM ROM with default waits reads 7).
@@ -208,6 +216,33 @@ impl Io {
             || matches!(address, 0x0400_0000..=0x0400_0057 | DMA_BASE..=DMA_END | 0x0400_0100..=0x0400_010f | 0x0400_0130..=0x0400_0133 | 0x0400_0200..=0x0400_020b | POSTFLG..=0x0400_0303)
     }
 
+    /// How a CPU read of a halfword in the I/O register block behaves, following the mGBA
+    /// suite's hardware I/O read table and GBATEK: write-only registers read as open bus
+    /// (DMA word counts read zero); an unused halfword reads zero when the low half of its
+    /// word is a readable register, and open bus otherwise.
+    pub(crate) fn read_policy(address: u32) -> IoRead {
+        let half = address & 0x3fe;
+        let write_only = |half: u32| {
+            matches!(half, 0x10..=0x46 | 0x4c | 0x54 | 0xa0..=0xa6 | 0xb0..=0xdc)
+                && !matches!(half, 0xba | 0xc6 | 0xd2 | 0xde)
+        };
+        // Inside mapped ranges but without a register.
+        let unused = |half: u32| matches!(half, 0x4e | 0x56) || !Self::mapped(0x0400_0000 | half);
+        if write_only(half) {
+            if matches!(half, 0xb8 | 0xc4 | 0xd0 | 0xdc) {
+                IoRead::Zero
+            } else {
+                IoRead::OpenBus
+            }
+        } else if !unused(half) {
+            IoRead::Register
+        } else if half & 2 != 0 && !unused(half & !2) && !write_only(half & !2) {
+            IoRead::Zero
+        } else {
+            IoRead::OpenBus
+        }
+    }
+
     /// I/O-page addresses with no register. CPU and DMA writes there are ignored.
     /// The mirrored internal memory control register at `0x04xx0800` is a real,
     /// unmodeled register and stays a diagnostic.
@@ -280,9 +315,10 @@ impl Io {
             BG0CNT..=BG3CNT => {
                 let index = ((address - BG0CNT) / 2) as usize;
                 let control = &mut self.backgrounds[index].control;
-                // Overflow applies to affine BG2/BG3 only; bits 4 and 5 are unused.
+                // Overflow applies to affine BG2/BG3 only. Bits 4 and 5 have no effect
+                // but are stored and read back (mGBA suite I/O read: 0xdfff / 0xffff).
                 *control = replace_byte(*control, address, value)
-                    & if index < 2 { 0xdfcf } else { 0xffcf };
+                    & if index < 2 { 0xdfff } else { 0xffff };
             }
             BG0HOFS..=BG3VOFS => {
                 let bg = &mut self.backgrounds[((address - BG0HOFS) / 4) as usize];

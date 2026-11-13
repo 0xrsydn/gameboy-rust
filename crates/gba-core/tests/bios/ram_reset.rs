@@ -188,7 +188,7 @@ fn zero_flags_still_force_blank_and_clear_other_display_control_bits() {
         m.memory_mut().write16(BG0CNT, 0x1234).unwrap();
         complete(&mut m, pc);
         check_samples(&m, 0);
-        assert_eq!(m.memory().read16(BG0CNT).unwrap(), 0x1204);
+        assert_eq!(m.memory().read16(BG0CNT).unwrap(), 0x1234); // Bits 4-5 read back.
         let mut frame = Framebuffer::default();
         m.memory().render_frame(&mut frame).unwrap();
         assert!(frame.pixels().iter().all(|p| *p == 0xffffff));

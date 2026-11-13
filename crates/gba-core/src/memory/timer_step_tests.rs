@@ -180,7 +180,7 @@ fn if_acknowledgement_clears_earlier_timer_events_but_not_later_ones() {
 fn failed_instructions_discard_partial_timer_progress_and_pending_irqs() {
     for (instruction, base) in [
         (0xe591_0000, 0x0e00_0000),
-        (0xe891_0005, TIMER_BASE + 12),
+        (0xe891_0005, 0x0400_07fc), // Open bus, then unmodeled memory control fails.
         (0xe881_00fd, TIMER_BASE + 12), // STMIA r1,{r0,r2-r7}; r7 reaches SIOMULTI2.
         (0xffff_ffff, 0),
     ] {
@@ -353,12 +353,12 @@ fn machine_enable_joins_the_shared_phase_and_commits_it_without_duplicate_ticks(
 
 #[test]
 fn failed_cpu_and_dma_work_cannot_consume_a_shared_prescaler_edge() {
-    let (cpu, mut memory) = prepared(false, &[0xe891_0005], &[(1, TIMER_BASE + 12)]);
+    let (cpu, mut memory) = prepared(false, &[0xe891_0005], &[(1, 0x0400_07fc)]);
     start(&mut memory, 0, 0xffff, 0xc1);
     memory.advance_cycles(63);
     let before = memory.io.timer_step();
     let mut machine = Machine::new(cpu, memory);
-    assert!(machine.step().is_err()); // First data read succeeds after the t=64 overflow; second fails.
+    assert!(machine.step().is_err()); // The open-bus read ends after the t=64 overflow; 0x800 fails.
     assert_eq!(machine.memory().io.timer_step(), before);
     assert_eq!(machine.cycles(), 63);
     dma(machine.memory_mut(), 0x0e00_0000, RAM, 1);

@@ -55,7 +55,7 @@ Mode 0 supports all four text backgrounds, with these features:
 
 - `BG0CNT..BG3CNT` at `0x04000008..0x0400000f`: priority, character base, palette depth, map base, and size.
 - Horizontal/vertical scroll latches at `0x04000010..0x0400001f`, with byte-write merging and nine-bit offsets.
-- Scroll registers are write-only. Reads return zero as a placeholder; open bus is not modeled.
+- Scroll registers are write-only. CPU reads return open bus; host inspection still reads zero.
 - Control masks are `0xdfcf` for BG0/BG1 and `0xffcf` for BG2/BG3.
 - 8×8 tiles with 4-bit palette indices and sixteen banks, or 8-bit indices with one palette.
 - Horizontal and vertical tile flips, and ten-bit tile numbers.

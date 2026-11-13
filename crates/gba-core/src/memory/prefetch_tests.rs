@@ -126,7 +126,7 @@ fn timed_and_cpu_only_execution_commit_the_same_queue_without_device_clocks() {
 
 #[test]
 fn failures_discard_source_and_partial_data_progress() {
-    for (bad, address) in [(0xe591_0000, 0x0e00_0000), (0xe8b1_0005, IME)] {
+    for (bad, address) in [(0xe591_0000, 0x0e00_0000), (0xe8b1_0005, 0x0400_07fc)] {
         let (mut cpu, mut memory) = prepared(false, &[NOP, bad], &[(1, address)]);
         enable(&mut memory);
         cpu.step_timed(&mut memory).unwrap();
