@@ -64,7 +64,12 @@ Each sub-suite started from a fresh boot. Repository tooling for this run does n
 | 12 | Misc. edge | 4 / 12 | 4 / 12 | — |
 | 13 | Video | visual only | visual only | — |
 
-The current column was measured on the same day after the [timer start delay](hardware/timers-irq.md)
+The current column is the latest local run. Since the baseline, the sub-suites that used to stop were fixed
+(unused-memory writes, SRAM's 8-bit bus in DMA and block transfers, I/O read policy, misaligned BIOS copies, BIOS
+math side effects, serial register reads), the multiply carry flag was modeled, and Div, Sqrt, ArcTan, and CpuFastSet
+were matched to the firmware's measured [service timing](hardware/bios.md#service-timing).
+
+Earlier the same day, the column was measured after the [timer start delay](hardware/timers-irq.md)
 (timing +20, timers +42, Timer IRQ +44) and the [minimal BIOS IRQ dispatch](hardware/bios.md) (timers +192).
 All 20 calibration results now pass. SIO timing regressed: each normal-mode case now reads exactly two cycles low
 (for example `0x277` against `0x279`). That test times a serial transfer through `SWI Halt`, IRQ dispatch, and the
@@ -77,11 +82,15 @@ found no clear optimum yet, because the replacement BIOS's IntrWait and Halt pat
 "So far" means a core diagnostic stopped the sub-suite before it finished; later tests did not run.
 Treat these numbers as a dated snapshot, not a claim about any game.
 
-## First failures worth investigating
+## Remaining failures
 
-- DMA reads from unused memory (open bus for DMA) stop the memory and DMA sub-suites.
-- An unused register slot below `0x04000400` stops the I/O-read sub-suite; GBATEK notes some of them read as zero.
-  Reading the unmodeled `RCNT` register stops the SIO-read sub-suite.
-- The BIOS math sub-suite reaches an unimplemented path in the original BIOS replacement.
-- Timer IRQ fails every result, and every timing calibration result is two cycles high. They may share a cause; this is unverified.
-- I/O read expects write-only scroll registers to return open bus (`0xDEAD` in the test) and unused BGxCNT bits to read back.
+Every sub-suite now runs to completion. Memory, I/O read, shifter, carry, multiply long, BIOS math, DMA, and SIO read pass
+every result. What remains is cycle-level timing:
+
+- Timing: DMA start and CPU/DMA arbitration inside an instruction (200 results; see the
+  [DMA start experiment](mgba-reference.md#findings-so-far)), and one cycle on BIOS calls from ROM with the GamePak
+  prefetch buffer enabled (28 results).
+- Timers, Timer IRQ, and SIO timing: IRQ entry delay and the replacement BIOS's IntrWait/Halt wake path; see the
+  [IRQ delay experiment](research/irq-delay.md).
+- Misc. edge: open bus left by a DMA while the CPU runs from the prefetch buffer, and a 3-cycle difference between two
+  identical HALT wake paths (HBlank flag polling).
