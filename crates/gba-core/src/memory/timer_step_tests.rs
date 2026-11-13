@@ -79,10 +79,12 @@ fn starting_and_stopping_timers_take_effect_after_the_store_bus_cycle() {
             machine.memory().read16(TIMER_BASE).unwrap(),
             if running { 7 } else { 0 }
         );
-        machine.step().unwrap(); // Store left N: this ROM fetch costs eight cycles.
+        // Store left N: this ROM fetch costs eight cycles. A machine start counts after
+        // its two-cycle start delay: 8 - 2.
+        machine.step().unwrap();
         assert_eq!(
             machine.memory().read16(TIMER_BASE).unwrap(),
-            if running { 7 } else { 8 }
+            if running { 7 } else { 6 }
         );
         assert_eq!(machine.cycles(), 15);
     }
@@ -107,7 +109,8 @@ fn block_timer_accesses_keep_distinct_word_phases() {
     );
     let mut machine = Machine::new(cpu, memory);
     machine.step().unwrap();
-    assert_eq!(machine.memory().read16(TIMER_BASE).unwrap(), 1);
+    // Timer 0 started one cycle before the end; its two-cycle start delay is still running.
+    assert_eq!(machine.memory().read16(TIMER_BASE).unwrap(), 0);
     assert_eq!(machine.memory().read16(TIMER_BASE + 4).unwrap(), 0);
     assert_eq!(machine.cycles(), 8);
 }
@@ -242,9 +245,12 @@ fn dma_samples_timers_after_startup_and_source_and_writes_after_destination() {
     memory.step_dma().unwrap().unwrap();
     assert_eq!(memory.read16(TIMER_BASE).unwrap(), 0);
     memory.step_dma().unwrap().unwrap();
-    assert_eq!(memory.read16(TIMER_BASE).unwrap(), 2);
+    // The second two-cycle unit is exactly timer 0's start delay.
+    assert_eq!(memory.read16(TIMER_BASE).unwrap(), 0);
     assert_eq!(memory.read16(TIMER_BASE + 4).unwrap(), 0);
     assert_eq!(memory.cycles(), 6);
+    memory.advance_cycles(1);
+    assert_eq!(memory.read16(TIMER_BASE).unwrap(), 1);
 }
 
 #[test]
@@ -334,13 +340,15 @@ fn machine_enable_joins_the_shared_phase_and_commits_it_without_duplicate_ticks(
     machine.step().unwrap(); // Source 6 + store 1: enable at t=63.
     assert_eq!(machine.cycles(), 63);
     assert_eq!(machine.memory().read16(TIMER_BASE).unwrap(), 0);
-    machine.step().unwrap(); // N source 8 + read 1 + internal 1: t=73.
-    assert_eq!(machine.cpu().registers()[2], 0x0081_0001);
+    // N source 8 + read 1 + internal 1: t=73. The t=64 divider edge falls inside the
+    // start delay (counting begins after t=65).
+    machine.step().unwrap();
+    assert_eq!(machine.cpu().registers()[2], 0x0081_0000);
     assert_eq!(machine.cycles(), 73);
     machine.memory_mut().advance_cycles(54);
-    assert_eq!(machine.memory().read16(TIMER_BASE).unwrap(), 1);
+    assert_eq!(machine.memory().read16(TIMER_BASE).unwrap(), 0);
     machine.memory_mut().advance_cycles(1);
-    assert_eq!(machine.memory().read16(TIMER_BASE).unwrap(), 2);
+    assert_eq!(machine.memory().read16(TIMER_BASE).unwrap(), 1);
 }
 
 #[test]
@@ -386,11 +394,11 @@ fn halt_after_a_machine_timer_start_uses_the_committed_shared_phase() {
     memory.advance_cycles(56);
     memory.write16(IE, 8).unwrap();
     let mut machine = Machine::new(cpu, memory);
-    machine.step().unwrap(); // Enable at t=63.
+    machine.step().unwrap(); // Enable at t=63; counting begins after the start delay at t=65.
     machine.memory_mut().write8(HALTCNT, 0).unwrap();
     assert_eq!(machine.step().unwrap(), StepKind::HaltIdle);
-    assert_eq!(machine.last_timing().idle_cycles, 1);
-    assert_eq!(machine.cycles(), 64);
+    assert_eq!(machine.last_timing().idle_cycles, 65); // The next /64 edge is t=128.
+    assert_eq!(machine.cycles(), 128);
     assert!(!machine.halted());
 }
 

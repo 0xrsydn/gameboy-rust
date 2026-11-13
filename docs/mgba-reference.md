@@ -81,8 +81,9 @@ Measured 2026-11-13 on Darwin arm64 with the [pinned suite ROM](public-mgba-suit
   Before alignment, every frame differed (start scanline 0 versus 126, `DISPCNT`, `SOUNDBIAS`, and leftover boot registers).
 - Lockstep matches 249,014 instructions before the first state divergence, when mGBA takes a VBlank IRQ one instruction earlier.
 - Thumb code running from ROM, such as the startup copy loop at `0x080001a6` (`LDMIA r1!,{r0}` and `SUB r3,#4`), costs this
-  emulator 2 more cycles per instruction. The suite's hardware-verified timing calibration agrees with mGBA: every ROM
-  case reports this emulator exactly 2 cycles slow (for example `Thumb/ROM P..: Got 3 vs 1`).
+  emulator 2 more cycles per instruction than mGBA. This is not yet checked against hardware.
+- The suite's timing calibration also read exactly 2 cycles high in every case, including IWRAM code. That was a separate
+  timer start delay, now [modeled](hardware/timers-irq.md); it did not change the copy-loop drift above.
 - Thumb word stores to SRAM cost 8–10 cycles here and 26 in mGBA. The suite has no SRAM timing case, so this stays open
   until hardware evidence decides it.
 - mGBA begins HBlank 1008 cycles into a line; this emulator uses 1006.

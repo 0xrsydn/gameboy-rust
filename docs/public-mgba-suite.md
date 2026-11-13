@@ -47,22 +47,29 @@ Measured 2026-11-13 in a release build, after the [SRAM wide-access](hardware/sa
 [unused-I/O open-bus](hardware/cpu.md#arm-unused-memory-data-reads) fixes that the suite first exposed.
 Each sub-suite started from a fresh boot. Repository tooling for this run does not exist yet; the results came from a local probe.
 
-| # | Sub-suite | Passed / results | Stopped by |
-| ---: | --- | ---: | --- |
-| 0 | Memory | 43 / 44 so far | DMA0 read from unused `0x0003d8b0` |
-| 1 | I/O read | 4 / 40 so far | CPU read of unused register slot `0x04000058` |
-| 2 | Timing | 1660 / 2020 | — |
-| 3 | Timers | 362 / 936 | — |
-| 4 | Timer IRQ | 0 / 90 | — |
-| 5 | Shifter | 140 / 140 | — |
-| 6 | Carry | 93 / 93 | — |
-| 7 | Multiply long | 52 / 72 | — |
-| 8 | BIOS math | 20 / 30 so far | Undefined instruction in the BIOS replacement at `0x00000fd4` |
-| 9 | DMA | 12 / 12 so far | DMA0 read from unused `0x0003cfd8` |
-| 10 | SIO read | 1 / 6 so far | CPU read of unmodeled `RCNT` at `0x04000134` |
-| 11 | SIO timing | 4 / 4 | — |
-| 12 | Misc. edge | 4 / 12 | — |
-| 13 | Video | visual only | — |
+| # | Sub-suite | Passed / results | With timer start delay | Stopped by |
+| ---: | --- | ---: | ---: | --- |
+| 0 | Memory | 43 / 44 so far | 43 / 44 so far | DMA0 read from unused `0x0003d8b0` |
+| 1 | I/O read | 4 / 40 so far | 4 / 40 so far | CPU read of unused register slot `0x04000058` |
+| 2 | Timing | 1660 / 2020 | 1680 / 2020 | — |
+| 3 | Timers | 362 / 936 | 404 / 936 | — |
+| 4 | Timer IRQ | 0 / 90 | 44 / 90 | — |
+| 5 | Shifter | 140 / 140 | 140 / 140 | — |
+| 6 | Carry | 93 / 93 | 93 / 93 | — |
+| 7 | Multiply long | 52 / 72 | 52 / 72 | — |
+| 8 | BIOS math | 20 / 30 so far | 20 / 30 so far | Undefined instruction in the BIOS replacement's argument trap |
+| 9 | DMA | 12 / 12 so far | 12 / 12 so far | DMA0 read from unused `0x0003cfd8` |
+| 10 | SIO read | 1 / 6 so far | 1 / 6 so far | CPU read of unmodeled `RCNT` at `0x04000134` |
+| 11 | SIO timing | 4 / 4 | 0 / 4 | — |
+| 12 | Misc. edge | 4 / 12 | 4 / 12 | — |
+| 13 | Video | visual only | visual only | — |
+
+The second column was measured on the same day after the [timer start delay](hardware/timers-irq.md).
+All 20 calibration results now pass. SIO timing regressed: each normal-mode case now reads exactly two cycles low
+(for example `0x277` against `0x279`). That test times a serial transfer through `SWI Halt`, IRQ dispatch, and the
+handler in this emulator's replacement BIOS, whose IRQ dispatch is already known to be slower than hardware (Timer IRQ
+reads `0x56` where hardware reads `0x51`). Its earlier exact match therefore combined offsetting errors; the remaining
+offset is an open item.
 
 "So far" means a core diagnostic stopped the sub-suite before it finished; later tests did not run.
 Treat these numbers as a dated snapshot, not a claim about any game.

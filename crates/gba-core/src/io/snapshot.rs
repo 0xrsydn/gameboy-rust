@@ -12,10 +12,12 @@ impl Snapshot for Timer {
             reload,
             counter,
             control,
+            delay,
         } = self;
         writer.u16(*reload);
         writer.u16(*counter);
         writer.u8(*control);
+        writer.u8(*delay);
     }
 
     fn load(&mut self, reader: &mut Reader<'_>) -> Result<(), SnapshotError> {
@@ -23,12 +25,17 @@ impl Snapshot for Timer {
             reload,
             counter,
             control,
+            delay,
         } = self;
         *reload = reader.u16()?;
         *counter = reader.u16()?;
         *control = reader.u8()?;
+        *delay = reader.u8()?;
         if *control & !TIMER_CONTROL_MASK != 0 {
             return Err(SnapshotError::Corrupt("timer control"));
+        }
+        if *delay > super::TIMER_START_DELAY {
+            return Err(SnapshotError::Corrupt("timer start delay"));
         }
         Ok(())
     }

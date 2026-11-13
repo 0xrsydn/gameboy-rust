@@ -1,6 +1,6 @@
 //! Staged timer, audio, and serial clocks for one instruction, IRQ entry, or DMA unit.
 //! Other devices remain on the instruction-boundary scheduler.
-use super::{Io, Timer, IF, TIMER_BASE};
+use super::{Io, Timer, IF, TIMER_BASE, TIMER_START_DELAY};
 
 pub(super) const STAGED_IRQ_MASK: u16 = 0xf8;
 
@@ -72,7 +72,7 @@ impl TimerStep {
         match address {
             TIMER_BASE..=0x0400_010f => {
                 let index = ((address - TIMER_BASE) / 4) as usize;
-                self.timers[index].write8(address, value, index);
+                self.timers[index].write8(address, value, index, TIMER_START_DELAY);
                 true
             }
             IF => {

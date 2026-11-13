@@ -28,6 +28,12 @@ Source-fetch cycles advance that clock before data work. Each data access advanc
 All byte lanes of one access share the same completion time. Internal and target-fetch cycles follow in order.
 A timer load therefore includes its source and data cycles, but not its trailing internal cycle.
 Timer-start writes do not count preceding cycles. Timer-stop writes count through their own bus completion.
+A timer started by CPU or DMA code then waits two cycles before it counts its first divider edge.
+This start delay reproduces the [mGBA test suite](../public-mgba-suite.md)'s hardware-verified timer calibration:
+`STR` to start timer 0 followed at once by `LDRH` of its counter reads 0 from IWRAM and 7 from ARM ROM code with default wait states.
+Without it, every calibration case read two too many. The same delay applies to prescaled timers; the suite scores
+identically with or without it there, so that part is unverified. Host setup writes outside machine steps start counting at once.
+The delay is part of save states.
 Block transfers preserve distinct word phases; combined reload/control writes merge at one phase, with reload bytes first.
 
 The transaction also owns timer IF bits. Reads see overflows through the current access; acknowledgements clear earlier timer requests.
@@ -106,8 +112,8 @@ The timer overflows after 16 supplied cycles and enters the original handler thr
 The handler stops Timer 0, acknowledges IF, increments r10, and returns with `SUBS pc, lr, #4`.
 The demo completes with one handler call, using default WAITCNT settings.
 Its initial ARM ROM fetch uses PC+8 sequential timing; cold pipeline filling has no separate startup charge.
-The stopped counter is now `0xfff4`, rather than the earlier bulk-write result `0xfffb`.
-Timer start excludes its preceding nine cycles; timer stop includes its two bus cycles.
+The stopped counter is now `0xfff2`, rather than the earlier bulk-write result `0xfffb`.
+Timer start excludes its preceding nine cycles and waits its two-cycle start delay; timer stop includes its two bus cycles.
 These are nominal regression results, not hardware startup-delay measurements.
 Its test handler deliberately changes r2 and r10; it does not implement the Nintendo BIOS calling convention.
 

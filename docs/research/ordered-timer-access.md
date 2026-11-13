@@ -94,6 +94,7 @@ Pinned public ARM, Thumb, memory, and BIOS reports remain byte-identical to the 
 
 The original timer demo retains its cycle count and IRQ-entry step.
 Its stopped counter changes from `0xfffb` to `0xfff4`: start excludes nine preceding cycles, while stop includes two bus cycles.
+A later two-cycle machine start delay (see [timers](../hardware/timers-irq.md)) moves it to `0xfff2`.
 The alias-load regression now samples `0x00c0fffb` after source and data cycles, instead of the previous `0x00c0fffa`.
 These expectation changes follow the access phases; the independent cancellation program and observations remain unchanged.
 

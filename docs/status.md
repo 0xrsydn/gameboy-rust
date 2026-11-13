@@ -36,6 +36,7 @@ Update this file when a feature lands or a limit is removed.
 - GBA interrupt enable (`IE`), request flags (`IF`), and master enable (`IME`) registers.
 - Four 16-bit timers, with reloads, prescalers, count-up cascading, and timer-generated IRQs.
 - A shared free-running timer divider survives enable and clock-source changes; HALT advances it and STOP freezes it.
+- Timers started by CPU or DMA code wait two cycles before counting, matching the mGBA test suite's hardware-verified timer calibration.
 - A 228-line display clock, VCOUNT/DISPSTAT, and VBlank/HBlank/VCount-match interrupts.
 - Four direct memory access (DMA) channels, with immediate, VBlank, and visible-line HBlank triggers.
 - Halfword/word DMA, address controls, repeat, channel priority, CPU pausing, and completion IRQs.
@@ -149,7 +150,7 @@ CPU/bus costs are nominal estimates, not a cycle-accurate implementation.
 The instruction buffer retains the next fetch kind; cold startup costs and per-access device scheduling remain unmodeled.
 Game Pak prefetch uses source-backed queue rules, not hardware-verified timing.
 Live WAITCNT transitions, page-boundary behavior, and exact DMA/idle ordering still need independent timing validation.
-Timer data accesses follow ordered nominal bus phases. Other devices remain instruction-batched; exact timer startup and IRQ delays remain unverified.
+Timer data accesses follow ordered nominal bus phases. Other devices remain instruction-batched; the timer start delay matches hardware calibration for unprescaled timers; IRQ delays remain unverified.
 Graphics support includes Mode 0–5 debug snapshots and HBlank row capture with sprites, mosaic, windows, and color effects.
 Internal affine origins, vertical window flags, and vertical mosaic counters track line boundaries.
 Horizontal window comparators retain four-cycle event history.

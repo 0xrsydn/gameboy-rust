@@ -72,11 +72,19 @@ pub const HALTCNT: u32 = 0x0400_0301;
 
 const IRQ_MASK: u16 = 0x3fff;
 
+/// Cycles after an emulated enabling write before a timer counts its first divider
+/// edge. Matches the mGBA test suite's hardware-verified timer calibration
+/// (ARM IWRAM reads 0 right after starting; ARM ROM with default waits reads 7).
+/// Host setup writes outside machine steps start counting at once.
+pub(crate) const TIMER_START_DELAY: u8 = 2;
+
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 struct Timer {
     reload: u16,
     counter: u16,
     control: u8,
+    /// Remaining start-delay cycles; see `TIMER_START_DELAY`.
+    delay: u8,
 }
 
 impl Timer {
@@ -89,11 +97,11 @@ impl Timer {
         value.to_le_bytes()[(address & 1) as usize]
     }
 
-    fn write8(&mut self, address: u32, value: u8, index: usize) {
+    fn write8(&mut self, address: u32, value: u8, index: usize, start_delay: u8) {
         if address & 2 == 0 {
             self.reload = replace_byte(self.reload, address, value);
         } else if address & 1 == 0 {
-            self.set_control(value, index);
+            self.set_control(value, index, start_delay);
         }
     }
 
@@ -105,11 +113,12 @@ impl Timer {
         self.control & 4 != 0
     }
 
-    fn set_control(&mut self, value: u8, index: usize) {
+    fn set_control(&mut self, value: u8, index: usize, start_delay: u8) {
         let value = value & if index == 0 { 0xc3 } else { 0xc7 };
         let start = !self.enabled() && value & 0x80 != 0;
         if start {
             self.counter = self.reload;
+            self.delay = start_delay;
         }
         self.control = value;
     }
@@ -121,7 +130,11 @@ impl Timer {
             return None;
         }
         let divisor = [1, 64, 256, 1024][usize::from(self.control & 3)];
-        Some((0x1_0000 - u32::from(self.counter)) * divisor - u32::from(phase) % divisor)
+        let start = u32::from(phase) + u32::from(self.delay);
+        Some(
+            u32::from(self.delay) + (0x1_0000 - u32::from(self.counter)) * divisor
+                - start % divisor,
+        )
     }
 
     /// Advance without looping once per cycle or overflow. Return the number of
@@ -130,13 +143,16 @@ impl Timer {
         if !self.enabled() {
             return 0;
         }
+        let skip = u32::from(self.delay).min(cycles);
+        self.delay -= skip as u8;
         let ticks = if self.count_up() {
             previous_overflows
         } else {
             let divisor = [1, 64, 256, 1024][usize::from(self.control & 3)];
-            // Count shared divider edges in (start, end], independently of enable time.
-            let start = u64::from(phase);
-            (start + u64::from(cycles)) / divisor - start / divisor
+            // Count shared divider edges in (start, end], independently of enable time,
+            // after any remaining start delay.
+            let start = u64::from(phase) + u64::from(skip);
+            (u64::from(phase) + u64::from(cycles)) / divisor - start / divisor
         };
         let until_overflow = 0x1_0000 - u64::from(self.counter);
         if ticks < until_overflow {
@@ -308,7 +324,7 @@ impl Io {
             }
             0x0400_0100..=0x0400_010e => {
                 let index = ((address - TIMER_BASE) / 4) as usize;
-                self.timers[index].write8(address, value, index);
+                self.timers[index].write8(address, value, index, 0);
             }
             IE => self.enable = replace_byte(self.enable, address, value) & IRQ_MASK,
             WAITCNT => self.waitcnt = replace_byte(self.waitcnt, address, value) & 0x5fff,

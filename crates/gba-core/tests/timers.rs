@@ -359,3 +359,40 @@ fn unknown_io_and_mirrors_stay_unmapped_and_unaligned_writes_have_no_effect() {
     assert_eq!(bus.read32(IE).unwrap(), 0);
     assert_eq!(bus.cycles(), 0);
 }
+
+/// Original ARM code that mirrors the mGBA test suite's timer calibration: start
+/// timer 0 with `STR`, then read it straight back with `LDRH`. The suite's
+/// hardware-verified expectations are 7 from ROM with default wait states and 0
+/// from IWRAM, which requires a two-cycle start delay after the enabling store.
+#[test]
+fn machine_timer_start_matches_hardware_calibration_reads() {
+    use gba_core::{cpu::Cpu, machine::Machine, memory::ROM_START};
+    // LDR r0,=TIMER_BASE; LDR r1,=0x00800000; STR r1,[r0]; LDRH r2,[r0]; B .
+    let code = [
+        0xe59f_000c,
+        0xe59f_100c,
+        0xe580_1000,
+        0xe1d0_20b0,
+        0xeaff_fffe,
+        TIMER_BASE,
+        0x0080_0000,
+    ];
+    let bytes: Vec<u8> = code.iter().flat_map(|word| word.to_le_bytes()).collect();
+    for (base, expected) in [(ROM_START, 7), (0x0300_0000, 0)] {
+        let mut bus = Memory::new(bytes.clone()).unwrap();
+        for (offset, byte) in bytes.iter().enumerate() {
+            if base != ROM_START {
+                bus.write8(base + offset as u32, *byte).unwrap();
+            }
+        }
+        let mut machine = Machine::new(Cpu::new(base), bus);
+        for _ in 0..4 {
+            machine.step().unwrap();
+        }
+        assert_eq!(
+            machine.cpu().registers()[2],
+            expected,
+            "code at {base:#010x}"
+        );
+    }
+}
