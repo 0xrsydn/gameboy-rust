@@ -672,8 +672,21 @@ impl Io {
         let since_sample = u64::from(line_cycle + CYCLES_PER_LINE - BG_ENABLE_SAMPLE_CYCLE);
         let samples = (since_sample + u64::from(cycles)) / u64::from(CYCLES_PER_LINE)
             - since_sample / u64::from(CYCLES_PER_LINE);
-        for _ in 0..samples.min(3) {
-            self.bg_enable_lines = [enables, self.bg_enable_lines[0], self.bg_enable_lines[1]];
+        // The line of the newest sample, then the (at most two) samples before it.
+        let frame = u64::from(LINES_PER_FRAME);
+        let last_line = (u64::from(phase) + u64::from(cycles) + frame * u64::from(CYCLES_PER_LINE)
+            - u64::from(BG_ENABLE_SAMPLE_CYCLE))
+            / u64::from(CYCLES_PER_LINE);
+        for back in (0..samples.min(3)).rev() {
+            let line = ((last_line + frame - back) % frame) as u32;
+            self.bg_enable_lines = if line == 0 || line >= VISIBLE_LINES {
+                // Enables written before the first visible line is drawn show on it:
+                // no row is in progress for a new background to join late. mGBA does
+                // the same; the hardware behavior at the frame start is not known.
+                [enables; 3]
+            } else {
+                [enables, self.bg_enable_lines[0], self.bg_enable_lines[1]]
+            };
         }
         let (vblank, hblank) = self.display.dma_events(cycles);
         self.pending |= self.display.advance(cycles);

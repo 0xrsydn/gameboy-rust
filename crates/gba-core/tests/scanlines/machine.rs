@@ -263,3 +263,55 @@ fn host_background_enable_is_visible_at_once() {
         (10..HEIGHT).collect::<Vec<_>>()
     );
 }
+
+/// Run `poll VCOUNT == line; write DISPCNT = 0x100` and return the rows that show BG0.
+fn rows_after_cpu_enable_at(line: u32) -> Vec<usize> {
+    let rom = word_rom(&[
+        0xe3a0_0301,        // MOV r0,#0x04000000
+        0xe1d0_10b6,        // LDRH r1,[r0,#6] (VCOUNT)
+        0xe351_0000 | line, // CMP r1,#line
+        0x1aff_fffc,        // BNE
+        0xe3a0_2c01,        // MOV r2,#0x100
+        0xe1c0_20b0,        // STRH r2,[r0]
+        0xeaff_fffe,
+    ]);
+    let mut m = Memory::new(rom).unwrap();
+    m.set_scanline_rendering(true);
+    striped_background(&mut m);
+    m.write16(DISPCNT, 0).unwrap();
+    let mut machine = Machine::new(Cpu::new(ROM_START), m);
+    machine.run_until_vblank(100_000).unwrap(); // The frame in progress at reset.
+    machine.run_until_vblank(100_000).unwrap();
+    background_rows(&present(machine.memory()))
+}
+
+#[test]
+fn background_enabled_during_vblank_shows_from_the_first_row() {
+    for line in [160, 200, 226, 227] {
+        assert_eq!(
+            rows_after_cpu_enable_at(line),
+            (0..HEIGHT).collect::<Vec<_>>(),
+            "enabled on line {line}"
+        );
+    }
+}
+
+#[test]
+fn dma_written_background_enable_waits_like_a_cpu_write() {
+    let mut m = Memory::new(word_rom(&[0xeaff_fffe])).unwrap();
+    m.set_scanline_rendering(true);
+    striped_background(&mut m);
+    m.write16(DISPCNT, 0).unwrap();
+    m.write16(0x0200_0000, 0x100).unwrap();
+    m.write32(DMA_BASE, 0x0200_0000).unwrap();
+    m.write32(DMA_BASE + 4, DISPCNT).unwrap();
+    m.advance_cycles(CYCLES_PER_LINE * 40 + 100);
+    m.write32(DMA_BASE + 8, 0x8000_0001).unwrap(); // Immediate, one halfword.
+    let mut machine = Machine::new(Cpu::new(ROM_START), m);
+    assert_eq!(machine.step().unwrap(), StepKind::Dma { channel: 0 });
+    machine.run_until_vblank(100_000).unwrap();
+    assert_eq!(
+        background_rows(&present(machine.memory())),
+        (43..HEIGHT).collect::<Vec<_>>()
+    );
+}

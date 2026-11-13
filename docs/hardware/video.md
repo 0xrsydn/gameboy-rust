@@ -82,7 +82,9 @@ Affine background snapshots support these configurations:
   line or in its HBlank. Clearing the bit hides the background from the next captured row. A background re-enabled one line after
   it was disabled shows for one row, hides for two, and then stays. This is what the mGBA suite's "Layer toggle"
   and "Layer toggle 2" pictures require; they bound the sample point to after cycle 18 and no later than cycle 56.
-  The samples run on all 228 lines. Host writes to DISPCNT count as long established and show at once, and
+  The samples run on all 228 lines, but a sample taken during VBlank or on line 0 counts as long established, so an
+  enable written before the first row is drawn shows on it. mGBA does the same; hardware behavior at the frame
+  start is not known. Host writes to DISPCNT also count as long established and show at once, and
   `Memory::render_frame` ignores the history. Hardware starts such a row partway along (the suite shows its first
   two pixels blank and a different first tile); rows here are still composed whole. Sprites and windows have no
   such delay here; bitmap modes use the same rule as tile modes, which the suite does not test.
@@ -127,7 +129,7 @@ Changing the size does not reset the counter or recompute the origin from absolu
 Tracking continues with capture disabled. Fixed-register clock batches remain constant-time.
 
 These are explicit row-level rules, not verified hardware latch timing.
-Exact VBlank reload timing, enable delays, forced-blank restart delays, individual sprite fetches, and background pixel-fetch timing remain unmodeled.
+Exact VBlank reload timing, sprite and window enable delays, forced-blank restart delays, individual sprite fetches, and background pixel-fetch timing remain unmodeled.
 
 Sprites are enabled with DISPCNT bit 12 in any supported display mode:
 

@@ -1277,7 +1277,9 @@ impl Memory {
             if (DMA_BASE..=DMA_END).contains(&address) && self.write_access() == WriteAccess::Host {
                 self.io.expedite_dma();
             }
-            if address & !3 == crate::io::DISPCNT && self.write_access() == WriteAccess::Host {
+            // `access`, not `write_access()`: a DMA unit runs outside a CPU access but
+            // is still an emulated write, and its enables wait like the CPU's.
+            if address & !1 == crate::io::DISPCNT && access == WriteAccess::Host {
                 self.io.settle_bg_enables();
             }
             // A request that this write creates is dated at the access, inside a step.
