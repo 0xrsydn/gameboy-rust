@@ -208,24 +208,42 @@ fn host_byte_and_dma_waitcnt_writes_apply_queue_configuration() {
     assert_eq!(cpu.step_timed(&mut memory).unwrap().code_cycles, 8);
 }
 
+// Hardware results from the mGBA test suite's DMA timing tests: prefetch pauses while DMA
+// owns the bus, and the queue it had built is still there when the CPU resumes. A unit
+// that reaches the cartridge during the last cycle of a queued halfword stalls one cycle.
 #[test]
-fn ram_dma_advances_the_queue_and_rom_dma_cancels_it_before_cpu_resume() {
-    for (source, destination, expected_dma, expected_cpu) in [
-        (RAM, RAM + 4, 4, 2),     // Startup 2 + RAM 1+1 gives four free cycles.
-        (0x0200_1000, RAM, 9, 1), // EWRAM gives a complete word.
-        (ROM_START, RAM, 12, 8),  // Startup leaves remaining=1: ROM data stalls one cycle.
+fn dma_pauses_the_queue_and_keeps_it_for_cpu_resume() {
+    const SHIFT: u32 = 0xe1a0_0312; // MOV r0,r2,LSL r3: one internal cycle more than NOP.
+    for (waitcnt, first, source, destination, expected_dma, expected_cpu) in [
+        // Three-cycle halfwords, three cycles left: no stall. Startup 2 plus the accesses.
+        (0x4000, NOP, RAM, RAM + 4, 4, 6),
+        (0x4000, NOP, 0x0200_1000, RAM, 9, 6),
+        (0x4000, NOP, ROM_START, RAM, 11, 6),
+        (0x4000, NOP, RAM, ROM_START, 11, 6),
+        // Cartridge to cartridge: the write is sequential (N+S read, S+S write).
+        (0x4000, NOP, ROM_START, ROM_START + 0x40, 16, 6),
+        // Two-cycle halfwords, two cycles left: only a write after a RAM read stalls.
+        (0x4010, NOP, RAM, RAM + 4, 4, 4),
+        (0x4010, NOP, ROM_START, RAM, 10, 4),
+        (0x4010, NOP, RAM, ROM_START, 11, 4),
+        (0x4010, NOP, ROM_START, ROM_START + 0x40, 13, 4),
+        // One cycle left: a cartridge read stalls, a write after a RAM read does not.
+        (0x4010, SHIFT, RAM, RAM + 4, 4, 3),
+        (0x4010, SHIFT, ROM_START, RAM, 11, 3),
+        (0x4010, SHIFT, RAM, ROM_START, 10, 3),
     ] {
-        let (mut cpu, mut memory) = prepared(false, &[NOP, NOP], &[]);
-        enable(&mut memory);
+        let (mut cpu, mut memory) = prepared(false, &[first, NOP], &[]);
+        memory.write16(WAITCNT, waitcnt).unwrap();
         cpu.step_timed(&mut memory).unwrap();
+        let queue = memory.gamepak_prefetch;
         dma(&mut memory, source, destination);
         let (_, timing) = memory.step_dma().unwrap().unwrap();
-        assert_eq!(timing.total(), expected_dma);
-        assert_eq!(memory.cycles(), u64::from(expected_dma));
-        assert_eq!(
-            cpu.step_timed(&mut memory).unwrap().code_cycles,
-            expected_cpu
-        );
+        let case = format!("{waitcnt:#x} {first:#x} {source:#x} -> {destination:#x}");
+        assert_eq!(memory.cycles(), u64::from(timing.total()));
+        assert_eq!(memory.gamepak_prefetch, queue, "{case}");
+        let cpu_cycles = cpu.step_timed(&mut memory).unwrap().code_cycles;
+        assert_eq!(timing.total(), expected_dma, "{case}");
+        assert_eq!(cpu_cycles, expected_cpu, "{case}");
         assert!(!memory.cpu_resume_nonsequential);
     }
 }

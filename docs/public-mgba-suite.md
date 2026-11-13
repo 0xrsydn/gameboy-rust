@@ -31,7 +31,8 @@ A different revision or image can produce a different ROM; the addresses below t
 
 The ROM shows a menu of 14 sub-suites. Down moves the cursor, and A runs the selected sub-suite.
 It needs `--save-type sram`: at startup it clears SRAM, then writes a plain-text log of failures there (`savprintf`).
-Passing tests are not logged. Each failure line reads `<name>: Got <actual> vs <expected>: FAIL`.
+Passing tests are not logged. The suite writes a `<sub-suite> test: <test name>` header before each test and one
+`<configuration>: Got <actual> vs <expected>: FAIL` line per failing result.
 
 Pass counts come from memory. At this revision, the `suites` table of 14 `struct TestSuite` pointers is at ROM `0x0803d868`.
 Each struct holds `passes` and `totalResults` pointers at offsets 20 and 24.
@@ -52,7 +53,8 @@ direnv exec . cargo run --locked --release -p gba-diff --example mgba_suite_scor
   --rom roms/mgba-suite/suite.gba
 ```
 
-It prints one row per sub-suite and the `: FAIL` lines the suite wrote to SRAM.
+It prints one row per sub-suite and the `: FAIL` lines the suite wrote to SRAM, each prefixed with its test name
+(`<test name> | <configuration>: Got ...`). `--log PATH` writes every failure line to a file.
 It exits 0 when every counted sub-suite settled.
 `--frame-cap` (default 18000) bounds a sub-suite that never settles; that case exits 1, because a timeout is never a pass.
 The tool reports the suite's own counters and adds no verdict of its own.
@@ -68,7 +70,7 @@ Each sub-suite started from a fresh boot. These results came from a local probe 
 | ---: | --- | ---: | ---: | --- |
 | 0 | Memory | 43 / 44 so far | 1552 / 1552 | — |
 | 1 | I/O read | 4 / 40 so far | 130 / 130 | — |
-| 2 | Timing | 1660 / 2020 | 1824 / 2020 | — |
+| 2 | Timing | 1660 / 2020 | 2020 / 2020 | — |
 | 3 | Timers | 362 / 936 | 587 / 936 | — |
 | 4 | Timer IRQ | 0 / 90 | 44 / 90 | — |
 | 5 | Shifter | 140 / 140 | 140 / 140 | — |
@@ -110,7 +112,7 @@ per sub-suite. It reproduces the Current column exactly:
 | ---: | --- | ---: |
 | 0 | Memory | 1552 / 1552 |
 | 1 | I/O read | 130 / 130 |
-| 2 | Timing | 1824 / 2020 |
+| 2 | Timing | 2020 / 2020 |
 | 3 | Timer count-up | 587 / 936 |
 | 4 | Timer IRQ | 44 / 90 |
 | 5 | Shifter | 140 / 140 |
@@ -123,18 +125,23 @@ per sub-suite. It reproduces the Current column exactly:
 | 12 | Misc. edge | 6 / 12 |
 | 13 | Video | visual only |
 
-The recorded `: FAIL` lines list the remaining mismatches by test name. The visible timing lines read 4 cycles above
-the expected totals, the timer count-up lines show one-low and one-high values, and the Timer IRQ lines read `0x4e`
-where hardware reads `0x51`. The numbers no longer depend on an uncommitted local probe.
+The recorded `: FAIL` lines list the remaining mismatches by test name. The timer count-up lines show one-low and
+one-high values, and the Timer IRQ lines read `0x4e` where hardware reads `0x51`. The numbers no longer depend on an
+uncommitted local probe.
+
+The table was re-measured on Linux x86_64 after the Timing fixes below; a ROM built there from the pinned revision
+with the `devkitpro/devkitarm` image has the same SHA-256 as the Darwin build. Timing moved from 1824 to 2020:
+
+- Div and ArcTan no longer reload a service frame they did not need (60 results); see
+  [service timing](hardware/bios.md#service-timing).
+- Opcode prefetch pauses during DMA and keeps its queue, with a one-cycle stall at one halfword phase, and a
+  ROM-to-ROM transfer writes its first unit sequentially (136 results); see [DMA](hardware/dma.md).
 
 ## Remaining failures
 
-Every sub-suite now runs to completion. Memory, I/O read, shifter, carry, multiply long, BIOS math, DMA, and SIO read pass
-every result. What remains is cycle-level timing:
+Every sub-suite now runs to completion. Memory, I/O read, timing, shifter, carry, multiply long, BIOS math, DMA, and
+SIO read pass every result. What remains is cycle-level timing:
 
-- Timing: DMA start and CPU/DMA arbitration inside an instruction (200 results; see the
-  [DMA start experiment](mgba-reference.md#findings-so-far)), and one cycle on BIOS calls from ROM with the GamePak
-  prefetch buffer enabled (28 results).
 - Timers, Timer IRQ, and SIO timing: IRQ entry delay and the replacement BIOS's IntrWait/Halt wake path; see the
   [IRQ delay experiment](research/irq-delay.md).
 - Misc. edge: open bus left by a DMA while the CPU runs from the prefetch buffer, and a 3-cycle difference between two

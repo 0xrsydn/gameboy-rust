@@ -51,3 +51,44 @@ rewriting 49 timing-specific test expectations.
 1. Measure the replacement BIOS's IntrWait and Halt return paths against the suite independently of the delay,
    and match their cycle costs to the documented firmware behavior with original code.
 2. Then repeat this sweep. A clear optimum across Timers, Timer IRQ, and SIO timing would justify the model.
+
+## Second experiment (2026-11-13, after the System-mode service frame)
+
+A temporary switch in `Machine::step` repeated the sweep with a simpler rule: the IRQ line (IME and `IE & IF`) must
+have been seen asserted at a step boundary for N cycles before the CPU takes it, and a HALT wake idles N more cycles.
+It was not committed. Nothing hung for N up to 4; N = 5 stopped a sub-suite from settling.
+
+| Delay (cycles) | 0 | 2 | 3 | 4 |
+| --- | ---: | ---: | ---: | ---: |
+| Timers (of 936) | 587 | 656 | 662 | 713 |
+| Timer IRQ (of 90) | 44 | 59 | 71 | 75 |
+
+Unlike the first sweep, the counts rise with the delay. The IntrWait hang is gone because services now run with the
+caller's IRQ mask.
+
+The Timer IRQ sub-suite runs from IWRAM with one-cycle `nop`s, so it isolates three facts. With all three, it
+passes 90 of 90:
+
+1. **Delay 3.** An overflow in the instruction that ends at boundary B is first taken at boundary B + 3.
+   With delay 3 alone, every version takes the IRQ at the right instruction.
+2. **One more cycle between acceptance and the handler's stop write.** With delay 3 the stop value is `0x51` where
+   hardware reads `0x52`. Charging IRQ entry one extra internal cycle fixes it. Letting a stopped timer count one
+   more cycle fixes Timer IRQ equally but lowers Timers (596 against 668), so the entry cycle is the better reading.
+3. **A reload write does not reach an overflow in the next cycle.** In the `FFFF` row the counter overflows one
+   cycle after the test writes reload 0. Hardware then reads 0, 1, 2, 3 where immediate reload gives 1, 2, 3, 4,
+   while its IRQ timing follows the first overflow. Reloading that one overflow from the previous reload value
+   (so the counter overflows again a cycle later) reproduces both.
+
+What is still missing, and why the switch was not turned into a model:
+
+- The Timers sub-suite's loops use three-cycle loads and branches. The switch dates a request at the end of the
+  instruction in which it occurred, up to two cycles late; the failures there are two or three cycles late. The
+  model needs the exact overflow cycle inside the step (`Timer::next_overflow` already computes it).
+- SIO timing reads three cycles low with facts 1 and 2 (`0x276` against `0x279`), although this firmware's Halt
+  exit is three cycles longer than the documented firmware sequence. A HALT wake therefore seems to cost about six
+  more cycles than a running CPU's IRQ. The Misc. edge "Hblank" result is also three low.
+- Delay 3 moves two Misc. edge "Flip" results that pass today.
+
+Suggested implementation: keep a device clock and a `ready_at` time for the line in `Io`; date staged timer and serial
+requests at their exact phase; bound HALT idle by `ready_at`; charge the extra entry cycle; add the reload latch to
+`Timer`. Then fit the HALT wake cost against SIO timing and Hblank.

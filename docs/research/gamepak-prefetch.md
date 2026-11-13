@@ -104,13 +104,16 @@ Exact enable/disable transitions and changes during a partial transfer need inde
 
 A DMA unit stages queue progress independently of the CPU transaction.
 Its existing two startup cycles precede source and destination accesses in the nominal model.
-RAM-only DMA supplies idle cartridge time. Cartridge DMA cancels the stream and can incur the completion-edge stall.
+The queue pauses for the whole transfer and is kept, including across cartridge accesses; a first unit that reaches
+the cartridge in the last cycle of a queued halfword stalls one cycle. This replaced the earlier model (RAM-only DMA
+advanced the queue, cartridge DMA cancelled it) after the mGBA test suite's DMA timing tests; see
+[DMA](../hardware/dma.md).
 A failed unit preserves queue state and clocks. A successful WAITCNT destination applies the new configuration.
 DMA's CPU-resume N request remains separate; a matching queue entry can still satisfy that request.
 
 `HaltIdle` advances an active queue with its idle cycles. `StopIdle` freezes it.
 Machine device updates do not advance the queue a second time.
-Exact DMA startup/completion placement, bus arbitration, and hardware HALT/STOP edges remain unverified.
+Exact DMA startup placement, bus arbitration, and hardware HALT/STOP edges remain unverified.
 
 ## Original regression coverage
 

@@ -669,11 +669,34 @@ impl Memory {
         };
         let mut prefetch = self.gamepak_prefetch;
         prefetch.configure(self.waitcnt());
-        let internal_cycles = if transfer.first { 2 } else { 0 };
         // Keep the existing whole-unit DMA startup model; no sub-instruction arbitration.
-        prefetch.advance(internal_cycles);
-        let source_cycles = prefetch.data(transfer.source, transfer.width, kind);
-        let destination_cycles = prefetch.data(transfer.destination, transfer.width, kind);
+        // Opcode prefetch does not run while DMA owns the bus, and its queue survives the
+        // transfer; see docs/hardware/dma.md for the hardware measurements behind both.
+        let cartridge = |address: u32| (0x08..=0x0f).contains(&(address >> 24));
+        let (source_cartridge, destination_cartridge) =
+            (cartridge(transfer.source), cartridge(transfer.destination));
+        let stall = if transfer.first {
+            prefetch.dma_stall(source_cartridge, destination_cartridge)
+        } else {
+            0
+        };
+        let internal_cycles = if transfer.first { 2 } else { 0 } + stall;
+        let waitcnt = self.waitcnt();
+        let source_cycles =
+            crate::timing::bus_cycles(waitcnt, transfer.source, transfer.width, kind);
+        // A transfer between two Game Pak addresses writes its first unit as a
+        // sequential access: the bus is already addressing the cartridge.
+        let destination_kind = if source_cartridge && destination_cartridge {
+            AccessKind::Sequential
+        } else {
+            kind
+        };
+        let destination_cycles = crate::timing::bus_cycles(
+            waitcnt,
+            transfer.destination,
+            transfer.width,
+            destination_kind,
+        );
         let timing = StepTiming {
             code_cycles: 0,
             data_cycles: source_cycles + destination_cycles,

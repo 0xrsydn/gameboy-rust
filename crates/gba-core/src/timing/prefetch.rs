@@ -94,6 +94,25 @@ impl Prefetch {
         stall
     }
 
+    /// Stall cycles when a DMA transfer's first unit reaches the cartridge bus while a
+    /// halfword is in flight. The queue itself is kept: prefetch pauses for the transfer.
+    /// As for a CPU data access, interrupting the last cycle of a halfword costs one cycle.
+    /// When an internal-memory read precedes a cartridge write, the halfword is one cycle
+    /// further along by the time the write starts.
+    pub fn dma_stall(&self, source_cartridge: bool, destination_cartridge: bool) -> u32 {
+        let last_cycle = match (source_cartridge, destination_cartridge) {
+            (true, _) => 1,
+            (false, true) => 2,
+            (false, false) => return 0,
+        };
+        u32::from(
+            self.enabled()
+                && self
+                    .stream
+                    .is_some_and(|s| s.running && s.ready < 8 && s.remaining == last_cycle),
+        )
+    }
+
     pub fn code(&mut self, address: u32, width: AccessWidth, kind: AccessKind) -> u32 {
         let raw = bus_cycles(self.waitcnt, address, width, kind);
         if !(0x08..=0x0d).contains(&(address >> 24)) {

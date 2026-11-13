@@ -54,6 +54,7 @@ Update this file when a feature lands or a limit is removed.
 - Persistent fetch access kinds follow CPU data/internal work, compose with DMA resume, and reset after target refills.
 - Game Pak wait-state control (`WAITCNT`) for all three ROM windows and supported save-byte accesses.
 - Bit 14 enables a nominal eight-halfword opcode prefetch queue, with partial fetches, cancellation, and DMA/idle integration.
+- DMA pauses that queue and keeps it; the mGBA test suite's timing sub-suite, including every DMA case, passes in full.
 - Staged timer/audio/serial clocks follow CPU and DMA bus-completion phases, including timer/serial IF reads, acknowledgements, and failed-step rollback.
 - The unchanged original ARM cancellation probe matches both published read interval totals and its unadjusted timer samples.
 - Sequential/non-sequential data accesses, branch refill costs, and variable multiply timing.

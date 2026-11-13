@@ -51,16 +51,27 @@ CPU delivery waits until no DMA is ready. IRQ entry does not acknowledge IF.
 
 Timing uses independent source and destination bus costs, including WAITCNT and 128 KiB ROM boundaries.
 The first unit uses non-sequential accesses plus two internal cycles. Later units use sequential accesses.
+When source and destination are both Game Pak addresses, the first unit's write is sequential too: the bus is already
+addressing the cartridge. The [mGBA test suite](../public-mgba-suite.md)'s ROM-to-ROM cases measure N+S for the first
+halfword unit (19 cycles over calibration with default waits, not 21).
 Each step reports zero code cycles. Overlapping transfers read each unit after the preceding write; they are not bulk host copies.
 Timers stage progress through startup, source, and destination phases. Timer reads sample after source completion; writes apply after destination completion.
 Timer IF acknowledgements use that same ordering. Success commits the staged bank; failure discards it.
 Other devices then advance in bulk without ticking timers twice. Exact physical DMA startup timing remains unverified.
 A successful unit breaks the next nominal CPU code-access sequence, even if DMA accessed only RAM.
 The resumed instruction requests N once; enabled opcode prefetch can still satisfy a matching request.
-RAM accesses and the nominal startup cycles advance an active prefetch stream; cartridge accesses cancel it.
-Cancellation can add one data cycle at the final halfword phase. DMA never consumes queued opcodes.
-Only successful units commit queue progress; WAITCNT destinations apply configuration changes after the transfer.
-Exact startup/completion placement remains nominal, not independently verified prefetch arbitration.
+Opcode prefetch pauses while DMA owns the bus, and the queue it had built is still there when the CPU resumes.
+This holds whether the transfer touches only RAM or the cartridge. A halfword that was in flight continues from the
+same phase afterwards. One stall cycle is added when the transfer's first unit reaches the cartridge during the last
+cycle of that halfword: one cycle left for a cartridge source, two cycles left for a RAM source with a cartridge
+destination (the RAM read comes first). DMA never consumes queued opcodes.
+Only successful units commit; WAITCNT destinations apply configuration changes after the transfer.
+
+These rules are fitted to the suite's sixteen hardware-verified DMA timing tests (1 and 16 units, 16- and 32-bit,
+all four RAM/ROM source and destination pairs), each run from ARM and Thumb code with prefetch on and off under four
+wait settings. All of them pass. The measured halfword phases are tied to the wait setting in those tests, so the
+stall rule's phase condition is the simplest reading of the data, not an independently isolated fact.
+Startup placement inside the interrupted instruction is still nominal.
 See [CPU resume timing](cpu.md#nominal-cpu-resume-after-dma) for failure, idle, and refill rules.
 Channel-resumption costs, a full CPU fetch pipeline, and display-bus contention remain unmodeled.
 
