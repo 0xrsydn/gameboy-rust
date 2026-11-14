@@ -1,6 +1,6 @@
-# Pokémon FireRed (flash128): the first-battle script, then the Start menu, SAVE, and YES.
-# 21,700 frames; frames 0-19,999 equal firered-first-battle.inputs. Write the save with
-# --write-save and replay firered-continue.inputs from it. See docs/testing.md.
+# Pokémon FireRed (flash128): the first-battle script, then Oak and the rival's exit scene, the Start
+# menu, SAVE, and YES. 22,200 frames; frames 0-19,999 equal firered-first-battle.inputs. Write the
+# save with --write-save and replay firered-continue.inputs from it. See docs/testing.md.
 200:a:3
 210:start:3
 220:a:3
@@ -723,11 +723,25 @@
 20210:b:3
 20240:b:3
 20270:b:3
-20330:start:3
-20360:down:3
-20380:down:3
-20400:down:3
-20430:a:3
-20620:a:3
-21500:b:3
-21550:b:3
+20300:b:3
+20330:b:3
+20360:b:3
+20390:b:3
+20420:b:3
+20450:b:3
+20480:b:3
+20510:b:3
+20540:b:3
+20570:b:3
+20600:b:3
+20630:b:3
+20660:b:3
+20690:b:3
+20900:start:3
+20930:down:3
+20950:down:3
+20970:down:3
+21000:a:3
+21200:a:3
+22000:b:3
+22050:b:3

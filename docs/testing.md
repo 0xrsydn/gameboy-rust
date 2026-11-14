@@ -74,7 +74,7 @@ first-battle script followed by the Start menu, SAVE, and YES; `--write-save` st
 recap back to Oak's lab:
 
 ```sh
-$R --rom roms/pokemon-firered.gba --save-type flash128 --frames 21700 \
+$R --rom roms/pokemon-firered.gba --save-type flash128 --frames 22200 \
   --inputs tools/replays/firered-save.inputs --write-save roms/replays/firered.sav \
   --record roms/replays/firered-save.hashes
 $R --rom roms/pokemon-firered.gba --save-type flash128 --frames 2400 \
@@ -84,6 +84,15 @@ $R --rom roms/pokemon-firered.gba --save-type flash128 --frames 2400 \
 
 For a `--check` run, write the save to a new file and load that one, so the continue replay also checks what the
 save replay wrote. `--write-save` fails if a Flash write is still in progress at the last frame.
+
+`firered-route1.inputs` (36,000 frames, with `--capture`) continues from the save: out of Oak's lab and through
+Pallet Town to Route 1, over and around ledges, a wild PIDGEY fought and won, the POKéMON MART employee's POTION
+with its item fanfare, a wild RATTATA escaped with RUN, a POTION used from the BAG in battle, and the walk into
+Viridian City across the map seam.
+
+Each script's button timings fit one machine timeline. A change that alters timing even by a cycle can move a
+wandering NPC or a random encounter, and the rest of the script then plays out differently: the replay check
+reports the first differing frame, and the script needs rebuilding from there if the change is intended.
 
 Run the additional file-backed ROM-window test explicitly in that desktop session:
 
