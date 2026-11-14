@@ -88,7 +88,13 @@ save replay wrote. `--write-save` fails if a Flash write is still in progress at
 `firered-route1.inputs` (36,000 frames, with `--capture`) continues from the save: out of Oak's lab and through
 Pallet Town to Route 1, over and around ledges, a wild PIDGEY fought and won, the POKéMON MART employee's POTION
 with its item fanfare, a wild RATTATA escaped with RUN, a POTION used from the BAG in battle, and the walk into
-Viridian City across the map seam.
+Viridian City across the map seam. `firered-viridian.inputs` (45,700 frames) continues into the city: the old man who
+blocks the north road, the POKéMON CENTER sign, a heal at the counter (and a declined second heal), and the POKé MART
+clerk's OAK'S PARCEL scene with its scripted walk to the counter. `firered-parcel.inputs` (80,000 frames) goes back
+down Route 1 with ledge jumps and a won wild battle, delivers the parcel (the POKéDEX scene with the rival and the
+POKé BALLS), then on Route 1 throws two POKé BALLS that break free, faints to a critical hit, whites out to the
+POKéMON CENTER, and finally weakens and catches a PIDGEY, with its POKéDEX entry and the nickname prompt. Long
+replays can be recorded and checked with `--idle-skip`, which gives the same hashes in about half the time.
 
 Each script's button timings fit one machine timeline. A change that alters timing even by a cycle can move a
 wandering NPC or a random encounter, and the rest of the script then plays out differently: the replay check
