@@ -51,8 +51,9 @@ and SIO timing results. With them all three sub-suites pass in full. The
 - **Request delay.** When `IE & IF` becomes nonzero, the CPU and HALT see the request three cycles later. The CPU then
   takes it at the next instruction boundary, if IME and CPSR allow. A request that stays asserted keeps its date; IME
   changes apply at once. Prescaled timer overflows and serial completions are dated at their exact cycle inside the
-  instruction. Display, DMA, keypad, and cascaded-timer requests are dated at the end of the device batch that raised
-  them, and emulated writes to IE, IF, or DISPSTAT at their bus access.
+  instruction. Display requests are dated at their edge: device clocks split every batch at HBlank, the line start,
+  and sprite preparation, with or without frame capture. DMA, keypad, and cascaded-timer requests are dated at the
+  end of the device batch that raised them, and emulated writes to IE, IF, or DISPSTAT at their bus access.
 - **HALT wake.** HALT stays idle until the delayed request reaches it, then three cycles more before the CPU resumes.
   This constant is fitted together with this firmware's Halt service, so it is not an isolated hardware fact.
 - **Stop latency.** A timer that an emulated write disables counts one more cycle, with its old prescaler.
@@ -81,7 +82,7 @@ IRQ delivery still waits until the next machine step. A committed timer request 
 Successful steps commit timers, the shared divider phase, audio/serial state, and timer/serial IF bits.
 Failed steps discard staged counters, divider progress, device writes, FIFO consumption, serial shifts, and requests.
 Display and other device clocks then advance once, without advancing timers again.
-Display and remaining devices still use the bulk scheduler. Mid-instruction display events and general bus arbitration remain unmodeled; display requests are dated at the end of their batch.
+Display and remaining devices still use the bulk scheduler, split at display edges. Mid-instruction bus arbitration remains unmodeled; display requests are dated at their edge, even inside an instruction's cycles.
 [Direct Sound](audio.md) consumes selected timer overflows in the timer transaction; sound DMA requests commit at step boundaries.
 The same transaction advances both PSG pulse oscillators, the noise counter, and their shared 512 Hz sequencer independently of the general-purpose timers.
 It also advances [normal serial transfers](serial.md) with nominal internal clocks. External-clock requests cannot progress without a clock source.

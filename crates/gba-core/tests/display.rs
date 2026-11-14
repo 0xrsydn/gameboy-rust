@@ -359,9 +359,9 @@ fn display_sources_enter_an_original_irq_handler_acknowledge_and_return() {
         assert_eq!(machine.step().unwrap(), StepKind::Instruction);
         assert_eq!(machine.cpu().registers()[3], 1);
         assert_eq!(machine.memory().read16(IF).unwrap(), source as u16);
-        // Display requests are dated at the end of their step and seen three cycles later.
-        assert!(!machine.memory().irq_pending());
-        assert_eq!(machine.step().unwrap(), StepKind::Instruction); // B .
+        // The request is dated at its edge, one cycle into the five-cycle ADD from ROM, so
+        // its three-cycle delay has passed when the step ends: the CPU takes it before B.
+        assert!(machine.memory().irq_pending());
         assert_eq!(machine.cpu().pc(), ROM_START + 16);
         assert_eq!(machine.step().unwrap(), StepKind::IrqEntry);
         assert_eq!(machine.cpu().mode(), Mode::Irq);

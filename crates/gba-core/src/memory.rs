@@ -539,19 +539,22 @@ impl Memory {
             self.prepare_sprite_row(0);
             self.sprite_pipeline.started = true;
         }
-        if self.scanline_capture.is_none() {
-            let position = self.io.display_position();
-            let line_cycle = u32::from(position.line_cycle);
-            // A step that stays inside its line and does not reach the sprite
-            // preparation cycle has no pipeline event to split at.
-            if cycles < CYCLES_PER_LINE - line_cycle
-                && !(line_cycle < pipeline::PREPARE_CYCLE
-                    && line_cycle + cycles >= pipeline::PREPARE_CYCLE)
-            {
-                self.io.advance(cycles, advance_timers);
-                self.cycles = self.cycles.wrapping_add(u64::from(cycles));
-                return;
-            }
+        let position = self.io.display_position();
+        let line_cycle = u32::from(position.line_cycle);
+        // A step that stays inside its line and reaches neither HBlank nor the sprite
+        // preparation cycle has no display or pipeline event to split at.
+        if cycles < CYCLES_PER_LINE - line_cycle
+            && !(line_cycle < HBLANK_START && line_cycle + cycles >= HBLANK_START)
+            && !(line_cycle < pipeline::PREPARE_CYCLE
+                && line_cycle + cycles >= pipeline::PREPARE_CYCLE)
+        {
+            self.io.advance(cycles, advance_timers);
+            self.cycles = self.cycles.wrapping_add(u64::from(cycles));
+            return;
+        }
+        if self.scanline_capture.is_none() && cycles > 2 * CYCLES_PER_LINE {
+            // A long host batch (never a machine step: HALT idles to the next display
+            // edge) keeps constant work: only the last two sprite rows matter.
             let phase = u32::from(position.scanline) * CYCLES_PER_LINE + line_cycle;
             let mut advanced = 0;
             for (offset, row) in pipeline::latest_events(phase, cycles).into_iter().flatten() {
@@ -561,8 +564,10 @@ impl Memory {
             }
             self.io.advance(cycles - advanced, advance_timers);
         } else {
-            // Split at display and sprite-preparation edges. Video writes have
-            // already committed. Staged devices skip their bulk clock on machine steps.
+            // Split at display and sprite-preparation edges, with or without row
+            // capture, so display requests and DMA starts are dated at their edge and
+            // capture never changes machine state. Video writes have already committed.
+            // Staged devices skip their bulk clock on machine steps.
             let mut remaining = cycles;
             while remaining != 0 {
                 let position = self.io.display_position();
@@ -587,7 +592,11 @@ impl Memory {
                         && u32::from(position.scanline) < VISIBLE_LINES
                     {
                         let row = usize::from(position.scanline);
-                        if self.scanline_capture.as_ref().unwrap().wants_row(row) {
+                        if self
+                            .scanline_capture
+                            .as_ref()
+                            .is_some_and(|capture| capture.wants_row(row))
+                        {
                             self.io.settle_windows();
                             let mut settings = self.io.video_settings(true);
                             settings.prepared_objects = Some(self.sprite_pipeline.row(row));
@@ -603,10 +612,9 @@ impl Memory {
                     } else if position.line_cycle == 0
                         && u32::from(position.scanline) == VISIBLE_LINES
                     {
-                        self.scanline_capture
-                            .as_mut()
-                            .unwrap()
-                            .publish(position.vblanks);
+                        if let Some(capture) = self.scanline_capture.as_mut() {
+                            capture.publish(position.vblanks);
+                        }
                     }
                 }
             }

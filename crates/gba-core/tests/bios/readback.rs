@@ -184,7 +184,14 @@ fn irq_callback_and_return_have_distinct_image_derived_readback() {
             machine.memory_mut().write16(DISPSTAT, 8).unwrap();
             machine.memory_mut().write16(IE, 1).unwrap();
             machine.memory_mut().write16(IME, 1).unwrap();
-            machine.memory_mut().advance_cycles(VBLANK_START);
+            // Advance exactly to the next VBlank edge: the request is dated there.
+            let position = machine.memory().display_position();
+            let now = u32::from(position.scanline) * gba_core::display::CYCLES_PER_LINE
+                + u32::from(position.line_cycle);
+            let frame = gba_core::display::CYCLES_PER_FRAME;
+            machine
+                .memory_mut()
+                .advance_cycles((VBLANK_START + frame - now - 1) % frame + 1);
             assert!(!machine.memory().irq_pending());
             machine.memory_mut().advance_cycles(3); // The CPU sees the request three cycles later.
             assert_eq!(machine.step().unwrap(), StepKind::IrqEntry);

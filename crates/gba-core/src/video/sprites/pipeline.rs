@@ -50,8 +50,8 @@ pub(crate) fn next_event(scanline: u16, cycle: u16) -> u32 {
     lines * CYCLES_PER_LINE + PREPARE_CYCLE - cycle
 }
 
-/// Latest two events suffice when capture is disabled: fixed memory/registers
-/// cannot change inside a clock batch, and only two prepared rows are retained.
+/// Latest two events suffice for a long host clock batch without capture: fixed
+/// memory/registers cannot change inside it, and only two prepared rows are retained.
 /// Offsets are relative to the supplied starting phase, in chronological order.
 pub(crate) fn latest_events(phase: u32, cycles: u32) -> [Option<(u32, usize)>; 2] {
     let start = u64::from(phase);

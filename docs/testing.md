@@ -60,7 +60,8 @@ $R --rom roms/pokemon-emerald.gba --save-type flash128 --rtc 847932662 --frames 
 
 `--check` prints the first frame whose hash differs and exits 1. An optimization or refactor must keep every hash;
 a deliberate behavior change will move them, and the replay shows from which frame. Run without `--capture` too:
-frame capture changes how the core splits clock batches, so the two modes cover different paths. Add `--idle-skip` to a
+the core must reach the same machine state with and without frame capture, and the two modes still take different
+paths through the video code. Add `--idle-skip` to a
 `--check` run to verify the [idle-loop fast-forward](hardware/timers-irq.md#idle-loop-fast-forward) against hashes recorded
 without it. The scripts in
 `tools/replays/` are original button timings that take FireRed through its first rival battle and Emerald through
