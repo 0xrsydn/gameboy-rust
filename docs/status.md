@@ -46,6 +46,7 @@ Update this file when a feature lands or a limit is removed.
 - Separate retained DMA channel data, with known-value reuse for blocked sources below work RAM.
 - One-shot non-sequential nominal CPU code timing after successful DMA, including RAM-only transfers.
 - HALT with enabled-request wake-up, continued device clocks, and bounded idle steps.
+- Opt-in exact fast-forward of RAM-polling idle loops, enabled in the ROM window and frame benchmark; frames are identical with and without it.
 - BIOS-only CPU writes to POSTFLG/HALTCNT, with HALT and keypad-wake STOP.
 - STOP freezes CPU/DMA/GBA-device clocks, retains device phases, and reports a stopped frame runner without spinning.
 - Machine execution to the next VBlank event, with a configurable step limit.

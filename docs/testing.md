@@ -34,7 +34,9 @@ Measure headless emulation speed with `--bench-frames COUNT` in a release build:
 It boots the ROM, runs COUNT whole frames without frame capture, and prints the frame count, host seconds,
 frames per second, the multiple of 60 frames per second, machine steps per second, and nominal cycles per second.
 The window starts before boot, so it covers boot execution, like a reset-to-frame run in mGBA's `mgba-perf`.
-A STOP, a diagnostic, or a missing VBlank ends the run without a timing result.
+A STOP, a diagnostic, or a missing VBlank ends the run without a timing result. The benchmark enables the exact
+[idle-loop fast-forward](hardware/timers-irq.md#idle-loop-fast-forward), as the ROM window does, so its machine-step
+count covers skipped loop passes as single steps.
 `--bench-frames` rejects `--rtc`, `--audio`, `--speed`, `--state-file`, `--steps`, `--window`, and `--frames`.
 Timing depends on the host and its current load. Treat the output as a measurement, never as a test verdict.
 The workspace release profile uses fat LTO and one codegen unit, because the interpreter's bus path crosses module
@@ -58,7 +60,9 @@ $R --rom roms/pokemon-emerald.gba --save-type flash128 --rtc 847932662 --frames 
 
 `--check` prints the first frame whose hash differs and exits 1. An optimization or refactor must keep every hash;
 a deliberate behavior change will move them, and the replay shows from which frame. Run without `--capture` too:
-frame capture changes how the core splits clock batches, so the two modes cover different paths. The scripts in
+frame capture changes how the core splits clock batches, so the two modes cover different paths. Add `--idle-skip` to a
+`--check` run to verify the [idle-loop fast-forward](hardware/timers-irq.md#idle-loop-fast-forward) against hashes recorded
+without it. The scripts in
 `tools/replays/` are original button timings that take FireRed through its first rival battle and Emerald through
 its TV news event; the ROMs and the recorded hashes stay in the ignored `roms/` directory. A full run of both takes
 a few minutes, mostly serializing the save state each frame.

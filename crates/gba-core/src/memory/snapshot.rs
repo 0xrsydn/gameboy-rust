@@ -61,6 +61,8 @@ impl Snapshot for Memory {
             iwram_bus,
             scanline_capture,
             sprite_pipeline,
+            // A diagnostic counter for idle-loop detection, not machine state.
+            side_accesses: _,
         } = self;
         writer.tag(b"MEM0");
         // The cartridge comes first so a differing save device reports a
@@ -119,6 +121,7 @@ impl Snapshot for Memory {
             iwram_bus,
             scanline_capture,
             sprite_pipeline,
+            side_accesses: _,
         } = self;
         reader.tag(b"MEM0")?;
         cartridge.load(reader)?;

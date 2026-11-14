@@ -39,6 +39,8 @@ impl Session {
     pub fn new(bytes: Vec<u8>) -> Result<Self, MemoryError> {
         let mut machine = bios::boot(bytes)?;
         machine.memory_mut().set_scanline_rendering(true);
+        // Exact: frames are identical with and without it; see Machine::set_idle_skip.
+        machine.set_idle_skip(true);
         Ok(Self {
             machine,
             frame: Framebuffer::default(),

@@ -207,6 +207,21 @@ pub struct Memory {
     iwram_bus: IwramBus,
     scanline_capture: Option<video::capture::Capture>,
     sprite_pipeline: pipeline::SpritePipeline,
+    /// Count of data accesses that were not plain RAM or ROM reads: every write and every
+    /// read of I/O, BIOS, save, GPIO, or unmapped memory. Idle-loop detection only.
+    side_accesses: Cell<u64>,
+}
+
+/// Memory-side state that an instruction step can change, compared by idle-loop
+/// detection: opcode prefetch, the CPU's resume kind, the DMA bus value, the BIOS
+/// prefetch latch, and committed IWRAM bus lanes. Valid between machine steps.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct CpuSideState {
+    prefetch: Prefetch,
+    resume_nonsequential: bool,
+    dma_bus: Option<u32>,
+    bios_prefetch: Option<u32>,
+    iwram_lanes: (u32, u32),
 }
 
 impl Memory {
@@ -243,6 +258,7 @@ impl Memory {
             iwram_bus: IwramBus::default(),
             scanline_capture: None,
             sprite_pipeline: pipeline::SpritePipeline::default(),
+            side_accesses: Cell::new(0),
         })
     }
 
@@ -810,6 +826,48 @@ impl Memory {
         self.io.next_event_cycles()
     }
 
+    pub(crate) fn side_accesses(&self) -> u64 {
+        self.side_accesses.get()
+    }
+
+    pub(crate) fn cpu_side_state(&self) -> CpuSideState {
+        debug_assert!(!self.step_active.get() && self.cpu_access.is_none());
+        CpuSideState {
+            prefetch: self.gamepak_prefetch,
+            resume_nonsequential: self.cpu_resume_nonsequential,
+            dma_bus: self.dma_bus,
+            bios_prefetch: self.bios_prefetch,
+            iwram_lanes: self.iwram_bus.committed_lanes(),
+        }
+    }
+
+    /// Cycles that can pass in one batch with the same effect as completing shorter
+    /// instruction steps that observe no device: `Io::idle_budget`, also short of the
+    /// sprite pipeline's preparation cycle. Zero before the pipeline has started.
+    pub(crate) fn idle_budget(&self) -> u32 {
+        if !self.sprite_pipeline.started || self.step_active.get() {
+            return 0;
+        }
+        let line_cycle = u32::from(self.io.display_position().line_cycle);
+        let budget = self.io.idle_budget();
+        if line_cycle < pipeline::PREPARE_CYCLE {
+            budget.min(pipeline::PREPARE_CYCLE - line_cycle)
+        } else {
+            budget
+        }
+    }
+
+    /// Advance machine time exactly as completing instruction steps of `cycles` in
+    /// total would, when those steps stage no device. The caller keeps `cycles` below
+    /// `idle_budget`, so no event falls inside.
+    pub(crate) fn advance_idle_cycles(&mut self, cycles: u32) {
+        debug_assert!(cycles < self.idle_budget());
+        self.io.advance_staged_devices(cycles);
+        self.cartridge.advance(cycles);
+        self.commit_save_mutation();
+        self.advance_running_cycles_with_timers(cycles, false);
+    }
+
     pub(crate) fn begin_cpu_access(
         &mut self,
         pc: u32,
@@ -1047,6 +1105,8 @@ impl Memory {
 
     // Multi-byte reads use this helper to avoid charging each byte as a bus access.
     fn read_byte(&self, address: u32) -> Result<u8, MemoryError> {
+        self.side_accesses
+            .set(self.side_accesses.get().wrapping_add(1));
         // Every cartridge device decodes at or above the first ROM window.
         let cartridge_region = address >> 24 >= 0x08;
         if cartridge_region && self.with_cartridge(|cartridge| cartridge.eeprom_mapped(address)) {
@@ -1187,6 +1247,8 @@ impl Memory {
         bytes: [u8; N],
         access: WriteAccess,
     ) -> Result<(), MemoryError> {
+        self.side_accesses
+            .set(self.side_accesses.get().wrapping_add(1));
         let index = self.write_index::<N>(address, access)?;
         if address >> 24 == 0x04 {
             Self::validate_io_values(&mut self.audio_state(), address, &bytes)?;
@@ -1438,6 +1500,8 @@ impl Memory {
     /// leave a partial block store. This is not a model of hardware data aborts.
     /// Mapped I/O reads currently have no side effects; writes cannot fail after validation.
     pub(crate) fn write_words(&mut self, writes: &[(u32, u32)]) -> Result<(), MemoryError> {
+        self.side_accesses
+            .set(self.side_accesses.get().wrapping_add(1));
         // Plain RAM stores can only fail the address check. They reach no device,
         // so they need no trial run against device and timing copies.
         if writes
@@ -1524,6 +1588,8 @@ impl Memory {
     /// Shift out one EEPROM bit inside a machine step. Host reads outside a step only
     /// inspect status or the next bit; nothing outside a step can stage the change.
     fn read_eeprom16(&self, address: u32) -> Result<u16, MemoryError> {
+        self.side_accesses
+            .set(self.side_accesses.get().wrapping_add(1));
         self.record_access(address, AccessWidth::Halfword);
         let mut cartridge = self.cartridge_now();
         let value = cartridge.read_eeprom16(address, self.cpu_access.is_some())?;

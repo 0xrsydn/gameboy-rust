@@ -106,7 +106,7 @@ The repository is a Cargo workspace with three crates:
 | `crates/gba-core/src/memory/timer_step_tests.rs` | Timer access phases, coherent lanes, cascades, IF ordering, rollback, DMA, idle, and clock ownership |
 | `crates/gba-core/src/display.rs` | Display clock, scanline status, comparison edges, and display IRQ events |
 | `crates/gba-core/src/dma.rs` | DMA registers, internal pointers, retained channel data, trigger state, priority, and completion IRQs |
-| `crates/gba-core/src/machine.rs` | Timed CPU/DMA/device stepping and IRQ delivery |
+| `crates/gba-core/src/machine.rs` | Timed CPU/DMA/device stepping, IRQ delivery, and opt-in exact idle-loop fast-forward |
 | `crates/gba-core/src/snapshot.rs` | Save-state binary primitives (writer, reader, tags, FNV fingerprint) and `SnapshotError` |
 | `crates/gba-core/src/machine/snapshot.rs` | `Machine::save_state`/`load_state`: header, image and cartridge identity, checksum, verify-before-mutate |
 | `crates/gba-core/src/memory/snapshot.rs`, `crates/gba-core/src/io/snapshot.rs` | Memory bus and I/O register encoders; every other state type implements `Snapshot` beside its definition |
@@ -199,6 +199,7 @@ The repository is a Cargo workspace with three crates:
 | `crates/gba-core/tests/exceptions.rs` | Exception demo, BIOS mapping, and reset-vector execution |
 | `crates/gba-core/tests/timers.rs` | Timer rules, interrupt registers, and a cycle-by-cycle reference |
 | `crates/gba-core/tests/machine.rs` | Device IRQ entry/return, clock policy, and I/O failure atomicity |
+| `crates/gba-core/tests/idle_loop.rs` | Idle-loop fast-forward: identical frames with timer and HBlank-DMA events; loops with stores or I/O reads are not skipped |
 | `crates/gba-core/tests/timing.rs` | WAITCNT fields, bus costs, and timer/IRQ timing integration |
 | `crates/gba-core/tests/timer_prescaler.rs` | Exhaustive divider phases, staggered starts, control/cascade transitions, independent edge simulation, large batches, and idle ownership |
 | `crates/gba-core/tests/keypad.rs` | Keypad register widths, IRQ sampling, CPU/DMA ordering, HALT wake-up, diagnostics, and BIOS IntrWait |

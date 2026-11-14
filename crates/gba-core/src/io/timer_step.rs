@@ -234,7 +234,7 @@ impl Io {
 
     /// Cycles from now to the first device event, capped. A step shorter than this
     /// raises no request, triggers no sound DMA, and records no sample.
-    fn quiet_cycles(&self) -> u32 {
+    pub(super) fn quiet_cycles(&self) -> u32 {
         // Stop and reload edges act in the cycle after a write; keep them per step.
         if self
             .timers

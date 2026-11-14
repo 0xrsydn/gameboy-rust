@@ -329,6 +329,13 @@ impl Dma {
     }
 
     /// Cycles until a delayed transfer may start, to bound HALT idling.
+    /// Whether a transfer would run at the next step boundary.
+    pub(crate) fn ready(&self) -> bool {
+        self.channels
+            .iter()
+            .any(|channel| channel.enabled() && channel.active && channel.start_delay == 0)
+    }
+
     pub(crate) fn next_start_cycles(&self) -> Option<u32> {
         self.channels
             .iter()

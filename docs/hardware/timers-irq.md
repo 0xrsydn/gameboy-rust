@@ -241,6 +241,34 @@ Byte, halfword, and word writes are supported; a halfword/word at POSTFLG also w
 Multi-byte and block-store diagnostics preserve POSTFLG, power state, CPU registers, and the current step's clock.
 CPU-only stepping can record HALT/STOP but does not enforce either pause. Use `Machine::step()` for device integration.
 
+## Idle-loop fast-forward
+
+Many games wait for VBlank by polling a RAM flag that their interrupt handler sets, not with HALT. Pokémon FireRed
+spends about 63% of its emulated cycles in one five-instruction Thumb loop of this kind (`ldrh` of
+`gMain.intrCheck`, `adds`, `ands`, `cmp`, `beq`) and never halts. `Machine::set_idle_skip(true)` fast-forwards such
+loops without changing what the machine computes:
+
+- A short backward branch (at most 64 bytes) arms a probe at its target, the loop head.
+- The probe records the CPU, the memory-side state an instruction step changes (opcode prefetch, the CPU's resume
+  kind, the DMA bus value, the BIOS prefetch latch, and committed IWRAM bus lanes), a count of data accesses other
+  than plain RAM and ROM reads, and the clock.
+- When the CPU next reaches the head within 32 steps, the pass qualifies only if every step was an instruction (no
+  IRQ entry, DMA unit, or HALT), no write or device, BIOS, save, or GPIO read happened, and the recorded state is
+  identical. Every further pass would then repeat it exactly.
+- Time then advances over as many whole passes as end before the next event: HBlank, the line end, the
+  background-enable sample, sprite preparation, a timer overflow, serial completion, a capture sample, a DMA start,
+  or an interrupt reaching the CPU. A ready DMA unit or a deliverable interrupt allows no skip. The batch goes
+  through the same completion path as the skipped instruction steps, which is additive inside such an interval.
+- A pass with a write or device read, or two passes in a row that end with different state (a counting loop), make
+  the head ineligible for the next 256 arms, so loops that never qualify do not pay for probing. A single differing
+  pass is re-measured, because the first pass after an interrupt returns can start from a different prefetch state.
+
+Machine state at every step boundary is identical with and without it; only the number of steps falls.
+`replay_hash --idle-skip` checks this against recorded game replays ([testing](../testing.md)). The desktop ROM
+window and `--bench-frames` enable it; `--steps`, `gba-diff`, and tests that count steps leave it off. Unlike mGBA's
+idle-loop detection, it never skips a partial pass or approximates cycle counts, and it does not recognize loops
+that read I/O registers such as `VCOUNT` or `IF`.
+
 ## STOP with keypad wake-up
 
 Writing HALTCNT with bit 7 set requests STOP. Bits 0–6 are ignored.

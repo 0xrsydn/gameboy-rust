@@ -21,7 +21,7 @@ use gba_core::{
 /// Machine steps allowed between VBlanks before a frame is reported as stuck.
 const FRAME_STEP_LIMIT: usize = 2_000_000;
 
-const USAGE: &str = "usage: replay_hash --rom ROM --frames N [--save-type sram|flash64|flash128|eeprom512|eeprom8k] [--rtc SECONDS_SINCE_2000] [--inputs FILE] [--capture] [--record FILE | --check FILE]";
+const USAGE: &str = "usage: replay_hash --rom ROM --frames N [--save-type sram|flash64|flash128|eeprom512|eeprom8k] [--rtc SECONDS_SINCE_2000] [--inputs FILE] [--capture] [--idle-skip] [--record FILE | --check FILE]";
 
 struct Options {
     rom: PathBuf,
@@ -30,6 +30,7 @@ struct Options {
     rtc: Option<u64>,
     inputs: Option<PathBuf>,
     capture: bool,
+    idle_skip: bool,
     record: Option<PathBuf>,
     check: Option<PathBuf>,
 }
@@ -42,6 +43,7 @@ fn parse(args: &[String]) -> Result<Options, String> {
         rtc: None,
         inputs: None,
         capture: false,
+        idle_skip: false,
         record: None,
         check: None,
     };
@@ -68,6 +70,7 @@ fn parse(args: &[String]) -> Result<Options, String> {
             "--rtc" => options.rtc = Some(number(value()?)?),
             "--inputs" => options.inputs = Some(value()?.into()),
             "--capture" => options.capture = true,
+            "--idle-skip" => options.idle_skip = true,
             "--record" => options.record = Some(value()?.into()),
             "--check" => options.check = Some(value()?.into()),
             _ => return Err(format!("unknown option: {arg}\n{USAGE}")),
@@ -201,6 +204,7 @@ fn run(options: Options) -> Result<bool, String> {
     }
     machine.memory_mut().set_scanline_rendering(options.capture);
     machine.memory_mut().set_audio_capture(options.capture);
+    machine.set_idle_skip(options.idle_skip);
     let mut frame = Framebuffer::default();
 
     let mut lines = Vec::with_capacity(options.frames as usize);

@@ -506,6 +506,27 @@ impl Io {
             .fold(self.display.next_event_cycles(), u32::min)
     }
 
+    /// Cycles of machine time that can pass in one batch with the same effect as any
+    /// split into shorter steps: inside the current line, short of HBlank, the line end,
+    /// and the background-enable sample, and short of every timer, serial, capture, DMA,
+    /// or interrupt event. Zero until the line trackers have started.
+    pub(crate) fn idle_budget(&self) -> u32 {
+        // A transfer or interrupt that the next step would service ends the pass now.
+        if !(self.window_edges.started() && self.vertical_mosaic.started())
+            || self.dma.ready()
+            || self.irq_pending()
+        {
+            return 0;
+        }
+        let line_cycle = u32::from(self.display.position().line_cycle);
+        let mut budget = self.next_event_cycles();
+        if line_cycle < BG_ENABLE_SAMPLE_CYCLE {
+            budget = budget.min(BG_ENABLE_SAMPLE_CYCLE - line_cycle);
+        }
+        // Device events counted from the settled state; deferred time has passed already.
+        budget.min(self.quiet_cycles().saturating_sub(self.deferred))
+    }
+
     /// Whether a request has been asserted long enough for the CPU and HALT to see it.
     /// IME and CPSR.I are applied by the callers.
     fn irq_line(&self) -> bool {

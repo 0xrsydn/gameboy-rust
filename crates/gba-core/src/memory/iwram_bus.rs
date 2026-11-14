@@ -62,6 +62,12 @@ impl IwramBus {
         }
     }
 
+    /// Committed lanes (value, known mask) between steps, for comparing bus history.
+    pub(super) fn committed_lanes(&self) -> (u32, u32) {
+        debug_assert!(self.pending.get().is_none());
+        (self.committed.value, self.committed.known)
+    }
+
     /// DMA runs between instructions. Call only after the entire unit succeeds.
     pub(super) fn dma_access(&mut self, address: u32, width: AccessWidth, value: u32) {
         debug_assert!(self.pending.get().is_none());

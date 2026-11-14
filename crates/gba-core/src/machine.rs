@@ -7,10 +7,30 @@ use crate::{
     cpu::{Cpu, CpuError},
     dma::DmaError,
     io::HALT_WAKE_CYCLES,
-    memory::Memory,
+    memory::{CpuSideState, Memory},
     timing::StepTiming,
 };
 mod snapshot;
+
+/// Longest loop body, in bytes and in instruction steps, that idle detection considers.
+const IDLE_LOOP_BYTES: u32 = 64;
+const IDLE_LOOP_STEPS: u32 = 32;
+/// Arming attempts to ignore at a loop head whose pass did not repeat, so loops that
+/// count or poll devices do not pay for probing on every pass.
+const IDLE_REJECT_ARMS: u16 = 256;
+
+/// One pass of a candidate idle loop, measured from its head: the state there when the
+/// pass began, the side-access count, and the clock.
+struct IdleProbe {
+    head: u32,
+    cpu: Cpu,
+    side: CpuSideState,
+    accesses: u64,
+    cycles: u64,
+    steps: u32,
+    /// The previous pass from this head also ended with different state.
+    mismatched: bool,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StepKind {
@@ -84,6 +104,10 @@ pub struct Machine {
     cpu: Cpu,
     memory: Memory,
     last_timing: StepTiming,
+    idle_skip: bool,
+    idle: Option<IdleProbe>,
+    /// A loop head whose pass did not repeat, and how many more arms to ignore there.
+    idle_rejected: Option<(u32, u16)>,
 }
 
 impl Machine {
@@ -92,7 +116,23 @@ impl Machine {
             cpu,
             memory,
             last_timing: StepTiming::default(),
+            idle_skip: false,
+            idle: None,
+            idle_rejected: None,
         }
+    }
+
+    /// Fast-forward verified idle loops (off by default). A short backward-branching
+    /// loop qualifies when one whole pass is only instruction steps, makes no data access
+    /// other than plain RAM and ROM reads, and leaves the CPU and its memory-side state
+    /// exactly as they were at the loop head. Every further pass would then repeat it, so
+    /// the step that completes such a pass also advances time over as many whole passes
+    /// as end before the next display, timer, serial, capture, DMA, or interrupt event.
+    /// Machine state at every step boundary is unchanged; only the number of steps falls.
+    pub fn set_idle_skip(&mut self, enabled: bool) {
+        self.idle_skip = enabled;
+        self.idle = None;
+        self.idle_rejected = None;
     }
 
     pub fn cpu(&self) -> &Cpu {
@@ -163,6 +203,78 @@ impl Machine {
     /// CPU/DMA diagnostics leave CPU, devices, and the clock unchanged for this step.
     /// Row-capture diagnostics are deferred to Memory::present_frame instead.
     pub fn step(&mut self) -> Result<StepKind, MachineError> {
+        if !self.idle_skip {
+            return self.step_once();
+        }
+        let before = self.cpu.pc();
+        let result = self.step_once();
+        match result {
+            Ok(StepKind::Instruction) => self.track_idle_loop(before),
+            _ => self.idle = None,
+        }
+        result
+    }
+
+    /// After an instruction step: arm on a short backward branch, and at the end of each
+    /// pass through the armed loop, skip whole passes if the pass repeated exactly.
+    fn track_idle_loop(&mut self, before: u32) {
+        let pc = self.cpu.pc();
+        if let Some(probe) = &mut self.idle {
+            probe.steps += 1;
+            if pc != probe.head {
+                if probe.steps >= IDLE_LOOP_STEPS {
+                    self.idle = None; // Left the loop, or it is too long.
+                }
+                return;
+            }
+            // A write or device read is a property of the loop's code: give up at once.
+            // Changed state can be a first pass's warm-up (after an IRQ return, say),
+            // so give up only when two passes in a row differ, as in counting loops.
+            let pure = self.memory.side_accesses() == probe.accesses;
+            let repeated =
+                pure && self.memory.cpu_side_state() == probe.side && self.cpu == probe.cpu;
+            if !repeated {
+                if !pure || probe.mismatched {
+                    self.idle = None;
+                    self.idle_rejected = Some((pc, IDLE_REJECT_ARMS));
+                } else {
+                    let mut next = self.probe_at(pc);
+                    next.mismatched = true;
+                    self.idle = Some(next);
+                }
+                return;
+            }
+            let period = self.memory.cycles().wrapping_sub(probe.cycles);
+            if period != 0 && period < u64::from(u32::MAX) {
+                let period = period as u32;
+                let budget = self.memory.idle_budget();
+                if budget > period {
+                    self.memory
+                        .advance_idle_cycles((budget - 1) / period * period);
+                }
+            }
+            self.idle = Some(self.probe_at(pc));
+        } else if pc < before && before - pc <= IDLE_LOOP_BYTES {
+            match &mut self.idle_rejected {
+                Some((head, arms)) if *head == pc && *arms != 0 => *arms -= 1,
+                _ => self.idle = Some(self.probe_at(pc)),
+            }
+        }
+    }
+
+    fn probe_at(&self, head: u32) -> IdleProbe {
+        IdleProbe {
+            head,
+            cpu: self.cpu.clone(),
+            side: self.memory.cpu_side_state(),
+            accesses: self.memory.side_accesses(),
+            cycles: self.memory.cycles(),
+            steps: 0,
+            mismatched: false,
+        }
+    }
+
+    fn step_once(&mut self) -> Result<StepKind, MachineError> {
         if self.memory.stopped() {
             self.last_timing = StepTiming::default();
             return Ok(StepKind::StopIdle);

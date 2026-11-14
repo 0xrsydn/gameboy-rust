@@ -77,6 +77,8 @@ impl Machine {
         self.cpu.load(payload)?;
         self.memory.load(payload)?;
         self.last_timing = load_timing(payload)?;
+        self.idle = None;
+        self.idle_rejected = None;
         payload.finish()
     }
 

@@ -442,6 +442,8 @@ pub fn execute(options: Options, writer: &mut impl Write) -> Result<(), Box<dyn 
     // reset-to-frame run in mGBA's perf harness.
     let started = Instant::now();
     let mut machine = bios::boot(bytes)?;
+    // Terminal runs count machine steps, so only frame benchmarks skip idle loops.
+    machine.set_idle_skip(matches!(work, Work::Bench(_)));
     machine
         .memory_mut()
         .set_cartridge_hardware(options.hardware);

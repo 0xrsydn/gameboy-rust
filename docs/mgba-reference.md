@@ -146,14 +146,19 @@ rendering disabled on both sides:
 
 | ROM | This emulator | mGBA, idle loops skipped | mGBA, `idleOptimization=ignore` |
 | --- | ---: | ---: | ---: |
-| Pokémon FireRed (flash128) | 194 fps (3.2×) | 5287 fps (88×) | 2720 fps (45×) |
-| Pokémon Emerald (flash128) | 194 fps (3.2×) | 5568 fps (93×) | 2778 fps (46×) |
-| mGBA test suite (SRAM) | 674 fps (11.2×) | 8170 fps (136×) | 8190 fps (137×) |
+| Pokémon FireRed (flash128) | 381 fps (6.4×) | 5287 fps (88×) | 2720 fps (45×) |
+| Pokémon Emerald (flash128) | 378 fps (6.3×) | 5568 fps (93×) | 2778 fps (46×) |
+| mGBA test suite (SRAM) | 640 fps (10.7×) | 8170 fps (136×) | 8190 fps (137×) |
 
-Runs varied by about 1%. Without idle-loop skipping, mGBA is about 14 times faster on the two games and 12 times
-faster on the suite ROM, which has no detected idle loop. The same games ran at 55 fps on 2026-11-13 (commit
-9e8eb8d) and at about 114 fps at f165ca7. Turning on video rendering costs this emulator about 10% and mGBA about
-5–15%. Concurrent builds on the same host lower these figures by 10% or more, so compare runs taken back to back.
+Runs varied by about 2%. `--bench-frames` enables this emulator's exact
+[idle-loop fast-forward](hardware/timers-irq.md#idle-loop-fast-forward), which roughly doubles the two games (194 fps
+without it) because both poll a RAM flag for VBlank. The suite ROM gains nothing from it (its speed is the same with
+and without), and it ran 5% slower than the build before the fast-forward; in one binary, enabling it costs the suite about
+1%, so most of that difference is code layout between builds. mGBA with idle-loop skipping is about 14 times faster
+on the two games and 13 times faster on the suite ROM. The same games ran at 55 fps on 2026-11-13 (commit 9e8eb8d)
+and at about 114 fps at f165ca7. Turning on video rendering costs this emulator about 10% to 30% (more with
+fast-forward, since rendering is not skipped) and mGBA about 5–15%. Concurrent builds on the same host lower these
+figures by 10% or more, so compare runs taken back to back.
 
 ## Limits
 
