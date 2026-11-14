@@ -19,7 +19,7 @@ The repository is a Cargo workspace with three crates:
 | `tools/test_prepare_gba_tests.py` | Offline adapter tests using original synthetic data |
 | `tools/prepare_homebrew_pong.py`, `tools/homebrew-pong.lock.json` | Hash-pinned homebrew preparation and source-derived gameplay scenarios |
 | `tools/test_prepare_homebrew_pong.py` | Offline homebrew preparation, provenance, bounds, and destination-safety tests |
-| `tools/replays/*.inputs` | Original button timings for `replay_hash` game replays (FireRed, Emerald) |
+| `tools/replays/*.inputs` | Original button timings for `replay_hash` game replays: FireRed to its first battle, an in-game save and CONTINUE, and Emerald to its TV news event |
 | `.envrc` | Automatic environment loading through direnv |
 | `.pi/prompts/jev-gb-debug.md`, `.pi/skills/jev-gb-debug/SKILL.md` | Project-local optional Jev diagnostic workflow |
 | `tools/jev_gb_debug.py`, `tools/jev-gb-rubric.json` | Bounded evidence validation, optional classifier request, and local evaluation records |

@@ -67,6 +67,23 @@ without it. The scripts in
 its TV news event; the ROMs and the recorded hashes stay in the ignored `roms/` directory. A full run of both takes
 a few minutes, mostly serializing the save state each frame.
 
+A second pair of FireRed scripts checks an in-game save and a later CONTINUE. `firered-save.inputs` is the
+first-battle script followed by the Start menu, SAVE, and YES; `--write-save` stores the Flash image it leaves.
+`firered-continue.inputs` boots from that image with `--load-save`, skips the intro, chooses CONTINUE, and plays the
+recap back to Oak's lab:
+
+```sh
+$R --rom roms/pokemon-firered.gba --save-type flash128 --frames 21700 \
+  --inputs tools/replays/firered-save.inputs --write-save roms/replays/firered.sav \
+  --record roms/replays/firered-save.hashes
+$R --rom roms/pokemon-firered.gba --save-type flash128 --frames 2400 \
+  --inputs tools/replays/firered-continue.inputs --load-save roms/replays/firered.sav --capture \
+  --record roms/replays/firered-continue.hashes
+```
+
+For a `--check` run, write the save to a new file and load that one, so the continue replay also checks what the
+save replay wrote. `--write-save` fails if a Flash write is still in progress at the last frame.
+
 Run the additional file-backed ROM-window test explicitly in that desktop session:
 
 ```sh

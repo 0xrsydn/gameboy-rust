@@ -5,8 +5,10 @@
 //! plus, with `--capture`, the rendered frame and captured audio. `--record` writes the
 //! hashes; `--check` compares a later build against them and names the first frame
 //! that differs. A refactor or optimization that claims to keep behavior must keep
-//! every hash. ROMs and recorded hashes stay under the ignored `roms/` directory;
-//! input scripts are plain button timings and live in `tools/replays/`.
+//! every hash. `--write-save` and `--load-save` carry the save memory from one replay
+//! into the next, so an in-game save and a later CONTINUE can be checked as well.
+//! ROMs, saves, and recorded hashes stay under the ignored `roms/` directory; input
+//! scripts are plain button timings and live in `tools/replays/`.
 
 use std::{env, fs, path::PathBuf, process::ExitCode};
 
@@ -21,7 +23,7 @@ use gba_core::{
 /// Machine steps allowed between VBlanks before a frame is reported as stuck.
 const FRAME_STEP_LIMIT: usize = 2_000_000;
 
-const USAGE: &str = "usage: replay_hash --rom ROM --frames N [--save-type sram|flash64|flash128|eeprom512|eeprom8k] [--rtc SECONDS_SINCE_2000] [--inputs FILE] [--capture] [--idle-skip] [--record FILE | --check FILE]";
+const USAGE: &str = "usage: replay_hash --rom ROM --frames N [--save-type sram|flash64|flash128|eeprom512|eeprom8k] [--rtc SECONDS_SINCE_2000] [--inputs FILE] [--capture] [--idle-skip] [--load-save FILE] [--write-save FILE] [--record FILE | --check FILE]";
 
 struct Options {
     rom: PathBuf,
@@ -31,6 +33,8 @@ struct Options {
     inputs: Option<PathBuf>,
     capture: bool,
     idle_skip: bool,
+    load_save: Option<PathBuf>,
+    write_save: Option<PathBuf>,
     record: Option<PathBuf>,
     check: Option<PathBuf>,
 }
@@ -44,6 +48,8 @@ fn parse(args: &[String]) -> Result<Options, String> {
         inputs: None,
         capture: false,
         idle_skip: false,
+        load_save: None,
+        write_save: None,
         record: None,
         check: None,
     };
@@ -71,6 +77,8 @@ fn parse(args: &[String]) -> Result<Options, String> {
             "--inputs" => options.inputs = Some(value()?.into()),
             "--capture" => options.capture = true,
             "--idle-skip" => options.idle_skip = true,
+            "--load-save" => options.load_save = Some(value()?.into()),
+            "--write-save" => options.write_save = Some(value()?.into()),
             "--record" => options.record = Some(value()?.into()),
             "--check" => options.check = Some(value()?.into()),
             _ => return Err(format!("unknown option: {arg}\n{USAGE}")),
@@ -191,6 +199,13 @@ fn run(options: Options) -> Result<bool, String> {
 
     let mut machine = bios::boot(rom).map_err(|error| format!("{error:?}"))?;
     machine.memory_mut().set_save_device(options.save);
+    if let Some(path) = &options.load_save {
+        let image = fs::read(path).map_err(|error| format!("{}: {error}", path.display()))?;
+        machine
+            .memory_mut()
+            .load_save_image(&image)
+            .map_err(|error| format!("{}: {error:?}", path.display()))?;
+    }
     if let Some(seconds) = options.rtc {
         machine
             .memory_mut()
@@ -244,6 +259,16 @@ fn run(options: Options) -> Result<bool, String> {
             }
         }
         lines.push(line);
+    }
+    if let Some(path) = &options.write_save {
+        let memory = machine.memory();
+        if memory.save_write_pending() {
+            return Err("a save write is still in progress at the last frame".to_owned());
+        }
+        let image = memory
+            .save_image()
+            .ok_or("--write-save needs --save-type")?;
+        fs::write(path, image).map_err(|error| format!("{}: {error}", path.display()))?;
     }
     if let Some(path) = &options.record {
         fs::write(path, lines.join("\n") + "\n")
