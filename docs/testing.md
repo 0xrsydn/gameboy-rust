@@ -96,6 +96,12 @@ POKé BALLS), then on Route 1 throws two POKé BALLS that break free, faints to 
 POKéMON CENTER, and finally weakens and catches a PIDGEY, with its POKéDEX entry and the nickname prompt. Long
 replays can be recorded and checked with `--idle-skip`, which gives the same hashes in about half the time.
 
+`emerald-route101.inputs` (45,000 frames, `--rtc 847932662`) continues Emerald from the TV news: the girl who blocks
+the road north, the rival's house (her mother's scene, MAY's scene upstairs), PROF. BIRCH chased on Route 101, the
+starter bag, the first battle against a wild ZIGZAGOON, the lab scene with the nickname keyboard, and a save, which
+`--write-save` stores. `emerald-continue.inputs` boots from it with `--load-save` and the same `--rtc` value and
+continues in the lab.
+
 Each script's button timings fit one machine timeline. A change that alters timing even by a cycle can move a
 wandering NPC or a random encounter, and the rest of the script then plays out differently: the replay check
 reports the first differing frame, and the script needs rebuilding from there if the change is intended.
