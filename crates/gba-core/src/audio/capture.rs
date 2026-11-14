@@ -14,6 +14,11 @@ pub(crate) const STEP_SAMPLES: usize = 8;
 pub(crate) struct SampleClock(Option<u16>);
 
 impl SampleClock {
+    /// Cycles until the next capture boundary, or `None` while capture is disabled.
+    pub(crate) fn until_sample(&self) -> Option<u32> {
+        self.0.map(|phase| PERIOD - u32::from(phase))
+    }
+
     /// Advance devices at every retained sample boundary. Once capacity is
     /// exhausted, advance the remainder in bulk and count discarded samples.
     pub(crate) fn advance(

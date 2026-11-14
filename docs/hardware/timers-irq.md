@@ -35,6 +35,13 @@ Without it, every calibration case read two too many. The same delay applies to 
 identically with or without it there, so that part is unverified. Host setup writes outside machine steps start counting at once.
 The delay is part of save states.
 
+Between device events the timers, sound channels, serial port, and capture clock do not advance on every step.
+A step that ends before the next timer overflow, serial completion, or capture sample only adds its cycles to a
+deferred count; the next step to reach such an event, or anything that reads or writes these devices, applies the
+count first in one batch. Their counters advance additively, so the result is identical to advancing every step;
+no request, sound DMA, or sample can fall inside deferred time. Save states and host reads see the settled values.
+Stop and reload edges, which act in the cycle after a write, stay on the per-step path.
+
 ### Request delay, stop latency, and reload latch
 
 Four rules are fitted to the [mGBA test suite](../public-mgba-suite.md)'s hardware-verified Timer IRQ, Timer count-up,

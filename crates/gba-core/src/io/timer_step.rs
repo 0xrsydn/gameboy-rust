@@ -5,6 +5,10 @@ use crate::audio::capture::{SampleBatch, SampleClock, STEP_SAMPLES};
 
 pub(super) const STAGED_IRQ_MASK: u16 = 0xf8;
 
+/// Longest run of deferred device time between settles, so the deferred counter
+/// stays bounded when no device has an event scheduled.
+const QUIET_CAP: u32 = 1 << 24;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct TimerStep {
     pub(crate) audio: crate::audio::Audio,
@@ -86,7 +90,7 @@ impl Staged<'_> {
 
 impl TimerStep {
     pub(super) fn new(io: &Io) -> Self {
-        Self {
+        let mut step = Self {
             audio: io.audio,
             sample_clock: io.audio_capture.clock,
             samples: Default::default(),
@@ -97,7 +101,16 @@ impl TimerStep {
             enable: io.enable,
             raised_at: None,
             elapsed: 0,
+        };
+        // Deferred time ends before the next device event, so applying it here raises
+        // nothing and records no sample; the step then starts from the settled state.
+        if io.deferred != 0 {
+            step.advance_to(io.deferred);
+            debug_assert!(step.raised_at.is_none() && step.samples.len == 0);
+            debug_assert_eq!(step.pending, io.pending & STAGED_IRQ_MASK);
+            step.elapsed = 0;
         }
+        step
     }
 
     /// Addresses whose reads and writes go through the staged devices.
@@ -133,8 +146,9 @@ impl TimerStep {
         self.elapsed = elapsed;
     }
 
-    /// All lanes of a bus access observe the same staged time.
-    pub(crate) fn read8(&self, address: u32, committed: u8) -> Option<u8> {
+    /// All lanes of a bus access observe the same staged time. `committed` supplies the
+    /// non-staged `IF` bits and is evaluated only for `IF`.
+    pub(crate) fn read8(&self, address: u32, committed: impl FnOnce() -> u8) -> Option<u8> {
         if crate::audio::Audio::mapped(address) {
             return self.audio.read8(address);
         }
@@ -142,7 +156,7 @@ impl TimerStep {
             TIMER_BASE..=0x0400_010f => {
                 Some(self.timers[((address - TIMER_BASE) / 4) as usize].read8(address))
             }
-            IF => Some((committed & !(STAGED_IRQ_MASK as u8)) | self.pending as u8),
+            IF => Some((committed() & !(STAGED_IRQ_MASK as u8)) | self.pending as u8),
             _ => None,
         }
     }
@@ -167,7 +181,20 @@ impl TimerStep {
 impl Io {
     /// Advance the staged devices in place for a step that never observed them.
     /// This must equal staging a `TimerStep`, advancing it once, and committing it.
+    ///
+    /// A step that ends before the next device event (timer overflow, serial completion,
+    /// or capture sample) only adds its cycles to `deferred`. Every counter these devices
+    /// keep advances additively, so applying the deferred cycles later in one batch gives
+    /// the same state. Anything that changes or observes them first settles or stages.
+    #[inline]
     pub(crate) fn advance_staged_devices(&mut self, cycles: u32) {
+        if cycles < self.quiet_left {
+            self.quiet_left -= cycles;
+            self.deferred += cycles;
+            self.update_irq_line(Some(cycles));
+            return;
+        }
+        self.settle_devices();
         let mut samples = SampleBatch::default();
         let mut sample_clock = self.audio_capture.clock;
         let mut raised_at = None;
@@ -186,6 +213,42 @@ impl Io {
         self.audio_capture.commit(sample_clock, samples);
         self.dma.trigger_sound(self.audio.take_requests());
         self.update_irq_line(Some(raised_at.unwrap_or(cycles)));
+        self.quiet_left = self.quiet_cycles();
+    }
+
+    /// Apply deferred device time. Callers that change or observe the timers, sound,
+    /// serial port, or capture clock outside a staged step settle first.
+    pub(crate) fn settle_devices(&mut self) {
+        self.quiet_left = 0;
+        if self.deferred == 0 {
+            return;
+        }
+        let step = TimerStep::new(self);
+        self.deferred = 0;
+        self.audio = step.audio;
+        self.audio_capture.commit(step.sample_clock, step.samples);
+        self.serial = step.serial;
+        self.timers = step.timers;
+        self.timer_phase = step.phase;
+    }
+
+    /// Cycles from now to the first device event, capped. A step shorter than this
+    /// raises no request, triggers no sound DMA, and records no sample.
+    fn quiet_cycles(&self) -> u32 {
+        // Stop and reload edges act in the cycle after a write; keep them per step.
+        if self
+            .timers
+            .iter()
+            .any(|timer| timer.stopping.is_some() || timer.stale_reload.is_some())
+        {
+            return 0;
+        }
+        self.timers
+            .iter()
+            .filter_map(|timer| timer.next_overflow(self.timer_phase))
+            .chain(self.serial.next_event_cycles())
+            .chain(self.audio_capture.clock.until_sample())
+            .fold(QUIET_CAP, u32::min)
     }
 }
 
@@ -299,7 +362,10 @@ mod tests {
             let mut io = Io::default();
             io.audio_capture.set_enabled(seed % 2 == 0);
             for round in 0..400 {
+                // Deferred time carries across rounds. These direct field writes bypass
+                // the register paths, which settle it themselves.
                 if round % 16 == 0 {
+                    io.settle_devices();
                     scramble(&mut io, &mut random);
                 }
                 // Requests must be dated the same way however the step is split, so
@@ -313,6 +379,7 @@ mod tests {
                     let index = random.next() as usize % 4;
                     let address = TIMER_BASE + index as u32 * 4 + (random.next() & 2);
                     let value = random.next() as u8;
+                    io.settle_devices();
                     io.timers[index].write8(address, value, index, TIMER_START_DELAY);
                 }
                 let parts = [
@@ -338,7 +405,9 @@ mod tests {
 
                 io.advance_staged_devices(total);
                 assert_eq!(chunked, whole, "seed {seed} round {round} parts {parts:?}");
-                assert_eq!(io, whole, "seed {seed} round {round} parts {parts:?}");
+                let mut settled = io.clone();
+                settled.settle_devices();
+                assert_eq!(settled, whole, "seed {seed} round {round} parts {parts:?}");
                 let mut drained = [Default::default(); 64];
                 while io.audio_capture.drain(&mut drained) != 0 {}
             }

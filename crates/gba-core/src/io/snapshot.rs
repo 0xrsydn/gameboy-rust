@@ -70,6 +70,12 @@ impl PowerState {
 
 impl Snapshot for Io {
     fn save(&self, writer: &mut Writer) {
+        if self.deferred != 0 {
+            // Save the devices at the current time; deferral is not machine state.
+            let mut settled = self.clone();
+            settled.settle_devices();
+            return settled.save(writer);
+        }
         let Self {
             serial,
             audio,
@@ -95,6 +101,8 @@ impl Snapshot for Io {
             dma,
             postflg,
             power,
+            deferred: _,
+            quiet_left: _,
         } = self;
         writer.tag(b"IO00");
         serial.save(writer);
@@ -153,7 +161,11 @@ impl Snapshot for Io {
             dma,
             postflg,
             power,
+            deferred,
+            quiet_left,
         } = self;
+        *deferred = 0;
+        *quiet_left = 0;
         reader.tag(b"IO00")?;
         serial.load(reader)?;
         audio.load(reader)?;

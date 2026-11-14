@@ -390,7 +390,7 @@ impl Memory {
 
     /// Current committed audio mixer level. This is not a host sample stream.
     pub fn audio_level(&self) -> StereoLevel {
-        self.io.audio.level()
+        self.audio_state().level()
     }
 
     /// Enable optional 32768 Hz stereo capture. A toggle clears queued frames,
@@ -401,6 +401,7 @@ impl Memory {
             !self.step_active.get(),
             "audio capture configuration during a step"
         );
+        self.io.settle_devices();
         self.io.audio_capture.set_enabled(enabled);
     }
 
@@ -415,14 +416,16 @@ impl Memory {
         self.io.audio_capture.dropped
     }
 
+    /// Serial state at the current bus time, staged inside a step and caught up with
+    /// deferred device time between steps.
     fn serial_state(&self) -> Serial {
         self.staged_devices()
-            .map_or(self.io.serial, |step| step.serial)
+            .map_or_else(|| self.io.timer_step().serial, |step| step.serial)
     }
 
     fn audio_state(&self) -> Audio {
         self.staged_devices()
-            .map_or(self.io.audio, |step| step.audio)
+            .map_or_else(|| self.io.timer_step().audio, |step| step.audio)
     }
 
     /// Total elapsed emulated clock cycles, wrapping at u64::MAX. Reads/writes
@@ -1080,7 +1083,7 @@ impl Memory {
                         .read8(address)
                         .ok_or(MemoryError::Unmapped(address));
                 }
-                if let Some(value) = step.read8(address, self.io.read8(address).unwrap_or(0)) {
+                if let Some(value) = step.read8(address, || self.io.read8(address).unwrap_or(0)) {
                     return Ok(value);
                 }
             }
@@ -1239,6 +1242,7 @@ impl Memory {
                 if self.step_active.get() {
                     self.staged_devices().expect("step is active").serial = serial;
                 } else {
+                    self.io.settle_devices();
                     self.io.serial = serial;
                 }
                 return Ok(());
@@ -1248,6 +1252,7 @@ impl Memory {
                     let mut step = self.staged_devices().expect("step is active");
                     step.audio.write(address, &bytes);
                 } else {
+                    self.io.settle_devices();
                     self.io.audio.write(address, &bytes);
                 }
                 return Ok(());

@@ -270,6 +270,11 @@ pub(crate) struct Io {
     dma: Dma,
     postflg: bool,
     power: PowerState,
+    /// Machine-step cycles not yet applied to the timers, sound, serial port, and capture
+    /// clock; see `advance_staged_devices`. Always zero in a save state.
+    deferred: u32,
+    /// Further cycles that can be deferred before the next device event.
+    quiet_left: u32,
 }
 
 impl Io {
@@ -314,6 +319,19 @@ impl Io {
     }
 
     pub(crate) fn read8(&self, address: u32) -> Option<u8> {
+        if self.deferred != 0
+            && (Audio::mapped(address)
+                || Serial::mapped(address)
+                || (TIMER_BASE..=TIMER_BASE + 15).contains(&address))
+        {
+            // Host inspection between steps: read the devices at the current time.
+            let step = self.timer_step();
+            return if Serial::mapped(address) {
+                step.serial.read8(address)
+            } else {
+                step.read8(address, || 0)
+            };
+        }
         if Audio::mapped(address) {
             return self.audio.read8(address);
         }
@@ -358,6 +376,9 @@ impl Io {
     pub(crate) fn write8(&mut self, address: u32, value: u8) {
         debug_assert!(Self::mapped(address));
         debug_assert!(!(KEYINPUT..=KEYCNT + 1).contains(&address));
+        if TimerStep::owns(address) {
+            self.settle_devices();
+        }
         if Serial::mapped(address) {
             self.serial.write(address, &[value]);
             return;
@@ -466,10 +487,15 @@ impl Io {
     /// Bound idle by the next display edge, timer overflow, or serial completion.
     /// Display edges keep this finite even without an enabled wake source.
     pub(crate) fn next_event_cycles(&self) -> u32 {
+        // No device event falls inside deferred time, so each is that much nearer.
         self.timers
             .iter()
             .filter_map(|timer| timer.next_overflow(self.timer_phase))
             .chain(self.serial.next_event_cycles())
+            .map(|cycles| {
+                debug_assert!(cycles > self.deferred);
+                cycles - self.deferred
+            })
             .chain(self.dma.next_start_cycles())
             .chain(self.irq_wait.filter(|&wait| wait != 0))
             .fold(self.display.next_event_cycles(), u32::min)
@@ -588,6 +614,9 @@ impl Io {
     }
 
     pub(crate) fn commit_timer_step(&mut self, step: TimerStep) {
+        // The step was staged from the settled state.
+        self.deferred = 0;
+        self.quiet_left = 0;
         self.audio = step.audio;
         self.audio_capture.commit(step.sample_clock, step.samples);
         self.serial = step.serial;
@@ -709,6 +738,7 @@ impl Io {
 
     fn advance_timers_and_wake(&mut self, cycles: u32, advance_timers: bool) {
         if advance_timers {
+            self.settle_devices();
             self.pending |= self.serial.advance(cycles);
             let mut clock = self.audio_capture.clock;
             let dropped = clock.advance(cycles, self.audio_capture.capacity(), |count, sample| {

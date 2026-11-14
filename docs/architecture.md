@@ -100,7 +100,7 @@ The repository is a Cargo workspace with three crates:
 | `crates/gba-core/tests/serial_multiplayer.rs` | Disconnected child status, receive/send lanes, mode aliases, ignored child start, HALT/STOP, and ARM/Thumb/DMA access |
 | `crates/gba-core/src/memory/multiplayer_step_tests.rs` | Multiplayer mode changes at normal completion, block-transfer preflight, staged reads, and atomic diagnostics |
 | `crates/gba-core/src/memory/serial_step_tests.rs` | Serial bus-phase observations, preflight validation, DMA, IF ordering, capture isolation, and rollback |
-| `crates/gba-core/src/io/timer_step.rs` | Staged timer/audio/serial state, divider phase, timer/serial IF bits, and sound refill requests at ordered CPU/DMA bus phases; in-place advance for steps that never observe them |
+| `crates/gba-core/src/io/timer_step.rs` | Staged timer/audio/serial state, divider phase, timer/serial IF bits, and sound refill requests at ordered CPU/DMA bus phases; in-place advance for steps that never observe them, deferred until the next device event |
 | `crates/gba-core/src/io/advance_tests.rs` | Within-line device-clock shortcut against batches that always reach a display edge |
 | `crates/gba-core/src/memory/timer_step_tests.rs` | Timer access phases, coherent lanes, cascades, IF ordering, rollback, DMA, idle, and clock ownership |
 | `crates/gba-core/src/display.rs` | Display clock, scanline status, comparison edges, and display IRQ events |
