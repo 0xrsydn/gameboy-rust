@@ -138,17 +138,22 @@ the real-time multiple divides that by 60. `--bench-frames` reports the same two
 nominal cycles per second. Both timings include emulated boot. They are host measurements, not accuracy results, and a
 higher frame rate does not make one emulator more correct than the other.
 
-Measured 2026-11-13 on Darwin arm64 in a release build, 600 frames each, with video rendering disabled on both sides:
+`mgba-perf` enables idle-loop detection, which skips polling loops that this emulator executes instruction by
+instruction. `-C idleOptimization=ignore` turns it off for a like-for-like comparison.
 
-| ROM | This emulator | mGBA (`mgba-perf -N -P`) |
-| --- | ---: | ---: |
-| Pokémon FireRed (flash128) | 55.3 fps (0.92×) | 5321 fps (88.7×) |
-| Pokémon Emerald (flash128) | 54.6 fps (0.91×) | 5243 fps (87.4×) |
-| mGBA test suite (SRAM) | 191 fps (3.18×) | 8228 fps (137×) |
+Measured 2026-11-14 on Darwin arm64 (Apple M3 Pro) in a release build, 600 frames each, three runs each, with video
+rendering disabled on both sides:
 
-Three runs varied by about 1%. mGBA is about 96 times faster on the two games and 43 times faster on the suite ROM.
-`mgba-perf` enables idle-loop detection, which skips idle work that this emulator executes host-side instruction by
-instruction. Part of the gap is therefore idle time, not pure interpretation cost.
+| ROM | This emulator | mGBA, idle loops skipped | mGBA, `idleOptimization=ignore` |
+| --- | ---: | ---: | ---: |
+| Pokémon FireRed (flash128) | 194 fps (3.2×) | 5287 fps (88×) | 2720 fps (45×) |
+| Pokémon Emerald (flash128) | 194 fps (3.2×) | 5568 fps (93×) | 2778 fps (46×) |
+| mGBA test suite (SRAM) | 674 fps (11.2×) | 8170 fps (136×) | 8190 fps (137×) |
+
+Runs varied by about 1%. Without idle-loop skipping, mGBA is about 14 times faster on the two games and 12 times
+faster on the suite ROM, which has no detected idle loop. The same games ran at 55 fps on 2026-11-13 (commit
+9e8eb8d) and at about 114 fps at f165ca7. Turning on video rendering costs this emulator about 10% and mGBA about
+5–15%. Concurrent builds on the same host lower these figures by 10% or more, so compare runs taken back to back.
 
 ## Limits
 

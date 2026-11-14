@@ -114,13 +114,16 @@ impl Prefetch {
     }
 
     pub fn code(&mut self, address: u32, width: AccessWidth, kind: AccessKind) -> u32 {
-        let raw = bus_cycles(self.waitcnt, address, width, kind);
+        // A queued halfword does not use the raw bus cost, so compute it only when needed.
+        let waitcnt = self.waitcnt; // Nothing below reconfigures it.
+        let raw = move || bus_cycles(waitcnt, address, width, kind);
         if !(0x08..=0x0d).contains(&(address >> 24)) {
+            let raw = raw();
             self.advance(raw);
             return raw;
         }
         if !self.enabled() {
-            return raw;
+            return raw();
         }
         debug_assert!(matches!(width, AccessWidth::Halfword | AccessWidth::Word));
         let matches = self
@@ -135,7 +138,7 @@ impl Prefetch {
             let cycles = if drained {
                 bus_cycles(self.waitcnt, address, width, AccessKind::NonSequential)
             } else {
-                raw
+                raw()
             };
             self.start(address.wrapping_add(width.bytes()));
             return cycles + stall;

@@ -63,7 +63,10 @@ impl Memory {
         if address & (width as u32 - 1) != 0 {
             return Err(MemoryError::Unaligned(address));
         }
-        if address >> 24 >= 0x08 && self.with_cartridge(|c| c.save_mapped(address)) {
+        // Save memory decodes only from SAVE_START; skip the cartridge borrow for ROM.
+        if address >= crate::cartridge::SAVE_START
+            && self.with_cartridge(|c| c.save_mapped(address))
+        {
             return Err(MemoryError::UnsupportedCartridgeAccess {
                 address,
                 operation: "Flash instruction fetch",
