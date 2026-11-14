@@ -40,6 +40,29 @@ Timing depends on the host and its current load. Treat the output as a measureme
 The workspace release profile uses fat LTO and one codegen unit, because the interpreter's bus path crosses module
 and crate boundaries on every access; release links are slower in exchange.
 The [mGBA reference](mgba-reference.md) has the comparable `mgba-perf` command.
+
+Check that a change keeps game behavior with per-frame replay hashes. The `replay_hash` example replays a fixed
+input script and hashes the save state, CPU registers, and cycle count after every frame; `--capture` adds the
+rendered frame and captured audio. Record hashes before a change and check them after it:
+
+```sh
+direnv exec . cargo build --locked --release -p gba-diff --example replay_hash
+R=./target/release/examples/replay_hash
+mkdir -p roms/replays
+$R --rom roms/pokemon-firered.gba --save-type flash128 --frames 20000 \
+  --inputs tools/replays/firered-first-battle.inputs --capture --record roms/replays/firered.hashes
+$R --rom roms/pokemon-emerald.gba --save-type flash128 --rtc 847932662 --frames 13000 \
+  --inputs tools/replays/emerald-tv-news.inputs --capture --record roms/replays/emerald.hashes
+# after the change: the same commands with --check instead of --record
+```
+
+`--check` prints the first frame whose hash differs and exits 1. An optimization or refactor must keep every hash;
+a deliberate behavior change will move them, and the replay shows from which frame. Run without `--capture` too:
+frame capture changes how the core splits clock batches, so the two modes cover different paths. The scripts in
+`tools/replays/` are original button timings that take FireRed through its first rival battle and Emerald through
+its TV news event; the ROMs and the recorded hashes stay in the ignored `roms/` directory. A full run of both takes
+a few minutes, mostly serializing the save state each frame.
+
 Run the additional file-backed ROM-window test explicitly in that desktop session:
 
 ```sh

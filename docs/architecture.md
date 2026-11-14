@@ -5,7 +5,7 @@ The repository is a Cargo workspace with three crates:
 - `crates/gba-core`: the platform-independent GBA emulator. It has no dependencies and must not depend on window, audio, or file-system libraries.
 - `crates/gba-demos`: original ARM test programs and their frame runners. Depends on `gba-core`.
 - `crates/desktop`: the minifb window frontend and the `gameboy-rust` executable. Depends on both.
-- `crates/gba-diff`: the `gba-diff` differential runner and the mGBA suite scoreboard example. Depends on `gba-core` only; it drives mGBA through the separately built `mgba-ref` process, never by linking.
+- `crates/gba-diff`: the `gba-diff` differential runner, the mGBA suite scoreboard example, and the `replay_hash` example for per-frame game replay hashes ([testing](testing.md)). Depends on `gba-core` only; it drives mGBA through the separately built `mgba-ref` process, never by linking.
   Serde and serde_json handle host-side test manifests and reports; neither dependency enters the core.
 
 `gba-core` uses `gba-demos` as a development dependency, because its integration tests run the demo programs.
@@ -19,6 +19,7 @@ The repository is a Cargo workspace with three crates:
 | `tools/test_prepare_gba_tests.py` | Offline adapter tests using original synthetic data |
 | `tools/prepare_homebrew_pong.py`, `tools/homebrew-pong.lock.json` | Hash-pinned homebrew preparation and source-derived gameplay scenarios |
 | `tools/test_prepare_homebrew_pong.py` | Offline homebrew preparation, provenance, bounds, and destination-safety tests |
+| `tools/replays/*.inputs` | Original button timings for `replay_hash` game replays (FireRed, Emerald) |
 | `.envrc` | Automatic environment loading through direnv |
 | `.pi/prompts/jev-gb-debug.md`, `.pi/skills/jev-gb-debug/SKILL.md` | Project-local optional Jev diagnostic workflow |
 | `tools/jev_gb_debug.py`, `tools/jev-gb-rubric.json` | Bounded evidence validation, optional classifier request, and local evaluation records |
