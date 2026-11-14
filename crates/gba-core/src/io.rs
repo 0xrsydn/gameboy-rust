@@ -275,6 +275,10 @@ pub(crate) struct Io {
     deferred: u32,
     /// Further cycles that can be deferred before the next device event.
     quiet_left: u32,
+    /// Horizontal-window comparator time not yet applied, starting at frame phase
+    /// `window_from`, all within one line; see `settle_windows`. Zero in a save state.
+    window_from: u32,
+    window_cycles: u32,
 }
 
 impl Io {
@@ -419,6 +423,7 @@ impl Io {
                     .write8((address & 15) as usize, value, after_row);
             }
             WIN0H..=WIN1V => {
+                self.settle_windows();
                 let index = ((address - WIN0H) / 2) as usize;
                 let bounds = if index < 2 {
                     &mut self.effects.horizontal[index]
@@ -613,6 +618,20 @@ impl Io {
         TimerStep::new(self)
     }
 
+    /// Apply deferred horizontal-window time. Callers settle before changing the window
+    /// bounds or reading the comparator history.
+    pub(crate) fn settle_windows(&mut self) {
+        if self.window_cycles != 0 {
+            self.horizontal_windows.advance(
+                self.window_from,
+                self.window_cycles,
+                self.effects.horizontal,
+            );
+            self.window_from = 0;
+            self.window_cycles = 0;
+        }
+    }
+
     pub(crate) fn commit_timer_step(&mut self, step: TimerStep) {
         // The step was staged from the settled state.
         self.deferred = 0;
@@ -665,12 +684,17 @@ impl Io {
             && !(line_cycle < BG_ENABLE_SAMPLE_CYCLE
                 && line_cycle + cycles >= BG_ENABLE_SAMPLE_CYCLE);
         if within_line && self.window_edges.started() && self.vertical_mosaic.started() {
-            self.horizontal_windows
-                .advance(phase, cycles, self.effects.horizontal);
+            // Consecutive in-line steps cover one contiguous interval, and the
+            // comparator history of an interval does not depend on how it is split.
+            if self.window_cycles == 0 {
+                self.window_from = phase;
+            }
+            self.window_cycles += cycles;
             self.display.advance_within_line(cycles);
             self.advance_timers_and_wake(cycles, advance_timers);
             return;
         }
+        self.settle_windows();
         self.window_edges
             .advance(phase, cycles, self.effects.vertical);
         self.horizontal_windows

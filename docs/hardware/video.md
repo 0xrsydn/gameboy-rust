@@ -343,6 +343,9 @@ Wrapping horizontal bounds can differ on the first row because no previous line 
 HBlank starts at cycle1006, after all visible columns have been recorded.
 Columns252–255 occur later, so HBlank DMA can still set or cancel an offscreen edge before the next line.
 Already-captured rows remain unchanged. The horizontal history records window coverage, not pixel colors.
+Steps that stay inside a line collect their comparator time and apply it in one batch before a window-bound write,
+the line's next display edge, a captured row, sprite preparation, or a save state. The history of an interval does
+not depend on how it is split, so the batch gives the same columns as per-step advancement.
 
 Region masks, enable bits, effects, palette, and background VRAM remain current-row inputs sampled at HBlank.
 Sprite OAM/VRAM and OBJ-window coverage come from the preceding line's preparation.

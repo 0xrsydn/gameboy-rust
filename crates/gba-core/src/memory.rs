@@ -572,6 +572,7 @@ impl Memory {
                     {
                         let row = usize::from(position.scanline);
                         if self.scanline_capture.as_ref().unwrap().wants_row(row) {
+                            self.io.settle_windows();
                             let mut settings = self.io.video_settings(true);
                             settings.prepared_objects = Some(self.sprite_pipeline.row(row));
                             let pixels = video::render_rows(
@@ -598,6 +599,7 @@ impl Memory {
     }
 
     fn prepare_sprite_row(&mut self, row: usize) {
+        self.io.settle_windows();
         let settings = self.io.video_settings(true);
         let prepared = video::sprites::prepare(
             settings.control,

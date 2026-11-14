@@ -148,7 +148,7 @@ The repository is a Cargo workspace with three crates:
 | `crates/gba-core/src/video.rs` | Presentation buffer, RGB555 conversion, and Mode 0–5 composition |
 | `crates/gba-core/src/video/affine.rs` | Programmed registers, internal scanline origins, and tiled/bitmap sampling |
 | `crates/gba-core/src/video/windows.rs` | Persistent vertical window edge flags and constant-time clock advancement |
-| `crates/gba-core/src/video/windows/horizontal.rs` | Horizontal comparator flags, per-column history, and bounded bulk advancement |
+| `crates/gba-core/src/video/windows/horizontal.rs` | Horizontal comparator flags, per-column history, and bounded bulk advancement, batched within a line by `Io` |
 | `crates/gba-core/src/video/mosaic.rs` | Live vertical mosaic phase and constant-time counter transitions |
 | `crates/gba-core/src/video/capture.rs` | Drawing/completed frame buffers, row completeness, and deferred render diagnostics |
 | `crates/gba-core/src/video/sprites.rs` | Sprite index preparation, priority metadata, mosaic, late palette lookup, and composition |
