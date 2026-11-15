@@ -121,6 +121,15 @@ BOULDERBADGE, TM39 going into the TM CASE, and the TRAINER CARD with the badge, 
 
 Long replays can be recorded and checked with `--idle-skip`, which gives the same hashes in about half the time.
 
+`--bench` replays a script without hashing and prints the emulation speed. With `--capture --idle-skip` it does the
+work the window does each frame (row rendering, presenting the frame, draining audio), so it measures gameplay
+speed, which the title-screen `--bench-frames` mode does not:
+
+```sh
+$R --rom roms/pokemon-firered.gba --save-type flash128 --frames 60000 \
+  --inputs tools/replays/firered-mtmoon.inputs --capture --idle-skip --bench
+```
+
 `emerald-route101.inputs` (45,000 frames, `--rtc 847932662`) continues Emerald from the TV news: the girl who blocks
 the road north, the rival's house (her mother's scene, MAY's scene upstairs), PROF. BIRCH chased on Route 101, the
 starter bag, the first battle against a wild ZIGZAGOON, the lab scene with the nickname keyboard, and a save, which

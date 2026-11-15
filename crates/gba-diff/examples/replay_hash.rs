@@ -8,9 +8,11 @@
 //! every hash. `--write-save` and `--load-save` carry the save memory from one replay
 //! into the next, so an in-game save and a later CONTINUE can be checked as well.
 //! ROMs, saves, and recorded hashes stay under the ignored `roms/` directory; input
-//! scripts are plain button timings and live in `tools/replays/`.
+//! scripts are plain button timings and live in `tools/replays/`. `--bench` skips the
+//! hashes, still presents each frame and drains audio as the window does with `--capture`,
+//! and reports the emulation speed of the replay.
 
-use std::{env, fs, path::PathBuf, process::ExitCode};
+use std::{env, fs, path::PathBuf, process::ExitCode, time::Instant};
 
 use gba_core::{
     bios,
@@ -23,7 +25,7 @@ use gba_core::{
 /// Machine steps allowed between VBlanks before a frame is reported as stuck.
 const FRAME_STEP_LIMIT: usize = 2_000_000;
 
-const USAGE: &str = "usage: replay_hash --rom ROM --frames N [--save-type sram|flash64|flash128|eeprom512|eeprom8k] [--rtc SECONDS_SINCE_2000] [--inputs FILE] [--capture] [--idle-skip] [--load-save FILE] [--write-save FILE] [--record FILE | --check FILE]";
+const USAGE: &str = "usage: replay_hash --rom ROM --frames N [--save-type sram|flash64|flash128|eeprom512|eeprom8k] [--rtc SECONDS_SINCE_2000] [--inputs FILE] [--capture] [--idle-skip] [--load-save FILE] [--write-save FILE] [--record FILE | --check FILE | --bench]";
 
 struct Options {
     rom: PathBuf,
@@ -37,6 +39,7 @@ struct Options {
     write_save: Option<PathBuf>,
     record: Option<PathBuf>,
     check: Option<PathBuf>,
+    bench: bool,
 }
 
 fn parse(args: &[String]) -> Result<Options, String> {
@@ -52,6 +55,7 @@ fn parse(args: &[String]) -> Result<Options, String> {
         write_save: None,
         record: None,
         check: None,
+        bench: false,
     };
     let mut args = args.iter();
     while let Some(arg) = args.next() {
@@ -81,14 +85,24 @@ fn parse(args: &[String]) -> Result<Options, String> {
             "--write-save" => options.write_save = Some(value()?.into()),
             "--record" => options.record = Some(value()?.into()),
             "--check" => options.check = Some(value()?.into()),
+            "--bench" => options.bench = true,
             _ => return Err(format!("unknown option: {arg}\n{USAGE}")),
         }
     }
     if options.rom.as_os_str().is_empty() || options.frames == 0 {
         return Err(USAGE.to_owned());
     }
-    if options.record.is_some() && options.check.is_some() {
-        return Err("use --record or --check, not both".to_owned());
+    if [
+        options.record.is_some(),
+        options.check.is_some(),
+        options.bench,
+    ]
+    .iter()
+    .filter(|&&set| set)
+    .count()
+        > 1
+    {
+        return Err("use one of --record, --check, and --bench".to_owned());
     }
     Ok(options)
 }
@@ -180,6 +194,56 @@ fn frame_hash(machine: &mut Machine, capture: Option<&mut Framebuffer>) -> Resul
     Ok(hash.0)
 }
 
+/// The buttons held during each frame.
+fn held_buttons(inputs: &[(u64, Button, u64)], frames: u64) -> Vec<Buttons> {
+    let mut held = vec![Buttons::default(); frames as usize];
+    for &(start, button, hold) in inputs {
+        let end = start.saturating_add(hold).min(frames);
+        for buttons in held.iter_mut().take(end as usize).skip(start as usize) {
+            *buttons = buttons.with(button, true);
+        }
+    }
+    held
+}
+
+/// Run the replay without hashing and report its speed. With `capture`, present every
+/// frame and drain audio as the window does.
+fn bench(
+    machine: &mut Machine,
+    held: &[Buttons],
+    capture: bool,
+    frame: &mut Framebuffer,
+) -> Result<bool, String> {
+    let started = Instant::now();
+    let mut samples = [Default::default(); 4096];
+    for (index, &buttons) in held.iter().enumerate() {
+        machine.memory_mut().set_buttons(buttons);
+        machine
+            .run_until_vblank(FRAME_STEP_LIMIT)
+            .map_err(|error| {
+                format!(
+                    "frame {index}: {error:?} at PC={:#010x}",
+                    machine.cpu().pc()
+                )
+            })?;
+        if capture {
+            machine
+                .memory()
+                .present_frame(frame)
+                .map_err(|error| format!("frame capture: {error:?}"))?;
+            while machine.memory_mut().drain_audio_samples(&mut samples) != 0 {}
+        }
+    }
+    let seconds = started.elapsed().as_secs_f64();
+    let fps = held.len() as f64 / seconds;
+    println!(
+        "{} frames in {seconds:.2} s: {fps:.1} fps ({:.2}x real time)",
+        held.len(),
+        fps / 59.7275
+    );
+    Ok(true)
+}
+
 fn run(options: Options) -> Result<bool, String> {
     let rom =
         fs::read(&options.rom).map_err(|error| format!("{}: {error}", options.rom.display()))?;
@@ -221,17 +285,16 @@ fn run(options: Options) -> Result<bool, String> {
     machine.memory_mut().set_audio_capture(options.capture);
     machine.set_idle_skip(options.idle_skip);
     let mut frame = Framebuffer::default();
+    let held = held_buttons(&inputs, options.frames);
+
+    if options.bench {
+        return bench(&mut machine, &held, options.capture, &mut frame);
+    }
 
     let mut lines = Vec::with_capacity(options.frames as usize);
     let mut total = Fnv::new();
     for index in 0..options.frames {
-        let buttons = inputs
-            .iter()
-            .filter(|(start, _, hold)| index >= *start && index < start + hold)
-            .fold(Buttons::default(), |held, (_, button, _)| {
-                held.with(*button, true)
-            });
-        machine.memory_mut().set_buttons(buttons);
+        machine.memory_mut().set_buttons(held[index as usize]);
         machine
             .run_until_vblank(FRAME_STEP_LIMIT)
             .map_err(|error| {
