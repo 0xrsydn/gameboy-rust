@@ -93,8 +93,15 @@ blocks the north road, the POKéMON CENTER sign, a heal at the counter (and a de
 clerk's OAK'S PARCEL scene with its scripted walk to the counter. `firered-parcel.inputs` (80,000 frames) goes back
 down Route 1 with ledge jumps and a won wild battle, delivers the parcel (the POKéDEX scene with the rival and the
 POKé BALLS), then on Route 1 throws two POKé BALLS that break free, faints to a critical hit, whites out to the
-POKéMON CENTER, and finally weakens and catches a PIDGEY, with its POKéDEX entry and the nickname prompt. Long
-replays can be recorded and checked with `--idle-skip`, which gives the same hashes in about half the time.
+POKéMON CENTER, and finally weakens and catches a PIDGEY, with its POKéDEX entry and the nickname prompt.
+`firered-forest.inputs` (216,000 frames) continues north: the old man's catching demo, TEACHY TV, a POKé BALL
+bought at the MART, Route 2, and Viridian Forest. There it covers wild battles fought and escaped, level-ups that
+teach moves, a PIKACHU caught on the third ball and nicknamed on the keyboard, an item ball, and four BUG CATCHER
+battles: three trainers spot the player with "!" and one is talked to, and the fights include a voluntary and a
+prompted switch, a POTION from the BAG, the party SUMMARY pages, the STATIC and SHED SKIN abilities, poison and
+paralysis, a move with no PP left, and a POKéMON fainting with the forced switch. It ends with a sign, the north
+gate, and a POKéMON CENTER heal in Pewter City. Long replays can be recorded and checked with `--idle-skip`, which
+gives the same hashes in about half the time.
 
 `emerald-route101.inputs` (45,000 frames, `--rtc 847932662`) continues Emerald from the TV news: the girl who blocks
 the road north, the rival's house (her mother's scene, MAY's scene upstairs), PROF. BIRCH chased on Route 101, the
