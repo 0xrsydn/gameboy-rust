@@ -14,7 +14,7 @@ use std::{
 
 use gba_core::{
     bios,
-    cartridge::SaveDevice,
+    cartridge::{CartridgeHardware, RtcDateTime, SaveDevice},
     input::{Button, Buttons},
     machine::Machine,
     video::{Framebuffer, HEIGHT, WIDTH},
@@ -27,7 +27,7 @@ const DISPCNT: u32 = 0x0400_0000;
 /// Machine steps allowed between VBlanks before the run is reported as stuck.
 const FRAME_STEP_LIMIT: usize = 2_000_000;
 
-const USAGE: &str = "usage: gba-diff --reference MGBA_REF --rom ROM [--frames N] [--save-type sram|flash64|flash128|eeprom512|eeprom8k] [--input FRAME:BUTTON:HOLD[,...]] [--ignore START-END[,...]] [--max-report N] [--out DIR] [--images FRAME[,...]] [--detail-frame FRAME[,...]] [--no-align] [--trace INSTRUCTIONS]";
+const USAGE: &str = "usage: gba-diff --reference MGBA_REF --rom ROM [--frames N] [--save-type sram|flash64|flash128|eeprom512|eeprom8k] [--rtc UNIX_SECONDS] [--input FRAME:BUTTON:HOLD[,...]] [--ignore START-END[,...]] [--max-report N] [--out DIR] [--images FRAME[,...]] [--detail-frame FRAME[,...]] [--no-align] [--trace INSTRUCTIONS]";
 
 /// Memory compared every frame. Video memory is compared after both frames render.
 const REGIONS: [(&str, u32, usize); 5] = [
@@ -37,6 +37,12 @@ const REGIONS: [(&str, u32, usize); 5] = [
     ("VRAM", 0x0600_0000, 0x1_8000),
     ("OAM", 0x0700_0000, 0x400),
 ];
+
+/// Seconds from the Unix epoch to 2000-01-01, where the RTC calendar starts.
+const UNIX_2000: u64 = 946_684_800;
+/// Cycles per frame and per second, as mGBA's fake-epoch RTC clock counts them.
+const FRAME_CYCLES: u64 = 280_896;
+const CPU_HZ: u64 = 16_777_216;
 
 /// Differing addresses listed per region for an ordinary report.
 const SAMPLES: usize = 6;
@@ -89,6 +95,7 @@ struct Options {
     rom: PathBuf,
     frames: u64,
     save: SaveDevice,
+    rtc: Option<u64>,
     inputs: Vec<(u64, Button, u64)>,
     ignore: Vec<(u32, u32)>,
     max_report: usize,
@@ -129,6 +136,7 @@ fn parse(args: &[String]) -> Result<Options, String> {
         rom: PathBuf::new(),
         frames: 600,
         save: SaveDevice::None,
+        rtc: None,
         inputs: Vec::new(),
         ignore: Vec::new(),
         max_report: 8,
@@ -160,6 +168,13 @@ fn parse(args: &[String]) -> Result<Options, String> {
                     "eeprom8k" => SaveDevice::Eeprom8k,
                     other => return Err(format!("unknown save type: {other}")),
                 }
+            }
+            "--rtc" => {
+                let unix = number(&value()?)?;
+                if unix < UNIX_2000 {
+                    return Err(format!("--rtc must be at or after 2000-01-01: {unix}"));
+                }
+                options.rtc = Some(unix);
             }
             "--input" => {
                 for entry in value()?.split(',').filter(|entry| !entry.is_empty()) {
@@ -204,18 +219,43 @@ fn parse(args: &[String]) -> Result<Options, String> {
     Ok(options)
 }
 
+/// The cartridge RTC on mGBA's fake-epoch clock (mgba-ref's `rtc` command): whole seconds of
+/// `start + frames * FRAME_CYCLES / CPU_HZ`, counting frames from the cartridge entry.
+struct RtcClock {
+    start_ms: u64,
+    entry_vblank: u64,
+    seconds: u64,
+}
+
+impl RtcClock {
+    fn seconds_after(&self, frames: u64) -> u64 {
+        // Same integer order as mGBA: frames * (cycles * 1000) / frequency, in milliseconds.
+        (self.start_ms + frames * (FRAME_CYCLES * 1000) / CPU_HZ) / 1000
+    }
+}
+
 /// This emulator, started at the cartridge entry like mGBA's skip-BIOS path.
 struct Local {
     machine: Machine,
     frame: Framebuffer,
     vblank: u64,
+    rtc: Option<RtcClock>,
 }
 
 impl Local {
-    fn boot(rom: Vec<u8>, save: SaveDevice) -> Result<Self, String> {
+    fn boot(rom: Vec<u8>, save: SaveDevice, rtc: Option<u64>) -> Result<Self, String> {
         let mut machine = bios::boot(rom).map_err(|error| format!("{error:?}"))?;
         machine.memory_mut().set_save_device(save);
         machine.memory_mut().set_scanline_rendering(true);
+        if let Some(unix) = rtc {
+            let memory = machine.memory_mut();
+            memory.set_cartridge_hardware(CartridgeHardware::Rtc);
+            let date = RtcDateTime::from_seconds_since_2000(unix - UNIX_2000)
+                .map_err(|error| format!("--rtc {unix}: {error:?}"))?;
+            memory
+                .set_rtc_datetime(date)
+                .map_err(|error| format!("--rtc {unix}: {error:?}"))?;
+        }
         for _ in 0..FRAME_STEP_LIMIT {
             if machine.cpu().pc() == ROM_ENTRY {
                 let vblank = machine.memory().display_position().vblanks;
@@ -223,6 +263,11 @@ impl Local {
                     machine,
                     frame: Framebuffer::default(),
                     vblank,
+                    rtc: rtc.map(|unix| RtcClock {
+                        start_ms: unix * 1000,
+                        entry_vblank: vblank,
+                        seconds: unix,
+                    }),
                 });
             }
             machine.step().map_err(|error| format!("boot: {error:?}"))?;
@@ -230,7 +275,25 @@ impl Local {
         Err("boot never reached the cartridge entry".to_owned())
     }
 
+    /// Bring the RTC up to mGBA's clock for the frames run since the cartridge entry.
+    fn sync_rtc(&mut self) -> Result<(), String> {
+        let Some(rtc) = self.rtc.as_mut() else {
+            return Ok(());
+        };
+        let frames = self.machine.memory().display_position().vblanks - rtc.entry_vblank;
+        let seconds = rtc.seconds_after(frames);
+        if seconds > rtc.seconds {
+            self.machine
+                .memory_mut()
+                .advance_rtc_seconds(seconds - rtc.seconds)
+                .map_err(|error| format!("RTC: {error:?}"))?;
+            rtc.seconds = seconds;
+        }
+        Ok(())
+    }
+
     fn run_frame(&mut self, buttons: Buttons) -> Result<(), String> {
+        self.sync_rtc()?;
         self.machine.memory_mut().set_buttons(buttons);
         for _ in 0..FRAME_STEP_LIMIT {
             self.machine.step().map_err(|error| {
@@ -552,11 +615,14 @@ fn align_after_ram_reset(
 fn run(options: Options) -> Result<bool, String> {
     let rom =
         fs::read(&options.rom).map_err(|error| format!("{}: {error}", options.rom.display()))?;
-    let mut local = Local::boot(rom, options.save)?;
+    let mut local = Local::boot(rom, options.save, options.rtc)?;
     let mut reference = Reference::spawn(&options.reference).map_err(|error| error.to_string())?;
     reference
         .load(&options.rom, None)
         .map_err(|error| error.to_string())?;
+    if let Some(unix) = options.rtc {
+        reference.set_rtc(unix).map_err(|error| error.to_string())?;
+    }
 
     let mut out = io::stdout().lock();
     let position = local.machine.memory().display_position();
@@ -716,12 +782,13 @@ mod tests {
     fn options_parse_inputs_ranges_and_numbers() {
         let options = parse(&args(
             "--reference ref --rom game.gba --frames 0x10 --save-type sram \
-             --input 5:a:2,9:start:1 --ignore 0x03007f00-0x03007fff --no-align --trace 100 \
+             --rtc 1767225600 --input 5:a:2,9:start:1 --ignore 0x03007f00-0x03007fff --no-align --trace 100 \
              --detail-frame 7,0x20",
         ))
         .unwrap();
         assert_eq!(options.frames, 16);
         assert_eq!(options.save, SaveDevice::Sram);
+        assert_eq!(options.rtc, Some(1_767_225_600));
         assert_eq!(
             options.inputs,
             vec![(5, Button::A, 2), (9, Button::Start, 1)]
@@ -737,9 +804,23 @@ mod tests {
             "--reference ref --rom game.gba --frames ten",
             "--reference ref --rom game.gba --detail-frame last",
             "--reference ref --rom game.gba --save-type tape",
+            "--reference ref --rom game.gba --rtc 946684799",
         ] {
             assert!(parse(&args(bad)).is_err(), "{bad}");
         }
+    }
+
+    #[test]
+    fn rtc_clock_counts_whole_seconds_of_emulated_frames_like_mgba() {
+        let rtc = RtcClock {
+            start_ms: 1_767_225_600_000,
+            entry_vblank: 0,
+            seconds: 1_767_225_600,
+        };
+        // 59.7275 frames per second: frame 59 is still second 0, frame 60 is second 1.
+        assert_eq!(rtc.seconds_after(59), 1_767_225_600);
+        assert_eq!(rtc.seconds_after(60), 1_767_225_601);
+        assert_eq!(rtc.seconds_after(3584), 1_767_225_660);
     }
 
     #[test]

@@ -46,6 +46,13 @@ Exit status is 0 without divergence, 1 with one, and 2 for usage or setup errors
 
 mGBA chooses its own save type from its game database or on first access; `--save-type` applies only to this emulator.
 
+`--rtc UNIX_SECONDS` attaches the cartridge RTC on both sides and starts it at that time (UTC). Both clocks then run on
+emulated time, not the host clock: mGBA's fake-epoch source gives `UNIX + frames * 280896 / 16777216` seconds, rounded
+down, with frames counted from the cartridge entry, and this emulator advances its RTC at each frame boundary to the
+same second. Without it, mGBA still attaches an RTC for games its database lists (Emerald, Ruby, Sapphire) and reads
+the host's local time, while this emulator runs without one. The shim's `rtc` command arrived after the first builds;
+rebuild with `tools/prepare_mgba_reference.py` if `mgba-ref` answers `err unknown command`.
+
 ## Instruction lockstep
 
 ```sh
@@ -91,8 +98,21 @@ rounds differently from hardware's 5-bit blending by one step in some fades; the
 Re-measured 2026-11-13 after the BIOS service, register-reset, and DMA start-delay changes, on the same host:
 
 - Frame comparison with `--ignore 0x03007c00-0x03007fff`: FireRed and Emerald differ in `DMA1CNT_H` and
-  `DMA2CNT_H`, the sound-FIFO channels whose destination-control bits mGBA sets itself, plus 1–3 IWRAM bytes per
-  frame. Those bytes are outside the ignored band. `--detail-frame` now lists them; they have not been attributed yet.
+  `DMA2CNT_H`, the sound-FIFO channels whose destination-control bits mGBA sets itself, plus a few IWRAM bytes per
+  frame. Those bytes were attributed on 2026-11-14 (below).
+
+Attributed 2026-11-14 and re-measured 2026-11-15 over 600 frames. With the known noise ignored, FireRed settles at 6
+IWRAM bytes per frame, all from three causes that are configuration or sampling differences rather than behavior:
+
+| FireRed | Emerald | Cause |
+| --- | --- | --- |
+| `0x03000004` | `0x0300081c` | The game's copy of `DISPSTAT` in its register shadow buffer, a read-modify-write that keeps the read-only status flags. mGBA read it inside HBlank, this emulator just before. Sampling phase, not state. |
+| `0x03007420–21`, `0x03007434` | `0x03007850`, `0x03007864` | Flash-library pointers chosen by flash ID. This emulator reports Macronix `0x09C2` for 128 KiB, mGBA reports Sanyo `0x1362`; both chips exist in real cartridges. |
+| `0x03007476–77` | `0x030078a6–a7` | The game's serial handshake with no cable attached. This emulator shifts in 1s and reads `SIODATA32` as `0xffffffff`; mGBA without a link driver leaves the written value. The hardware open-line value is not verified here. |
+
+Emerald's clock bytes (`0x03000db8–dcc`) match with `--rtc`. Emerald still diverges from frame 14: its intro setup
+finishes one frame later here (first frame-counter increment at line 167, mGBA at line 136), so the fade and later the
+per-frame tasks and RNG run one frame out of step, about 3,000 IWRAM bytes by frame 600. The cause is not identified.
 - Instruction lockstep stops at the same instruction 1021 in both games: the immediate DMA3 readback below.
   Cumulative drift is +947,772 cycles, about 945,000 of it the `RegisterRamReset` call.
 
@@ -168,4 +188,6 @@ figures by 10% or more, so compare runs taken back to back.
 - Audio is not compared.
 - Known noise: residue below the stack pointer (`0x03007c00–0x03007fff`) differs because the two BIOS implementations
   push different words, and mGBA sets the destination-control bits of sound-FIFO DMA control registers
-  (`0x040000c6`, `0x040000d2`) itself. Use `--ignore` for these when looking for behavior differences.
+  (`0x040000c6`, `0x040000d2`) itself. Use `--ignore` for these when looking for behavior differences. The game-specific
+  bytes in [Findings so far](#findings-so-far) (shadow `DISPSTAT`, flash ID, serial handshake) are noise of the same
+  kind.

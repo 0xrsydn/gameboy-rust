@@ -82,6 +82,11 @@ impl Reference {
             .map(drop)
     }
 
+    /// Attach the cartridge RTC and run it on emulated time from `unix` seconds (UTC).
+    pub fn set_rtc(&mut self, unix: u64) -> io::Result<()> {
+        self.command(&format!("rtc {unix}")).map(drop)
+    }
+
     /// Move mGBA's display clock to `line` at `cycle` before any frame runs.
     pub fn align_video(&mut self, line: u16, cycle: u16) -> io::Result<()> {
         self.command(&format!("video {line} {cycle}")).map(drop)

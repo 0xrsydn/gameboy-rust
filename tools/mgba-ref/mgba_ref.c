@@ -17,6 +17,9 @@
 //   fb                reply "ok 240 160" then 240*160 little-endian u32 pixels
 //   write16 ADDR VAL  store a halfword through the CPU bus (for aligning start state)
 //   video LINE CYCLE  move the display to LINE at CYCLE, before any frame runs
+//   rtc UNIX          attach the cartridge RTC if the game database did not, and run it
+//                     on emulated time from UNIX seconds (UTC): mGBA's fake-epoch clock,
+//                     UNIX + frames * 280896 / 16777216 s, read in whole seconds
 //   sync COUNT        run COUNT instructions outside the BIOS (0x0000-0x3fff); reply
 //                     "ok COUNT", then per instruction one line:
 //                     "ADDR THUMB CYCLES r0 .. r15 CPSR" (hex, CYCLES decimal), with
@@ -29,6 +32,7 @@
 #include <mgba/core/config.h>
 #include <mgba/core/log.h>
 #include <mgba/internal/arm/arm.h>
+#include <mgba/internal/gba/cart/gpio.h>
 #include <mgba/internal/gba/gba.h>
 #include <mgba/internal/gba/io.h>
 #include <mgba-util/vfs.h>
@@ -36,6 +40,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #define WIDTH 240
 #define HEIGHT 160
@@ -283,6 +288,22 @@ int main(void) {
 		} else if (!strcmp(command, "sync")) {
 			char* count = strtok(NULL, " ");
 			sync_user(count ? strtoul(count, NULL, 0) : 1);
+		} else if (!strcmp(command, "rtc")) {
+			char* seconds = strtok(NULL, " ");
+			if (!seconds) {
+				reply_err("usage: rtc UNIX");
+			} else {
+				// mGBA converts the clock with localtime(); pin that to UTC.
+				setenv("TZ", "UTC", 1);
+				tzset();
+				core->rtc.override = RTC_FAKE_EPOCH;
+				core->rtc.value = (int64_t) strtoll(seconds, NULL, 0) * 1000;
+				struct GBA* gba = core->board;
+				if (!(gba->memory.hw.devices & HW_RTC)) {
+					GBAHardwareInitRTC(&gba->memory.hw);
+				}
+				reply_ok();
+			}
 		} else if (!strcmp(command, "video")) {
 			char* line = strtok(NULL, " ");
 			char* cycle = strtok(NULL, " ");
