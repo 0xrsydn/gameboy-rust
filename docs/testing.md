@@ -100,8 +100,10 @@ teach moves, a PIKACHU caught on the third ball and nicknamed on the keyboard, a
 battles: three trainers spot the player with "!" and one is talked to, and the fights include a voluntary and a
 prompted switch, a POTION from the BAG, the party SUMMARY pages, the STATIC and SHED SKIN abilities, poison and
 paralysis, a move with no PP left, and a POKéMON fainting with the forced switch. It ends with a sign, the north
-gate, and a POKéMON CENTER heal in Pewter City. Long replays can be recorded and checked with `--idle-skip`, which
-gives the same hashes in about half the time.
+gate, and a POKéMON CENTER heal in Pewter City. `firered-brock.inputs` (244,400 frames) adds Pewter GYM: the
+GYM guide, a CAMPER who spots the player, and LEADER BROCK beaten with super-effective moves, followed by the
+BOULDERBADGE, TM39 going into the TM CASE, and the TRAINER CARD with the badge, front and back. Long replays can be
+recorded and checked with `--idle-skip`, which gives the same hashes in about half the time.
 
 `emerald-route101.inputs` (45,000 frames, `--rtc 847932662`) continues Emerald from the TV news: the girl who blocks
 the road north, the rival's house (her mother's scene, MAY's scene upstairs), PROF. BIRCH chased on Route 101, the
