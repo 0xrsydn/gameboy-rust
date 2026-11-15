@@ -251,7 +251,26 @@ pub(crate) fn render_rows(
     };
     let mosaic_width = usize::from(mosaic & 15) + 1;
     let mosaic_height = usize::from((mosaic >> 4) & 15) + 1;
+    let text = |bg: usize| mode == 0 || (mode == 1 && bg < 2);
+    let mut text_lines = [[None; WIDTH]; 4];
     for y in rows.clone() {
+        // Text backgrounds are sampled a row at a time; each row only depends on the
+        // background's sample row, which mosaic fixes for the whole output row.
+        let counter = vertical_mosaic.map_or(y % mosaic_height, |v| usize::from(v.background));
+        for &bg in layers.iter().filter(|&&bg| text(bg)) {
+            let sample_y = if backgrounds[bg].control & 0x40 != 0 {
+                y - counter
+            } else {
+                y
+            };
+            text_row(
+                backgrounds[bg],
+                vram,
+                palette,
+                sample_y,
+                &mut text_lines[bg],
+            );
+        }
         for x in 0..WIDTH {
             let offset = (y - rows.start) * WIDTH + x;
             let mask = effects.mask(
@@ -278,14 +297,12 @@ pub(crate) fn render_rows(
                 // phase comes from a counter; horizontal blocks remain screen-aligned.
                 // Window selection still uses the actual output coordinate.
                 let (sample_x, sample_y) = if backgrounds[bg].control & 0x40 != 0 {
-                    let counter =
-                        vertical_mosaic.map_or(y % mosaic_height, |v| usize::from(v.background));
                     (x - x % mosaic_width, y - counter)
                 } else {
                     (x, y)
                 };
-                let color = if mode == 0 || (mode == 1 && bg < 2) {
-                    text_pixel(backgrounds[bg], vram, palette, sample_x, sample_y)?
+                let color = if text(bg) {
+                    text_lines[bg][sample_x]
                 } else {
                     affine::pixel(
                         backgrounds[bg],
@@ -336,6 +353,48 @@ fn vram_index(offset: usize) -> usize {
     }
 }
 
+/// One row of a text background: the colors `text_pixel` gives for every x at `y`,
+/// reading each map entry once per tile. Text map and tile addresses always stay
+/// below 128 KiB, so no row can fail.
+fn text_row(bg: Background, vram: &[u8], palette: &[u8], y: usize, out: &mut [Option<u16>; WIDTH]) {
+    let control = usize::from(bg.control);
+    let width = if control & 0x4000 != 0 { 512 } else { 256 };
+    let height = if control & 0x8000 != 0 { 512 } else { 256 };
+    let y = (y + usize::from(bg.y)) % height;
+    let eight_bit = control & 0x80 != 0;
+    let map_row =
+        ((control >> 8) & 31) * 0x800 + (y / 256) * (width / 256) * 0x800 + (y / 8 % 32) * 64;
+    let tiles = ((control >> 2) & 3) * 0x4000;
+    let mut x = 0;
+    while x < WIDTH {
+        let bx = (x + usize::from(bg.x)) % width;
+        let map = map_row + (bx / 256) * 0x800 + (bx / 8 % 32) * 2;
+        debug_assert!(map < 0x20000);
+        let entry = usize::from(halfword(vram, vram_index(map)));
+        let flip_x = if entry & 0x400 != 0 { 7 } else { 0 };
+        let ty = (y & 7) ^ if entry & 0x800 != 0 { 7 } else { 0 };
+        let tile = tiles + (entry & 0x3ff) * if eight_bit { 64 } else { 32 };
+        let bank = if eight_bit { 0 } else { (entry >> 12) * 16 };
+        // The rest of this tile: the scrolled x stays inside it, so it cannot wrap.
+        let span = (8 - (bx & 7)).min(WIDTH - x);
+        for (offset, color) in out[x..x + span].iter_mut().enumerate() {
+            let pixel = ty * 8 + (((bx & 7) + offset) ^ flip_x);
+            let address = tile + if eight_bit { pixel } else { pixel / 2 };
+            debug_assert!(address < 0x20000);
+            let byte = vram[vram_index(address)];
+            let index = if eight_bit {
+                usize::from(byte)
+            } else {
+                usize::from((byte >> ((pixel & 1) * 4)) & 15)
+            };
+            *color = (index != 0).then(|| halfword(palette, (bank + index) * 2));
+        }
+        x += span;
+    }
+}
+
+/// The per-pixel reference for `text_row`.
+#[cfg(test)]
 fn text_pixel(
     bg: Background,
     vram: &[u8],
@@ -413,6 +472,43 @@ impl Framebuffer {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn text_rows_match_the_per_pixel_reference() {
+        // xorshift: fixed pseudo-random VRAM, palette, controls, and scrolls.
+        let mut state = 0x9e37_79b9_7f4a_7c15_u64;
+        let mut next = move || {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            state
+        };
+        let vram: Vec<u8> = (0..0x18000).map(|_| next() as u8).collect();
+        let palette: Vec<u8> = (0..0x400).map(|_| next() as u8).collect();
+        for case in 0..400 {
+            let bg = Background {
+                // Every size, color depth, map base, and tile base appears.
+                control: (next() as u16 & 0xdf8c) | (case as u16 & 0xc080),
+                x: next() as u16 & 0x1ff,
+                y: next() as u16 & 0x1ff,
+                ..Background::default()
+            };
+            for y in [0, 7, 8, 100, 159] {
+                let mut row = [None; WIDTH];
+                text_row(bg, &vram, &palette, y, &mut row);
+                for (x, &color) in row.iter().enumerate() {
+                    assert_eq!(
+                        Ok(color),
+                        text_pixel(bg, &vram, &palette, x, y),
+                        "control {:#06x} scroll ({}, {}) at ({x}, {y})",
+                        bg.control,
+                        bg.x,
+                        bg.y
+                    );
+                }
+            }
+        }
+    }
 
     #[test]
     fn converts_gba_channel_order_and_ignores_unused_bit() {
