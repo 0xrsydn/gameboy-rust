@@ -112,7 +112,25 @@ IWRAM bytes per frame, all from three causes that are configuration or sampling 
 
 Emerald's clock bytes (`0x03000db8–dcc`) match with `--rtc`. Emerald still diverges from frame 14: its intro setup
 finishes one frame later here (first frame-counter increment at line 167, mGBA at line 136), so the fade and later the
-per-frame tasks and RNG run one frame out of step, about 3,000 IWRAM bytes by frame 600. The cause is not identified.
+per-frame tasks and RNG run one frame out of step, about 3,000 IWRAM bytes by frame 600.
+
+Traced on 2026-11-16 by aligning both instruction streams outside the BIOS and comparing cycle counts. The setup reaches
+the counter about 38,000 cycles later here. mGBA finishes before the VBlank and this emulator just after it. Two
+differences make up most of that gap, and both are mGBA charging less than the bus allows:
+
+- `LZ77UnCompVram`, called twice from ROM with the prefetch buffer on, costs 17,254 cycles more here. mGBA's
+  high-level BIOS runs its prefetch-stall model on the decompressor's own VRAM accesses, as if ROM code issued them,
+  so each one counts as -2 cycles. Predicted from the token counts, 6,216 and 10,984 cycles, against 6,252 and
+  11,002 measured. With prefetch off inside mGBA's decompressor (a scratch build), the calls match within 36 and
+  18 cycles. The real firmware runs from the BIOS, where the Game Pak prefetch does not apply.
+- A Thumb copy from ROM to EWRAM at `0x082e93ee` (`LDMIA r3!,{r0}`, `STMIA r1!,{r0}`, 4 pairs per pass, 260 passes)
+  costs 19 cycles per pair here and 9 in mGBA, about 10,000 in all. A word read from ROM at WAITCNT `0x4017` (4 + 2
+  cycles) and a word write to EWRAM (3 + 3 cycles) need at least 12 bus cycles with no opcode fetches at all, so 9 is
+  too low. mGBA credits prefetch hits during the EWRAM store that the next ROM data read cancels. The hardware cost lies
+  between that minimum and this emulator's; the prefetch queue rules here are nominal
+  ([Game Pak opcode prefetch](hardware/cpu.md#game-pak-opcode-prefetch)), and no hardware test here decides this case.
+
+Neither is changed here: the first is an mGBA artifact, and the second needs hardware evidence.
 - Instruction lockstep stops at the same instruction 1021 in both games: the immediate DMA3 readback below.
   Cumulative drift is +947,772 cycles, about 945,000 of it the `RegisterRamReset` call.
 
