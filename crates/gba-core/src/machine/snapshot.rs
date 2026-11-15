@@ -83,22 +83,22 @@ impl Machine {
     }
 
     fn write_identity(&self, writer: &mut Writer) {
-        let (rom, bios) = self.memory.images();
-        writer.u64(rom.len() as u64);
-        writer.u64(fingerprint(rom));
+        let (rom_len, rom, bios) = self.memory.image_identity();
+        writer.u64(rom_len);
+        writer.u64(rom);
         writer.option(bios.as_ref(), |bios, writer| {
-            writer.u64(fingerprint(bios));
+            writer.u64(*bios);
         });
         writer.raw(&self.memory.setup_identity());
     }
 
     fn check_identity(&self, reader: &mut Reader<'_>) -> Result<(), SnapshotError> {
-        let (rom, bios) = self.memory.images();
-        if reader.u64()? != rom.len() as u64 || reader.u64()? != fingerprint(rom) {
+        let (rom_len, rom, bios) = self.memory.image_identity();
+        if reader.u64()? != rom_len || reader.u64()? != rom {
             return Err(SnapshotError::ConfigMismatch("ROM image"));
         }
         let saved_bios = reader.option(Reader::u64)?;
-        if saved_bios != bios.map(fingerprint) {
+        if saved_bios != bios {
             return Err(SnapshotError::ConfigMismatch("firmware image"));
         }
         let mut setup = [0; 2];

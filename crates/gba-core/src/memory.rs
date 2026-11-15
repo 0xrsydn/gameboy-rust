@@ -1,5 +1,5 @@
 use std::{
-    cell::{Cell, RefCell, RefMut},
+    cell::{Cell, OnceCell, RefCell, RefMut},
     error::Error,
     fmt,
 };
@@ -187,6 +187,9 @@ pub struct Memory {
     cartridge: Cartridge,
     cartridge_step: Stage<Cartridge>,
     bios: Option<Vec<u8>>,
+    /// ROM and firmware fingerprints for save-state identity, computed on first use:
+    /// neither image changes after construction, and hashing 32 MiB per state is slow.
+    image_fingerprints: OnceCell<(u64, Option<u64>)>,
     io: Io,
     cycles: u64,
     cpu_timing: Cell<Option<CpuTiming>>,
@@ -242,6 +245,7 @@ impl Memory {
             cartridge: Cartridge::default(),
             cartridge_step: Stage::new(),
             bios: None,
+            image_fingerprints: OnceCell::new(),
             io: Io::default(),
             cycles: 0,
             cpu_timing: Cell::new(None),

@@ -1,13 +1,19 @@
 //! Save-state encoding for the memory bus and everything it owns.
 
 use super::Memory;
-use crate::snapshot::{Reader, Snapshot, SnapshotError, Writer};
+use crate::snapshot::{fingerprint, Reader, Snapshot, SnapshotError, Writer};
 use crate::video::capture::Capture;
 
 impl Memory {
-    /// ROM and firmware bytes, for state identity checks.
-    pub(crate) fn images(&self) -> (&[u8], Option<&[u8]>) {
-        (&self.rom, self.bios.as_deref())
+    /// ROM length and the ROM and firmware fingerprints, for state identity checks.
+    pub(crate) fn image_identity(&self) -> (u64, u64, Option<u64>) {
+        let (rom, bios) = *self.image_fingerprints.get_or_init(|| {
+            (
+                fingerprint(&self.rom),
+                self.bios.as_deref().map(fingerprint),
+            )
+        });
+        (self.rom.len() as u64, rom, bios)
     }
 
     /// Cartridge hardware and save-device selection, which a state must match.
@@ -43,8 +49,9 @@ impl Snapshot for Memory {
             save_modified,
             cartridge_elapsed: _, // Zero between steps; checked above.
             cartridge,
-            cartridge_step: _, // Staged transaction; empty between steps.
-            bios: _,           // Host image, identified by the state header.
+            cartridge_step: _,     // Staged transaction; empty between steps.
+            bios: _,               // Host image, identified by the state header.
+            image_fingerprints: _, // Derived from the images.
             io,
             cycles,
             cpu_timing: _,   // Staged transaction; empty between steps.
@@ -105,6 +112,7 @@ impl Snapshot for Memory {
             cartridge,
             cartridge_step: _,
             bios: _,
+            image_fingerprints: _,
             io,
             cycles,
             cpu_timing: _,
