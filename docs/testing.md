@@ -102,8 +102,24 @@ prompted switch, a POTION from the BAG, the party SUMMARY pages, the STATIC and 
 paralysis, a move with no PP left, and a POKéMON fainting with the forced switch. It ends with a sign, the north
 gate, and a POKéMON CENTER heal in Pewter City. `firered-brock.inputs` (244,400 frames) adds Pewter GYM: the
 GYM guide, a CAMPER who spots the player, and LEADER BROCK beaten with super-effective moves, followed by the
-BOULDERBADGE, TM39 going into the TM CASE, and the TRAINER CARD with the badge, front and back. Long replays can be
-recorded and checked with `--idle-skip`, which gives the same hashes in about half the time.
+BOULDERBADGE, TM39 going into the TM CASE, and the TRAINER CARD with the badge, front and back.
+`firered-mtmoon.inputs` (425,024 frames) goes on to Mt. Moon:
+- **Pewter exit:** the aide's RUNNING SHOES cutscene and Mom's letter.
+- **Route 3:** five trainers who spot the player, one of them sidestepped on the first pass and fought later.
+  The battles show LEECH SEED, WRAP, INTIMIDATE, STATIC, and poison, a move forgotten for a new one, a new
+  move declined, and a "change POKéMON?" prompt answered YES.
+- **Back in Pewter:** six POTIONS and ten POKé BALLs bought by quantity at the MART, a heal, and a party
+  reorder from the START menu.
+- **Route 4:** a POKéMON CENTER heal and the MAGIKARP salesman.
+- **Mt. Moon:**
+  - Wild battles escaped, two item balls, and TM09 taught from the TM CASE.
+  - Ladders across three floors, including a dead-end room.
+  - Two TEAM ROCKET battles, with confusion and the multi-hit BULLET SEED.
+  - A POKéMON fainting from poison in the field.
+  - BULBASAUR evolving into IVYSAUR.
+  - SUPER NERD MIGUEL's battle and the fossil choice, then the exit to Route 4.
+
+Long replays can be recorded and checked with `--idle-skip`, which gives the same hashes in about half the time.
 
 `emerald-route101.inputs` (45,000 frames, `--rtc 847932662`) continues Emerald from the TV news: the girl who blocks
 the road north, the rival's house (her mother's scene, MAY's scene upstairs), PROF. BIRCH chased on Route 101, the
