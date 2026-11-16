@@ -232,13 +232,22 @@ pub(crate) fn render_rows(
         _ => return Err(VideoError::UnsupportedMode(mode as u8)),
     };
     let control = control & !absent;
-    let mut layers: Vec<usize> = (0..4).filter(|bg| control & (0x100 << bg) != 0).collect();
+    // At most four layers: a fixed array, not a per-row allocation.
+    let mut layers = [0; 4];
+    let mut count = 0;
+    for bg in (0..4).filter(|bg| control & (0x100 << bg) != 0) {
+        layers[count] = bg;
+        count += 1;
+    }
+    let layers = &mut layers[..count];
     // Lower priority number wins. BG0 wins ties, then BG1, BG2, BG3.
     layers.sort_by_key(|&bg| (backgrounds[bg].control & 3, bg));
+    let layers = &*layers;
+    let prepared_here;
     let objects = if control & 0x1000 == 0 {
         sprites::Objects {
             pixels: vec![None; length],
-            window: vec![false; length],
+            window: vec![false; length].into(),
         }
     } else if let Some(prepared) = prepared_objects {
         debug_assert_eq!(rows.len(), 1);
@@ -247,7 +256,8 @@ pub(crate) fn render_rows(
             .map_err(Clone::clone)?
             .compose(mosaic, palette)
     } else {
-        sprites::prepare(control, mosaic, None, oam, vram, rows.clone())?.compose(mosaic, palette)
+        prepared_here = sprites::prepare(control, mosaic, None, oam, vram, rows.clone())?;
+        prepared_here.compose(mosaic, palette)
     };
     let mosaic_width = usize::from(mosaic & 15) + 1;
     let mosaic_height = usize::from((mosaic >> 4) & 15) + 1;
@@ -300,7 +310,7 @@ pub(crate) fn render_rows(
                     below = Some(pixel);
                 }
             };
-            for &bg in &layers {
+            for &bg in layers {
                 // Validate enabled background fetches even when a window hides them.
                 // Mosaic samples before scroll or affine mapping. Captured vertical
                 // phase comes from a counter; horizontal blocks remain screen-aligned.

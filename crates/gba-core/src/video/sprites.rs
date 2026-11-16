@@ -4,6 +4,8 @@
 mod budget;
 pub(crate) mod pipeline;
 
+use std::borrow::Cow;
+
 use super::{halfword, Pixel, VideoError, HEIGHT, WIDTH};
 use crate::snapshot::{Reader, Snapshot, SnapshotError, Writer};
 
@@ -13,9 +15,10 @@ const SIZES: [[(usize, usize); 4]; 3] = [
     [(8, 16), (8, 32), (16, 32), (32, 64)],
 ];
 
-pub(super) struct Objects {
+pub(super) struct Objects<'a> {
     pub pixels: Vec<Option<Pixel>>,
-    pub window: Vec<bool>,
+    // Borrowed from the prepared row when there is one; composing does not change it.
+    pub window: Cow<'a, [bool]>,
 }
 
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -196,10 +199,10 @@ pub(crate) fn prepare(
 impl PreparedObjects {
     /// Resolve buffered indices through the current palette. Horizontal mosaic
     /// belongs to composition, not the previous line's OAM/VRAM preparation.
-    pub(super) fn compose(&self, mosaic: u16, palette: &[u8]) -> Objects {
+    pub(super) fn compose(&self, mosaic: u16, palette: &[u8]) -> Objects<'_> {
         let mut output = Objects {
             pixels: vec![None; self.samples.len()],
-            window: self.window.clone(),
+            window: Cow::Borrowed(&self.window),
         };
         let mosaic_width = usize::from((mosaic >> 8) & 15) + 1;
         // Horizontal OBJ mosaic latches the selected object sample, not each
