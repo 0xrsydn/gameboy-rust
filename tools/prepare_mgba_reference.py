@@ -113,7 +113,7 @@ def prepare(output, tarball=None, download=fetch, build=True):
     if build:
         for tool in ("cmake", "cc"):
             if shutil.which(tool) is None:
-                raise RuntimeError(f"{tool} is required; try `nix shell nixpkgs#cmake`")
+                raise RuntimeError(f"{tool} is required; build through `direnv exec .`, whose dev shell has it")
     output.mkdir()
     archive = output / "mgba.tar.gz"
     archive.write_bytes(data)

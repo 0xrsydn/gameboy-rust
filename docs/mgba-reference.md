@@ -12,11 +12,10 @@ mGBA is MPL-2.0, so any copied file would carry that license.
 
 ## Build the reference
 
-Requires cmake and a C compiler. cmake is not in the dev shell; take it from the pinned nixpkgs:
+Requires cmake and a C compiler, which the dev shell provides:
 
 ```sh
-direnv exec . nix shell --inputs-from . nixpkgs#cmake -c \
-  python3 tools/prepare_mgba_reference.py roms/mgba-reference
+direnv exec . python3 tools/prepare_mgba_reference.py roms/mgba-reference
 ```
 
 The destination must be new, and outside the repository or inside the ignored `roms/`.
