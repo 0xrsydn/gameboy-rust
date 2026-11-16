@@ -45,28 +45,39 @@ The [mGBA reference](mgba-reference.md) has the comparable `mgba-perf` command.
 
 Check that a change keeps game behavior with per-frame replay hashes. The `replay_hash` example replays a fixed
 input script and hashes the save state, CPU registers, and cycle count after every frame; `--capture` adds the
-rendered frame and captured audio. Record hashes before a change and check them after it:
+rendered frame and captured audio. `tools/replays/check.sh` builds it, records the hashes before a change, and checks
+them after it:
+
+```sh
+tools/replays/check.sh --record                 # before the change
+tools/replays/check.sh --check --quick          # while iterating: Mt. Moon stops at frame 45,700
+tools/replays/check.sh --check --idle-skip      # before committing: every frame of every replay
+```
+
+The script runs a private copy of the binary, so a rebuild during a long check does not change what is checked, and
+`--bin PATH` checks a given build instead of building one. Remaining flags go to every run. It exits 0 only when every
+run passes and otherwise names each failing replay and its log in `roms/replays/`. Six runs cover all the scripts below:
+each other script is a frame-for-frame prefix of one that runs, with the same flags, and its hashes would repeat the
+longer run's. A `--quick` check takes about five minutes; the full check is bound by the 425,024-frame Mt. Moon replay.
+
+To run one replay by hand:
 
 ```sh
 direnv exec . cargo build --locked --release -p gba-diff --example replay_hash
 R=./target/release/examples/replay_hash
-mkdir -p roms/replays
 $R --rom roms/pokemon-firered.gba --save-type flash128 --frames 20000 \
-  --inputs tools/replays/firered-first-battle.inputs --capture --record roms/replays/firered.hashes
-$R --rom roms/pokemon-emerald.gba --save-type flash128 --rtc 847932662 --frames 13000 \
-  --inputs tools/replays/emerald-tv-news.inputs --capture --record roms/replays/emerald.hashes
-# after the change: the same commands with --check instead of --record
+  --inputs tools/replays/firered-first-battle.inputs --capture --check roms/replays/firered-capture.hashes
 ```
 
-`--check` prints the first frame whose hash differs and exits 1. An optimization or refactor must keep every hash;
-a deliberate behavior change will move them, and the replay shows from which frame. Run without `--capture` too:
-the core must reach the same machine state with and without frame capture, and the two modes still take different
-paths through the video code. Add `--idle-skip` to a
+`--check` prints the first frame whose hash differs and exits 1; it also accepts fewer `--frames` than were recorded.
+An optimization or refactor must keep every hash;
+a deliberate behavior change will move them, and the replay shows from which frame. Runs without `--capture` matter
+too: the core must reach the same machine state with and without frame capture, and the two modes still take
+different paths through the video code. Add `--idle-skip` to a
 `--check` run to verify the [idle-loop fast-forward](hardware/timers-irq.md#idle-loop-fast-forward) against hashes recorded
 without it. The scripts in
 `tools/replays/` are original button timings that take FireRed through its first rival battle and Emerald through
-its TV news event; the ROMs and the recorded hashes stay in the ignored `roms/` directory. A full run of both takes
-a few minutes, mostly serializing the save state each frame.
+its TV news event; the ROMs and the recorded hashes stay in the ignored `roms/` directory.
 
 A second pair of FireRed scripts checks an in-game save and a later CONTINUE. `firered-save.inputs` is the
 first-battle script followed by the Start menu, SAVE, and YES; `--write-save` stores the Flash image it leaves.
