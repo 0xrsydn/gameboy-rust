@@ -1,7 +1,7 @@
 //! Serial progress belongs to the same speculative bus phases as timers/audio.
 use super::{timing_event_tests::prepared, *};
 use crate::{
-    io::{IF, RCNT, SIOCNT, SIODATA8, SOUNDCNT_X},
+    io::{IF, RCNT, SIOCNT, SIODATA8},
     machine::{Machine, StepKind},
 };
 
@@ -138,16 +138,13 @@ fn dma_start_excludes_source_cycles_and_failed_destination_discards_serial_progr
         let (cpu, mut memory) = prepared(false, &[0xe1a00000], &[]);
         if fail {
             start(&mut memory, 60);
-            memory.write16(SOUNDCNT_X, 0x80).unwrap();
-            memory.write16(0x04000070, 0xa0).unwrap(); // Unsupported two-bank wave playback.
         }
+        // The failing word switches to UART and writes data with sending enabled.
         memory
-            .write32(0x02000000, if fail { 0x8000 } else { 0x4083 })
+            .write32(0x02000000, if fail { 0x0055_3400 } else { 0x4083 })
             .unwrap();
         memory.write32(DMA_BASE, 0x02000000).unwrap();
-        memory
-            .write32(DMA_BASE + 4, if fail { 0x04000074 } else { SIOCNT })
-            .unwrap();
+        memory.write32(DMA_BASE + 4, SIOCNT).unwrap();
         memory.write32(DMA_BASE + 8, 0x84000001).unwrap();
         let serial = memory.io.serial;
         let mut machine = Machine::new(cpu, memory);

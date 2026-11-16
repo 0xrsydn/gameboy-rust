@@ -103,14 +103,6 @@ impl Audio {
         matches!(address, SOUND_START..=0x0400_008b | WAVE_RAM..=0x0400_00a7)
     }
 
-    pub(crate) fn unsupported(&self, address: u32, value: u8) -> Option<&'static str> {
-        if self.enabled && (0x0400_0070..=0x0400_0075).contains(&address) {
-            self.wave_channel.unsupported(address - 0x0400_0070, value)
-        } else {
-            None
-        }
-    }
-
     fn wave_bank(&self) -> usize {
         1 ^ self.wave_channel.bank()
     }

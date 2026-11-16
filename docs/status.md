@@ -102,8 +102,8 @@ Update this file when a feature lands or a limit is removed.
 - Direct Sound A/B support timer-driven FIFO playback, stereo digital levels, and DMA1/A or DMA2/B refill blocks.
 - PSG pulse channels 1 and 2 support independent nominal frequency/duty playback, length, envelope, status, and stereo mixing. Channel 1 also supports sweep.
 - Noise channel 4 supports nominal 7/15-bit generation, divider clocks, shared length/envelope behavior, status, and stereo mixing.
-- Wave channel 3 supports single-bank nibble playback, rotating RAM, volume/force-volume, length, activity status, and digital mixing.
-- Two-bank wave playback, active bank changes, and unsupported serial operations remain diagnostic with whole-access and block-store rollback.
+- Wave channel 3 supports one- and two-bank nibble playback (two-bank order as in mGBA), rotating RAM, volume/force-volume, length, activity status, and digital mixing.
+- Unsupported serial operations remain diagnostic with whole-access and block-store rollback.
 - ROM windows with scanline capture, keyboard input, focus-loss release, bounded execution slices, and interactive keypad wake from STOP.
 - Opt-in macOS CoreAudio output, with tested original tones and wave-ROM playback; focus loss and STOP mute queued audio.
 - ROM-window `--speed 1..16` targets accelerated playback through host pacing only; audio is muted above 1×.
@@ -169,9 +169,9 @@ Persistence is tested on Darwin arm64 with original programs, not yet with exter
 The optional [cartridge GPIO/RTC subset](hardware/cartridge-gpio.md) supports calendar/control transfers and explicit clock updates, selected with `--rtc` in ROM modes.
 RTC persistence, interrupts, invalid-date correction, physical subsecond timing, GPIO aliases, and byte writes remain unsupported or unverified.
 The core uses deterministic caller time. Desktop RTC runs use host UTC/elapsed time and are not fully deterministic.
-The [audio subset](hardware/audio.md) supports Direct Sound, both PSG pulse channels, single-bank wave channel 3, noise channel 4, and instantaneous digital mixing.
+The [audio subset](hardware/audio.md) supports Direct Sound, both PSG pulse channels, wave channel 3 with one or two banks, noise channel 4, and instantaneous digital mixing.
 Optional 32,768 Hz digital capture provides bounded, transactional stereo samples with explicit drop counts.
-Two-bank wave playback, active wave-bank changes, and unverified sound-DMA pairings remain diagnostic.
+Unverified sound-DMA pairings remain diagnostic.
 PSG timing and signed mixing are nominal; hardware startup edges and analog behavior remain unverified.
 The [serial subset](hardware/serial.md) supports disconnected normal 8/32-bit transfers, external-clock waiting, idle multiplayer configuration, and general-purpose pins.
 Internal clocks shift high input at nominal rates, clear busy, and request completion IRQs. External requests retain busy without clock edges.

@@ -109,7 +109,7 @@ fn unsupported_operations_have_specific_retryable_diagnostics() {
 }
 
 #[test]
-fn block_store_rejects_later_activation_before_earlier_control_writes() {
+fn block_store_configures_and_triggers_64_sample_wave_playback() {
     let code: [u32; 7] = [
         0xe3a00301, 0xe2800070, 0xe59f1008, 0xe3a02902, 0xe8a00006, 0xeafffffe, 0x123400a0,
     ];
@@ -119,29 +119,22 @@ fn block_store_rejects_later_activation_before_earlier_control_writes() {
     for _ in 0..4 {
         machine.step().unwrap();
     }
-    let before = machine.cpu().clone();
-    let cycles = machine.cycles();
-    let error = machine.step().unwrap_err();
-    assert!(error.to_string().contains("64-sample wave playback"));
-    assert_eq!(machine.cpu(), &before);
-    assert_eq!(machine.cycles(), cycles);
-    assert_eq!(machine.memory().read16(0x04000070).unwrap(), 0);
-    assert_eq!(machine.step(), Err(error));
+    machine.step().unwrap(); // STMIA: SOUND3CNT_L/H, then a trigger, in one store.
+    assert_eq!(machine.memory().read16(0x04000070).unwrap(), 0xa0);
+    assert_eq!(machine.memory().read16(SOUNDCNT_X).unwrap() & 4, 4);
 }
 
 #[test]
 fn dma_activation_error_preserves_channel_progress_and_clocks() {
     let mut bus = memory();
-    bus.write16(SOUNDCNT_X, 0x80).unwrap();
-    bus.write16(0x04000070, 0xa0).unwrap();
-    bus.write32(0x02000000, 0x8000).unwrap();
+    bus.write32(0x02000000, 0x0055_3400).unwrap(); // UART data with sending enabled.
     bus.write32(DMA_BASE, 0x02000000).unwrap();
-    bus.write32(DMA_BASE + 4, 0x04000074).unwrap();
+    bus.write32(DMA_BASE + 4, SIOCNT).unwrap();
     bus.write32(DMA_BASE + 8, 0x84000001).unwrap();
     let mut machine = Machine::new(Cpu::new(ROM_START), bus);
     let before = machine.cpu().clone();
     let error = machine.step().unwrap_err();
-    assert!(error.to_string().contains("64-sample wave playback"));
+    assert!(error.to_string().contains("UART transmission"));
     assert_eq!(machine.cycles(), 0);
     assert_eq!(machine.cpu(), &before);
     assert_eq!(machine.step(), Err(error));

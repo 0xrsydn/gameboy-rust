@@ -294,7 +294,7 @@ Supported flags can be combined:
 | 7 | Reset supported display, DMA, timer, and interrupt registers as described below |
 
 All low-byte flag combinations, including `r0=0xff`, are accepted within the supported device subset.
-This is not full audio or serial support. [Two-bank wave playback](audio.md) and [connected serial transfers](serial.md) remain unsupported.
+This is not full audio or serial support. [Connected serial transfers](serial.md) remain unsupported.
 Sound reset retains wave bank 0 and the separate in-flight playback word; exact firmware sound-reset equivalence is not established.
 The firmware always clears the low halfword of SIODATA32, even when bit 5 is clear; its upper halfword is preserved.
 
@@ -600,7 +600,7 @@ Unsupported SWIs, unsupported exception vectors, and null IRQ callbacks reach an
 The CPU reports `CpuError::UnsupportedInstruction` with `bios::UNSUPPORTED_TRAP`, rather than silently treating a service as a no-op.
 Invalid arithmetic/decompression arguments use the same CPU error type with the distinct `bios::INVALID_ARGUMENT_TRAP` instruction.
 Prior boot/service steps remain committed on failure.
-Two-bank wave playback, connected serial links, HardReset, and serial/Game Pak STOP wake-up remain unimplemented.
+Connected serial links, HardReset, and serial/Game Pak STOP wake-up remain unimplemented.
 Darwin ROM windows can enable host audio with `--audio`; this does not extend BIOS coverage.
 Disconnected normal serial transfers use the [bounded serial model](serial.md); cancel active transfers before BIOS serial reset.
 This subset is not sufficient for Pokémon Emerald compatibility.

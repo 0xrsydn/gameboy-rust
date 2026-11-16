@@ -47,10 +47,10 @@ That run does not verify screen contents, button responses, or gameplay.
 A [fixed-time input probe](research/emerald-wave.md) then exposed an unsupported wave trigger with its gate disabled.
 Single-bank wave support now passes that point and completes 1,320 frames with scheduled Start/A input.
 Captured output differs from a no-input control; readable menus and gameplay remain unverified.
-The core has tested Direct Sound, both pulse channels, single-bank wave channel 3, and noise channel 4.
+The core has tested Direct Sound, both pulse channels, wave channel 3 (one or two banks), and noise channel 4.
 Fixed-rate stereo capture and opt-in Darwin `--audio` output now work with original native probes.
 A local Emerald run submits nonzero device frames but records underruns; listening quality and correct music remain unverified.
-Two-bank wave playback, hardware PWM sampling, and improved reconstruction/pacing remain missing.
+Hardware PWM sampling and improved reconstruction/pacing remain missing.
 See [the runtime result](research/emerald-reset.md). Next, verify visible menu progress rather than treating frame counts as playability.
 Nominal Flash programming/erase and explicit clean-exit persistence now pass original save/restart/load tests across processes.
 A native-window save also reloads through a separate process on Darwin arm64. External-game saving remains unverified.

@@ -331,10 +331,7 @@ mod tests {
         io.audio.write(SOUNDCNT_X, &[0x80]);
         for address in SOUND_START..0x0400_00a8 {
             let value = random.next() as u8;
-            if address != SOUNDCNT_X
-                && Audio::mapped(address)
-                && io.audio.unsupported(address, value).is_none()
-            {
+            if address != SOUNDCNT_X && Audio::mapped(address) {
                 io.audio.write(address, &[value]);
             }
         }

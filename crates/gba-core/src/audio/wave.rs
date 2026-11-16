@@ -1,4 +1,5 @@
-//! Nominal single-bank wave playback. RAM rotates in high-nibble-first order.
+//! Nominal wave playback. RAM rotates in high-nibble-first order: the selected bank,
+//! or with the dimension bit both banks as one 64-sample sequence, as in mGBA 0.10.5.
 use crate::snapshot::{Reader, Snapshot, SnapshotError, Writer};
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -16,18 +17,6 @@ pub(super) struct Wave {
 impl Wave {
     pub(super) fn bank(&self) -> usize {
         usize::from((self.control >> 6) & 1)
-    }
-
-    pub(super) fn unsupported(&self, offset: u32, value: u8) -> Option<&'static str> {
-        if (offset == 5 && value & 0x80 != 0 && self.control & 0xa0 == 0xa0)
-            || (offset == 0 && self.active && value & 0xa0 == 0xa0)
-        {
-            return Some("64-sample wave playback");
-        }
-        if offset == 0 && self.active && value & 0x80 != 0 && (value ^ self.control) & 0x40 != 0 {
-            return Some("wave bank change during playback");
-        }
-        None
     }
 
     pub(super) fn read(&self, offset: u32) -> u8 {
@@ -102,14 +91,24 @@ impl Wave {
         let rest = cycles - self.remaining;
         let edges = 1 + rest / self.period();
         self.remaining = self.period() - rest % self.period();
-        let data = &mut banks[self.bank()];
-        let old = *data;
+        // Dimension 1 plays bank 0 then bank 1 as one sequence, whichever bank is
+        // selected: mGBA 0.10.5 rotates all eight wave words from the first. A bank or
+        // dimension change during playback applies to the following samples.
+        let data: &mut [u8] = if self.control & 0x20 != 0 {
+            banks.as_flattened_mut()
+        } else {
+            &mut banks[self.bank()]
+        };
+        let samples = data.len() * 2;
+        let mut old = [0; 32];
+        old[..data.len()].copy_from_slice(data);
         let digit = |index: usize| {
-            let byte = old[(index % 32) / 2];
+            let byte = old[(index % samples) / 2];
             (byte >> if index & 1 == 0 { 4 } else { 0 }) & 15
         };
-        self.sample = Some(digit(((edges - 1) % 32) as usize));
-        let rotation = (edges % 32) as usize;
+        let edges = edges as usize;
+        self.sample = Some(digit((edges - 1) % samples));
+        let rotation = edges % samples;
         for (index, byte) in data.iter_mut().enumerate() {
             *byte = (digit(index * 2 + rotation) << 4) | digit(index * 2 + rotation + 1);
         }

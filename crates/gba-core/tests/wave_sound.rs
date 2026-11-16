@@ -26,6 +26,13 @@ fn start(bus: &mut Memory, bank: u16, data: u8) {
     bus.write16(LENGTH, 0x2000).unwrap();
     bus.write16(FREQUENCY, 0x87ff).unwrap();
 }
+/// Fill one bank through the CPU window, which exposes the bank that is not selected.
+fn fill(bus: &mut Memory, bank: u16, data: u8) {
+    bus.write16(CONTROL, (bank ^ 1) << 6).unwrap();
+    for offset in 0..16 {
+        bus.write8(WAVE_RAM + offset, data).unwrap();
+    }
+}
 fn stereo(level: i16) -> StereoLevel {
     StereoLevel {
         left: level,
@@ -166,24 +173,48 @@ fn length_shared_clock_halt_stop_and_master_disable_have_distinct_effects() {
 }
 
 #[test]
-fn unsupported_live_bank_changes_and_two_bank_playback_are_retryable_and_atomic() {
-    let mut bus = bus();
-    start(&mut bus, 0, 0x12);
-    bus.advance_cycles(8);
-    let before = bus.audio_level();
-    for value in [0xc0, 0xa0, 0xe0] {
-        let error = bus.write32(CONTROL, 0xe0000000 | value).unwrap_err();
-        assert_eq!(bus.write32(CONTROL, 0xe0000000 | value), Err(error));
-        assert_eq!(bus.read16(CONTROL).unwrap(), 0x80);
-        assert_eq!(bus.read16(LENGTH).unwrap(), 0x2000);
-        assert_eq!(bus.audio_level(), before);
+fn two_bank_playback_plays_bank0_then_bank1_whichever_bank_is_selected() {
+    // mGBA 0.10.5 rotates all eight wave words as one sequence, from bank 0.
+    for selected in [0, 1] {
+        let mut bus = bus();
+        fill(&mut bus, 0, 0xff);
+        fill(&mut bus, 1, 0x00);
+        bus.write16(CONTROL, 0xa0 | (selected << 6)).unwrap();
+        bus.write16(LENGTH, 0x2000).unwrap();
+        bus.write16(FREQUENCY, 0x87ff).unwrap(); // 8 cycles per sample.
+        let levels: Vec<i16> = (0..65)
+            .map(|_| {
+                bus.advance_cycles(8);
+                bus.audio_level().left
+            })
+            .collect();
+        assert!(levels[..32].iter().all(|&level| level == 112), "{selected}");
+        assert!(
+            levels[32..64].iter().all(|&level| level == -128),
+            "{selected}"
+        );
+        assert_eq!(levels[64], 112);
+        assert_eq!(bus.read16(SOUNDCNT_X).unwrap(), 0x84);
     }
-    bus.write16(CONTROL, 0).unwrap();
-    bus.write16(CONTROL, 0xa0).unwrap();
-    let error = bus.write16(FREQUENCY, 0xffff).unwrap_err();
-    assert!(error.to_string().contains("64-sample wave playback"));
-    assert_eq!(bus.write16(FREQUENCY, 0xffff), Err(error));
-    assert_eq!(bus.read16(FREQUENCY).unwrap(), 0);
+}
+
+#[test]
+fn bank_and_dimension_changes_during_playback_apply_from_the_next_sample() {
+    let mut bus = bus();
+    fill(&mut bus, 0, 0xff);
+    fill(&mut bus, 1, 0x00);
+    bus.write16(CONTROL, 0x80).unwrap();
+    bus.write16(LENGTH, 0x2000).unwrap();
+    bus.write16(FREQUENCY, 0x87ff).unwrap();
+    bus.advance_cycles(8);
+    assert_eq!(bus.audio_level(), stereo(112));
+    bus.write16(CONTROL, 0xc0).unwrap(); // Switch to bank 1 while playing.
+    bus.advance_cycles(8);
+    assert_eq!(bus.audio_level(), stereo(-128));
+    bus.write16(CONTROL, 0xa0).unwrap(); // Then to both banks, bank 0 first.
+    bus.advance_cycles(8);
+    assert_eq!(bus.audio_level(), stereo(112));
+    assert_eq!(bus.read16(SOUNDCNT_X).unwrap(), 0x84);
 }
 
 #[test]

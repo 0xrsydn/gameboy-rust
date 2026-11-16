@@ -167,14 +167,9 @@ fn wave_banks_and_idle_channel_masks_preserve_explicit_limits() {
     bus.write16(0x04000070, 0x40).unwrap();
     assert_eq!(bus.read32(WAVE_RAM).unwrap(), 0);
     bus.write32(WAVE_RAM, 0xaabbccdd).unwrap();
-    bus.write16(0x04000070, 0xe0).unwrap(); // Unimplemented two-bank playback.
-    let previous = bus.read16(0x04000074).unwrap();
-    assert!(bus
-        .write16(0x04000074, 0xffff)
-        .unwrap_err()
-        .to_string()
-        .contains("64-sample wave playback"));
-    assert_eq!(bus.read16(0x04000074).unwrap(), previous);
+    bus.write16(0x04000070, 0xe0).unwrap(); // Two-bank playback, bank 1 selected.
+    bus.write16(0x04000074, 0xffff).unwrap();
+    assert_eq!(bus.read16(SOUNDCNT_X).unwrap() & 4, 4);
     bus.write16(SOUNDCNT_X, 0).unwrap();
     assert_eq!(bus.read32(WAVE_RAM).unwrap(), 0x11223344);
     assert_eq!(bus.read16(0x04000062).unwrap(), 0);

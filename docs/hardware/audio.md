@@ -1,7 +1,7 @@
 # Audio device subset
 
 The core models Direct Sound A/B, bounded sound DMA, and programmable sound generator (PSG) channels 1–4.
-Wave channel 3 supports single-bank playback only. Optional fixed-rate capture supplies samples to the separate Darwin output adapter.
+Wave channel 3 plays one bank or, with the dimension bit, both banks. Optional fixed-rate capture supplies samples to the separate Darwin output adapter.
 `Memory::audio_level()` exposes the current digital stereo level for deterministic inspection, not a continuous sample stream.
 
 ## Registers and PSG state
@@ -31,7 +31,6 @@ The CPU then accesses wave bank 1. Idle bank selection can expose bank 0 after m
 The original BIOS reset clears bank 1 and both FIFO queues. It retains bank 0 and any separate in-flight playback word.
 This is a functional reset subset, not a claim of complete firmware ordering or sound-reset equivalence.
 
-Unsupported two-bank wave playback and active wave-bank changes return `MemoryError::UnsupportedIo` with the exact address and value.
 All PSG writes are ignored while master sound is disabled.
 Reserved PSG volume selection 3 is rejected while master sound is enabled, including enable after disabled configuration.
 
@@ -121,9 +120,13 @@ An independent bit-array reference checks these jump-ahead operations, including
 Both complete sequence periods and maximum clock batches have deterministic regressions.
 This is device-state advancement, not a sampled audio stream or hardware recording comparison.
 
-## Wave channel 3: single-bank playback
+## Wave channel 3
 
 The selected bank supplies 32 four-bit samples. The CPU reads and writes the opposite bank, including during playback.
+With the dimension bit (SOUNDCNT_L bit 5) set, both banks play as one 64-sample sequence, bank 0 first whichever bank is
+selected, and both rotate together; the CPU still reaches only the bank that is not selected. Bank and dimension writes
+during playback apply from the next sample. Both follow mGBA 0.10.5, which rotates all eight wave words from the first
+(the channel 3 case of `GBAudioRun` in `src/gb/audio.c`, GBA style); see the limits below.
 SOUND3CNT_L retains gate, bank, and dimension bits with mask `0xe0`.
 The volume register retains bits 13–15. Frequency, length-load, and trigger fields are write-only.
 The unused halfword at `0x04000076` reads zero and ignores writes.
@@ -155,14 +158,11 @@ This avoids separately rounding fractional wave amplitudes. It follows the signe
 
 ### Evidence limits
 
-Only dimension zero playback is implemented. Idle dimension-one configuration is writable, but triggering it with the gate enabled is diagnostic.
-Selecting dimension one or changing the selected bank during active playback also remains diagnostic; clear the gate first.
-These failures retain register lanes, RAM rotation, activity, and clocks through ordinary audio transactions.
-
 GBATEK describes rotating wave RAM and selected-bank-first two-bank playback.
-The pinned mGBA implementation rotates storage, while NanoBoyAdvance uses a sample pointer and changes bank at wrap.
-Their two-bank starts, observable bank state, and retrigger behavior differ.
-This increment does not choose an unverified two-bank model merely to accept more register writes.
+The pinned mGBA implementation rotates storage and always starts a two-bank sequence at bank 0, while NanoBoyAdvance uses
+a sample pointer and changes bank at wrap. Their two-bank starts, observable bank state, and retrigger behavior differ.
+This emulator follows mGBA, the reference it is compared against, because a game that uses 64-sample waves must keep
+running. When bank 1 is selected, GBATEK's order would start at bank 1; no hardware test here decides between them.
 The single-bank order/rate follows GBATEK; trigger phase, held-sample startup, live frequency/volume edges, and length quirks remain nominal.
 There is no Game Boy wave-corruption model or physical GBA waveform validation.
 
@@ -308,7 +308,7 @@ Audio quality and physical speaker/headphone output still require a manual liste
 Original tests cover signed samples, byte order, queue capacity, partial writes, resets, underflow, stereo routing, and clipping.
 They also cover cascaded timers, DMA block/repeat behavior, source progress, completion IRQs, HALT/STOP, and clock batching.
 CPU/DMA failure tests verify transactional rollback and sound writes at bus completion.
-BIOS tests cover disabled FIFO reset and the supported wave-bank policy.
+BIOS tests cover disabled FIFO reset and wave-bank reset.
 Pulse tests cover every frequency/duty pair, waveform batching, status, length, envelope, sweep, mixing, and the stored ratio 3.
 They also check bus-completion status reads, retrigger timing, clock ownership, and rollback with both pulse channels running.
 Channel 2 tests cover register gaps, absence of sweep, independent state, shared sequencer phase, and sum-before-rounding mixing.
@@ -319,7 +319,7 @@ CPU/DMA tests include noise register writes at bus completion and failed-step ro
 BIOS reset tests verify that selected sound reset stops all supported PSG channels, while unselected sound state remains active.
 
 These tests validate the documented nominal model, not hardware audio fidelity.
-Remaining audio work: two-bank wave playback, verified live bank changes, hardware PWM sampling, improved reconstruction, and lower-underrun pacing.
+Remaining audio work: hardware-verified two-bank order and live bank changes, hardware PWM sampling, improved reconstruction, and lower-underrun pacing.
 A local Emerald input probe exposed a wave trigger with the gate disabled. This is now accepted without activating playback.
 The same scheduled-input probe passes that point and completes its extended frame budget; gameplay remains unverified.
 Later native output checks exercise the host audio path separately; they do not establish game-audio accuracy.

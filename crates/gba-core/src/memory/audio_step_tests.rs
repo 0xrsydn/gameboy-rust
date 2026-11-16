@@ -156,11 +156,14 @@ fn failed_cpu_load_rolls_back_timer_audio_and_pending_refill_requests() {
 
 #[test]
 fn failed_dma_source_and_destination_restore_audio_after_speculative_timer_edges() {
-    for (source, destination, word) in [(FIFO_A, 0x02001000, 0), (0x02000000, 0x04000074, 0x8000)] {
+    // The second destination is SIOCNT/SIODATA8: UART data with sending enabled.
+    for (source, destination, word) in [
+        (FIFO_A, 0x02001000, 0),
+        (0x02000000, 0x04000128, 0x0055_3400),
+    ] {
         let (cpu, mut memory) = prepared(false, &[0xe1a00000], &[]);
         sound(&mut memory, 1);
         memory.write32(FIFO_A, 0x04030201).unwrap();
-        memory.write16(0x04000070, 0xa0).unwrap();
         memory.write32(0x02000000, word).unwrap();
         memory.write32(DMA_BASE, source).unwrap();
         memory.write32(DMA_BASE + 4, destination).unwrap();
@@ -176,30 +179,7 @@ fn failed_dma_source_and_destination_restore_audio_after_speculative_timer_edges
 }
 
 #[test]
-fn arm_block_store_rejects_later_reserved_ratio_before_committing_noise_trigger() {
-    let (cpu, mut memory) = prepared(
-        false,
-        &[0xe8a0_0006],
-        &[(0, 0x04000070), (1, 0xa0), (2, 0x8000)],
-    ); // STMIA r0!,{r1,r2}: 64-sample wave mode, then an unsupported trigger.
-    memory.write16(SOUNDCNT_X, 0x80).unwrap();
-    let audio = memory.io.audio;
-    let mut machine = Machine::new(cpu, memory);
-    let cpu = machine.cpu().clone();
-    for _ in 0..2 {
-        assert!(machine
-            .step()
-            .unwrap_err()
-            .to_string()
-            .contains("64-sample wave playback"));
-        assert_eq!(machine.memory().io.audio, audio);
-        assert_eq!(machine.cpu(), &cpu);
-        assert_eq!(machine.cycles(), 0);
-    }
-}
-
-#[test]
-fn arm_block_store_rejects_later_wave_trigger_before_committing_channel2_trigger() {
+fn arm_block_store_triggers_channel2_and_64_sample_wave_together() {
     let (cpu, mut memory) = prepared(
         false,
         &[0xe8a0001e],
@@ -210,21 +190,11 @@ fn arm_block_store_rejects_later_wave_trigger_before_committing_channel2_trigger
             (3, 0xa0),
             (4, 0x8000),
         ],
-    ); // STMIA r0!,{r1-r4}: channel2 configuration/trigger, wave configuration/trigger.
+    ); // STMIA r0!,{r1-r4}: channel2 configuration/trigger, two-bank wave configuration/trigger.
     memory.write16(SOUNDCNT_X, 0x80).unwrap();
-    let audio = memory.io.audio;
     let mut machine = Machine::new(cpu, memory);
-    let cpu = machine.cpu().clone();
-    for _ in 0..2 {
-        assert!(machine
-            .step()
-            .unwrap_err()
-            .to_string()
-            .contains("64-sample wave playback"));
-        assert_eq!(machine.memory().io.audio, audio);
-        assert_eq!(machine.cpu(), &cpu);
-        assert_eq!(machine.cycles(), 0);
-    }
+    machine.step().unwrap();
+    assert_eq!(machine.memory().read16(SOUNDCNT_X).unwrap() & 6, 6);
 }
 
 #[test]
@@ -239,6 +209,7 @@ fn batch_validation_simulates_sound_enable_and_disable_before_committing_any_wri
             (0x0400006c, 0x87ff),
             (0x04000070, 0xa0),
             (0x04000074, 0x8000),
+            (0x04000128, 0x0055_3400), // UART data with sending enabled: no partner.
         ])
         .is_err());
     assert_eq!(memory.read32(0x02000000).unwrap(), 0);

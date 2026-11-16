@@ -1527,20 +1527,8 @@ impl Memory {
         address: u32,
         bytes: &[u8],
     ) -> Result<(), MemoryError> {
-        if address >> 24 == 0x04 {
-            for (offset, &value) in bytes.iter().enumerate() {
-                let address = address + offset as u32;
-                if let Some(operation) = audio.unsupported(address, value) {
-                    return Err(MemoryError::UnsupportedIo {
-                        address,
-                        value,
-                        operation,
-                    });
-                }
-            }
-            if Audio::mapped(address) {
-                audio.write(address, bytes);
-            }
+        if address >> 24 == 0x04 && Audio::mapped(address) {
+            audio.write(address, bytes);
         }
         Ok(())
     }
