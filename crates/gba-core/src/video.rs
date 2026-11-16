@@ -253,34 +253,43 @@ pub(crate) fn render_rows(
     let mosaic_height = usize::from((mosaic >> 4) & 15) + 1;
     let text = |bg: usize| mode == 0 || (mode == 1 && bg < 2);
     let mut text_lines = [[None; WIDTH]; 4];
+    let windows = control & 0xe000 != 0;
     for y in rows.clone() {
         // Text backgrounds are sampled a row at a time; each row only depends on the
         // background's sample row, which mosaic fixes for the whole output row.
+        // Horizontal mosaic repeats each block's first sample; the block start keeps its
+        // own value, so the row can be rewritten in place.
         let counter = vertical_mosaic.map_or(y % mosaic_height, |v| usize::from(v.background));
         for &bg in layers.iter().filter(|&&bg| text(bg)) {
-            let sample_y = if backgrounds[bg].control & 0x40 != 0 {
-                y - counter
-            } else {
-                y
-            };
+            let mosaic = backgrounds[bg].control & 0x40 != 0;
+            let line = &mut text_lines[bg];
             text_row(
                 backgrounds[bg],
                 vram,
                 palette,
-                sample_y,
-                &mut text_lines[bg],
+                if mosaic { y - counter } else { y },
+                line,
             );
+            if mosaic && mosaic_width > 1 {
+                for x in 0..WIDTH {
+                    line[x] = line[x - x % mosaic_width];
+                }
+            }
         }
         for x in 0..WIDTH {
             let offset = (y - rows.start) * WIDTH + x;
-            let mask = effects.mask(
-                control,
-                x,
-                y,
-                objects.window[offset],
-                vertical_windows,
-                horizontal_windows,
-            );
+            let mask = if windows {
+                effects.mask(
+                    control,
+                    x,
+                    y,
+                    objects.window[offset],
+                    vertical_windows,
+                    horizontal_windows,
+                )
+            } else {
+                0x3f
+            };
             let mut top = backdrop;
             let mut below = None;
             let mut insert = |pixel: Pixel| {
@@ -296,14 +305,14 @@ pub(crate) fn render_rows(
                 // Mosaic samples before scroll or affine mapping. Captured vertical
                 // phase comes from a counter; horizontal blocks remain screen-aligned.
                 // Window selection still uses the actual output coordinate.
-                let (sample_x, sample_y) = if backgrounds[bg].control & 0x40 != 0 {
-                    (x - x % mosaic_width, y - counter)
-                } else {
-                    (x, y)
-                };
                 let color = if text(bg) {
-                    text_lines[bg][sample_x]
+                    text_lines[bg][x]
                 } else {
+                    let (sample_x, sample_y) = if backgrounds[bg].control & 0x40 != 0 {
+                        (x - x % mosaic_width, y - counter)
+                    } else {
+                        (x, y)
+                    };
                     affine::pixel(
                         backgrounds[bg],
                         vram,
