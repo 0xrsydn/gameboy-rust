@@ -52,6 +52,7 @@ Window smoke tests (`--*-smoke-test`) need a logged-in desktop session. Details 
 | Backgrounds, sprites, mosaic, windows, blending, input | [docs/hardware/video.md](docs/hardware/video.md) |
 | Demos and key mapping | [docs/demos.md](docs/demos.md) |
 | Build environment, minifb workarounds | [docs/development.md](docs/development.md) |
+| Speed work: replay hash checks, frame PNGs, profiling, A/B benchmarks | [docs/testing.md](docs/testing.md), [docs/development.md](docs/development.md) |
 
 ## Where to write
 

@@ -94,6 +94,23 @@ The report ranks self time by source line and by function, and total time by fun
 Drop `--save-only` to open the profile in the Firefox Profiler instead. The profiling build's code is not
 byte-identical to the release build's, but paired `--bench` runs of the two measure the same speed.
 
+## Comparing speed
+
+Run-to-run noise on one host is about 5%, so compare two builds with interleaved runs rather than one run each:
+
+```sh
+python3 tools/bench/ab.py @- @                       # the parent change against the working copy
+python3 tools/bench/ab.py main feature/x --runs 6 -- --rom roms/pokemon-emerald.gba --save-type flash128 \
+  --rtc 847932662 --frames 10000 --inputs tools/replays/emerald-route101.inputs --capture --idle-skip
+```
+
+Each side is a `replay_hash` binary or a jj revision. `tools/bench/build-rev.sh REV` builds a revision in a detached
+git worktree under `target/bench/` and caches the binary by commit, leaving the working copy and its build alone.
+Rounds alternate the order of A and B, and the script prints both medians and B/A as the median and range of the
+per-round ratios; "faster in every round" is the result to trust. The default workload is 10,000 frames of FireRed
+gameplay with `--capture --idle-skip`, the window's work. The script warns when the load average shows other work
+on the host.
+
 ## Portability boundary
 
 The Rust `gba-core` owns CPU, memory, video, audio generation, input state, and cartridge protocols.
