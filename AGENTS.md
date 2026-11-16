@@ -64,7 +64,8 @@ Window smoke tests (`--*-smoke-test`) need a logged-in desktop session. Details 
 
 ## Conventions
 
-- Version control is jj (colocated with git). History is a linear stack with one bookmark per change, named `feature/<topic>` or `refactor/<topic>`.
+- Version control is jj (colocated with git). History is a linear stack of small, self-contained commits on `main`; push verified changes straight to it.
+  Use a bookmark (`feature/<topic>` or `refactor/<topic>`) only for a large feature that spans many commits or needs review, and delete it once `main` includes it.
 - Commit messages follow Conventional Commits, for example `feat(bios): implement SoftReset restart service`.
 - New behavior comes with tests. Core integration tests live in `crates/gba-core/tests/`.
 - The core currently reports unsupported hardware behavior as explicit errors rather than guessing. Prefer that to silent approximations, and note the gap in the docs.
