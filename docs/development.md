@@ -75,6 +75,25 @@ The window runs on the main thread, as required by macOS AppKit.
 The dependency is pinned to that exact version. Review this workaround before upgrading minifb.
 Intel macOS and Linux desktop builds are not verified.
 
+## Profiling
+
+The `profiling` Cargo profile is the release build plus line tables, so a sampler can see through the inlined hot
+path. On macOS, record with [samply](https://github.com/mstange/samply) (in the dev shell) and summarize with
+`tools/profile/report.py`, which expands every sampled address into its chain of inlined functions with `atos -i`:
+
+```sh
+direnv exec . cargo build --locked --profile profiling -p gba-diff --example replay_hash
+B=target/profiling/examples/replay_hash
+direnv exec . samply record --save-only --unstable-presymbolicate -o target/profile.json.gz -- \
+  $B --rom roms/pokemon-firered.gba --save-type flash128 --frames 8000 \
+  --inputs tools/replays/firered-mtmoon.inputs --capture --idle-skip --bench
+python3 tools/profile/report.py target/profile.json.gz $B
+```
+
+The report ranks self time by source line and by function, and total time by function, inlined functions included.
+Drop `--save-only` to open the profile in the Firefox Profiler instead. The profiling build's code is not
+byte-identical to the release build's, but paired `--bench` runs of the two measure the same speed.
+
 ## Portability boundary
 
 The Rust `gba-core` owns CPU, memory, video, audio generation, input state, and cartridge protocols.

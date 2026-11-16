@@ -12,3 +12,10 @@ publish = false
 [profile.release]
 lto = "fat"
 codegen-units = 1
+
+# Release code with line tables, so a sampling profiler can attribute time inside
+# the inlined hot path to source lines. `--profile profiling` builds into
+# target/profiling/; see docs/development.md.
+[profile.profiling]
+inherits = "release"
+debug = "line-tables-only"
