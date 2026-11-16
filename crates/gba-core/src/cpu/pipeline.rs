@@ -58,16 +58,12 @@ impl Cpu {
             .as_ref()
             .filter(|pipe| pipe.pc == pc && pipe.instruction_set == instruction_set);
         let (instruction, decode, fill) = if let Some(pipe) = retained {
-            (
-                pipe.instructions[0].clone()?,
-                pipe.instructions[1].clone(),
-                None,
-            )
+            (pipe.instructions[0]?, pipe.instructions[1], None)
         } else {
             let current = memory.fetch_instruction(pc, instruction_set);
-            let instruction = current.instruction.clone()?;
+            let instruction = current.instruction?;
             let next = memory.fetch_instruction(pc.wrapping_add(width), instruction_set);
-            (instruction, next.instruction.clone(), Some([current, next]))
+            (instruction, next.instruction, Some([current, next]))
         };
         let fetched = memory.fetch_instruction(pc.wrapping_add(2 * width), instruction_set);
         Ok(Fetched {
@@ -75,7 +71,7 @@ impl Cpu {
             continuation: Pipeline {
                 pc: pc.wrapping_add(width),
                 instruction_set,
-                instructions: [decode, fetched.instruction.clone()],
+                instructions: [decode, fetched.instruction],
                 next_access: AccessKind::Sequential, // Set from execution only on success.
             },
             lookahead: fetched,

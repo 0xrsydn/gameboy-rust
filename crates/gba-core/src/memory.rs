@@ -63,7 +63,7 @@ pub const VRAM_START: u32 = 0x0600_0000;
 pub const OAM_START: u32 = 0x0700_0000;
 const VRAM_SIZE: usize = 96 * 1024;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MemoryError {
     Unmapped(u32),
     ReadOnly(u32),
