@@ -1,7 +1,7 @@
 use gba_core::{
     io::*,
     memory::{Memory, MemoryError, PALETTE_START as PAL, VRAM_START as VRAM},
-    video::{rgb555_to_rgb888, Framebuffer, VideoError, WIDTH},
+    video::{rgb555_to_rgb888, Framebuffer, WIDTH},
 };
 
 fn setup() -> Memory {
@@ -209,16 +209,21 @@ fn wide_screen_block_at_map_base_31_reads_beyond_64k() {
 }
 
 #[test]
-fn unsupported_modes_leave_output_unchanged_and_forced_blank_bypasses_them() {
+fn prohibited_modes_show_only_the_backdrop_and_forced_blank_still_wins() {
     let mut m = setup();
+    m.write16(VRAM + 0x8000, 1).unwrap(); // BG0 would draw tile 1 at the origin.
+    tile(&mut m, 32, 0x1111, 32);
+    assert_ne!(pixel(&m, 0, 0), rgb555_to_rgb888(0x4210));
     let mut frame = Framebuffer::default();
-    frame.clear(0x001f);
-    m.write16(DISPCNT, 0x106).unwrap();
-    assert_eq!(
-        m.render_frame(&mut frame),
-        Err(VideoError::UnsupportedMode(6))
-    );
-    assert!(frame.pixels().iter().all(|&p| p == 0xff0000));
+    for mode in [6, 7] {
+        // As in mGBA 0.10.5: no background in either mode, whatever the enable bits.
+        m.write16(DISPCNT, 0xf00 | mode).unwrap();
+        m.render_frame(&mut frame).unwrap();
+        assert!(frame
+            .pixels()
+            .iter()
+            .all(|&p| p == rgb555_to_rgb888(0x4210)));
+    }
     m.write16(DISPCNT, 0xf180).unwrap();
     m.render_frame(&mut frame).unwrap();
     assert!(frame.pixels().iter().all(|&p| p == 0xffffff));

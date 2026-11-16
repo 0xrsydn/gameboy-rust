@@ -72,16 +72,16 @@ pub(crate) fn prepare(
             }
             continue; // Disabled regular OBJ still consumes nominal OAM inspection.
         }
-        let reason = if a & 0xc00 == 0xc00 {
-            Some("prohibited OBJ mode")
-        } else if a >> 14 == 3 {
-            Some("prohibited OBJ shape")
-        } else {
-            None
-        };
-        if let Some(reason) = reason {
-            return Err(VideoError::UnsupportedObject { index, reason });
+        if a >> 14 == 3 {
+            // Prohibited shape: mGBA 0.10.5 gives it a 0x0 size, so it covers no row
+            // and does no sprite work. Hardware behavior is not verified here.
+            for budget in &mut budgets {
+                budget.skip();
+            }
+            continue;
         }
+        // Prohibited mode 3 is neither semi-transparent nor an OBJ window, so it draws
+        // as a normal object, as in mGBA 0.10.5. Not verified on hardware.
         let window = a & 0xc00 == 0x800;
         // Window coverage is prepared independently of its later display mask.
         // OBJ-window coverage does not use either mosaic dimension.

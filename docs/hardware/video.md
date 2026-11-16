@@ -31,7 +31,10 @@ Pixel bit 15 and the DISPCNT page-select bit do not affect Mode 3 output. Black 
 Disabling BG2 leaves palette entry zero behind sprites. Forced blank displays white, regardless of the selected mode.
 All bitmap modes support regular and affine sprites, windows, and color effects.
 Bitmap modes have only BG2. DISPCNT enable bits for BG0, BG1, and BG3 are ignored there.
-Reserved display modes 6 and 7 return errors. Modes 0 through 5 support snapshots and row capture, not complete hardware implementations.
+Prohibited display modes 6 and 7 show no background whatever the enable bits, only sprites (tile numbers 512 and up, as
+in the bitmap modes) over the backdrop, with windows and effects. This follows mGBA 0.10.5
+(`src/gba/renderers/video-software.c` has no background case for them); what hardware displays is not verified here.
+Modes 0 through 5 support snapshots and row capture, not complete hardware implementations.
 
 Mode 4 stores 240×160 byte-sized palette indices. Index zero is transparent and can reveal a lower-priority sprite.
 A nonzero palette index remains opaque even when its palette color is black.
@@ -164,8 +167,10 @@ Affine sprites use a two-by-two matrix for rotation, scaling, reflection, or she
 - Zero matrices sample the center texel throughout the drawing area. Singular matrices are valid; no matrix inversion occurs.
 
 Semi-transparent sprites and OBJ windows support both regular and affine sampling.
-Prohibited modes/shapes return explicit diagnostics.
-Unsupported active sprites are checked even when offscreen. Global OBJ disable skips these checks.
+Prohibited shape 3 draws nothing and costs only the inspection a disabled entry costs; mGBA 0.10.5 gives it a 0×0 size
+(`GBAVideoObjSizes` in `src/gba/video.c`), so it covers no row. Prohibited mode 3 is neither semi-transparent nor an OBJ
+window, so it draws as a normal sprite, as in mGBA. Neither is verified on hardware. Garbage OAM entries that are not
+disabled therefore never stop rendering.
 Sprite preparation applies a nominal per-row work allowance. Individual fetch timing and OAM access contention remain unimplemented.
 Sprite priority includes transparent-texel metadata updates, but the core has not run public hardware test ROMs.
 

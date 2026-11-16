@@ -5,7 +5,7 @@ use gba_core::{
     io::*,
     machine::Machine,
     memory::{Memory, OAM_START as OAM, PALETTE_START as PAL, ROM_START, VRAM_START as VRAM},
-    video::{rgb555_to_rgb888 as rgb, Framebuffer, VideoError, WIDTH},
+    video::{rgb555_to_rgb888 as rgb, Framebuffer, WIDTH},
 };
 
 fn scene() -> Memory {
@@ -233,42 +233,15 @@ fn capture_toggles_preserve_prepared_rows_after_large_capture_disabled_batches()
 }
 
 #[test]
-fn prepared_errors_are_deferred_until_visible_composition_and_recover_next_frame() {
+fn prohibited_mode_prepares_as_a_normal_object() {
     let mut m = scene();
-    m.advance_cycles(1); // Bootstrap row0 remains valid.
-    m.write16(OAM, 0xc00).unwrap();
-    m.advance_cycles(39); // Prepare invalid row1; clock advancement itself succeeds.
-    m.write16(OAM, 0).unwrap();
-    m.advance_cycles(VB - 40);
-    let mut f = Framebuffer::default();
-    f.clear(0x3e0);
-    assert!(matches!(
-        m.present_frame(&mut f),
-        Err(VideoError::UnsupportedObject { index: 0, .. })
-    ));
-    assert!(f.pixels().iter().all(|&p| p == rgb(0x3e0)));
-    m.advance_cycles(FRAME);
-    assert!(m.present_frame(&mut f).unwrap());
+    m.advance_cycles(1);
+    m.write16(OAM, 0xc00).unwrap(); // Prohibited mode 3 draws as normal, as in mGBA.
+    m.advance_cycles(39); // Prepare row1 from it.
+    m.write16(OAM, 0x200).unwrap(); // Then disable it: later rows prepare nothing.
+    let f = finish(&mut m);
     assert_eq!(at(&f, 0, 1), rgb(31));
-}
-
-#[test]
-fn hidden_preparation_errors_do_not_bypass_global_disable_or_forced_blank() {
-    for control in [0x40, 0x10c0] {
-        let mut m = scene();
-        m.write16(OAM, 0xc00).unwrap();
-        m.advance_cycles(40);
-        m.write16(DISPCNT, control).unwrap();
-        let f = finish(&mut m);
-        assert_eq!(
-            at(&f, 0, 1),
-            if control & 0x80 != 0 {
-                0xffffff
-            } else {
-                rgb(0x7c00)
-            }
-        );
-    }
+    assert_eq!(at(&f, 0, 2), rgb(0x7c00));
 }
 
 #[test]

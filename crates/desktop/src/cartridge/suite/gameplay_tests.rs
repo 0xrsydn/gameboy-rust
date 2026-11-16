@@ -1,6 +1,6 @@
 use super::tests::{boot, suite};
 use super::*;
-use gba_core::io::{DISPCNT, KEYINPUT};
+use gba_core::io::KEYINPUT;
 
 fn value() -> Value {
     json!({"name":"input", "rom":"original.gba", "step_limit":1000000,
@@ -121,16 +121,6 @@ fn no_frame_is_not_a_black_pixel_pass_and_mismatch_is_reported() {
     let result = check(&machine, &black);
     assert_eq!(result["passed"], false);
     assert_eq!(result["actual"], 255);
-}
-
-#[test]
-fn first_render_diagnostic_stops_before_later_checkpoint() {
-    let mut machine = boot(&[0xeaff_fffe]);
-    machine.memory_mut().write16(DISPCNT, 7).unwrap();
-    let (stats, outcome) = run_to_checkpoint(&mut machine, &config(value()));
-    assert!(matches!(outcome, Outcome::RenderError(_)));
-    assert_eq!(machine.memory().display_position().vblanks, 1);
-    assert!(stats.steps > 0);
 }
 
 #[test]

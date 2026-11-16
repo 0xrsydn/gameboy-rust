@@ -3,7 +3,7 @@ use gba_core::{
     io::{BG2PA, BG2PD, DISPCNT, GREENSWAP, KEYINPUT},
     memory::{Memory, MemoryError, PALETTE_START, VRAM_START},
     timing::{bus_cycles, AccessKind, AccessWidth},
-    video::{rgb555_to_rgb888, Framebuffer, VideoError, HEIGHT, WIDTH},
+    video::{rgb555_to_rgb888, Framebuffer, HEIGHT, WIDTH},
 };
 use gba_demos::graphics_demo::{GraphicsDemo, BACKGROUND, DEMO_STATE, SQUARE_SIZE};
 
@@ -149,18 +149,15 @@ fn forced_blank_is_white_and_disabled_bg2_uses_palette_backdrop() {
 }
 
 #[test]
-fn unsupported_modes_report_errors_and_absent_layer_bits_are_ignored() {
+fn prohibited_modes_hide_bitmaps_and_absent_layer_bits_are_ignored() {
     let mut memory = mode3();
     let mut frame = Framebuffer::default();
-    frame.clear(0x001f);
+    memory.write16(VRAM_START, 0x03e0).unwrap();
     for mode in [6, 7] {
         memory.write16(DISPCNT, 0x400 | mode).unwrap();
-        assert_eq!(
-            memory.render_frame(&mut frame),
-            Err(VideoError::UnsupportedMode(mode as u8))
-        );
+        memory.render_frame(&mut frame).unwrap();
+        assert!(frame.pixels().iter().all(|&pixel| pixel == 0)); // Backdrop: palette 0.
     }
-    assert!(frame.pixels().iter().all(|&pixel| pixel == 0xff0000));
     // Mode 3 has only BG2. Stale BG0, BG1, and BG3 enables do not change the image.
     memory.write16(VRAM_START, 0x03e0).unwrap();
     memory.write16(DISPCNT, 0x403).unwrap();

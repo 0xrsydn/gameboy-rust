@@ -1,7 +1,7 @@
 use gba_core::{
-    io::{BG0CNT, BG2CNT, DISPCNT, GREENSWAP},
+    io::{BG0CNT, BG2CNT, BLDALPHA, BLDCNT, DISPCNT, GREENSWAP},
     memory::{Memory, MemoryError, OAM_START as OAM, PALETTE_START as PAL, VRAM_START as VRAM},
-    video::{rgb555_to_rgb888, Framebuffer, VideoError, WIDTH},
+    video::{rgb555_to_rgb888, Framebuffer, WIDTH},
 };
 
 #[path = "sprites/affine.rs"]
@@ -309,23 +309,30 @@ fn disabled_objects_ignore_unsupported_bits_and_global_disable_skips_all_objects
 }
 
 #[test]
-fn unsupported_objects_leave_output_unchanged_and_forced_blank_bypasses_errors() {
+fn prohibited_shape_draws_nothing_and_prohibited_mode_draws_as_normal() {
+    // Both follow mGBA 0.10.5: shape 3 has a 0x0 size, and mode 3 is neither
+    // semi-transparent nor an OBJ window.
     let mut m = setup();
-    fill(&mut m, 0, 32, 0x2222);
-    obj(&mut m, 0, 0, 0, 0);
-    let mut frame = Framebuffer::default();
-    frame.clear(0x001f);
-    for attr in [0xc00, 0xc000, 0xd00, 0x1c00, 0xc300] {
-        obj(&mut m, 127, attr, 0, 0);
-        assert!(matches!(
-            m.render_frame(&mut frame),
-            Err(VideoError::UnsupportedObject { index: 127, .. })
-        ));
-        assert!(frame.pixels().iter().all(|&p| p == 0xff0000));
+    fill(&mut m, 0, 32 * 64, 0x2222);
+    let backdrop = render(&m);
+    for (a, b) in [(0xc000, 0), (0xc000, 0xc000), (0xc100, 0), (0xc300, 0xc000)] {
+        obj(&mut m, 0, a, b, 0); // Regular, largest size, affine, double-size affine.
+        assert_eq!(
+            render(&m).pixels(),
+            backdrop.pixels(),
+            "attributes {a:#06x} {b:#06x}"
+        );
     }
-    m.write16(DISPCNT, 0x1080).unwrap();
-    m.render_frame(&mut frame).unwrap();
-    assert!(frame.pixels().iter().all(|&p| p == 0xffffff));
+    // Semi-transparent objects blend with the backdrop below; normal ones do not.
+    m.write16(BLDCNT, 0x2000).unwrap();
+    m.write16(BLDALPHA, 0x0808).unwrap();
+    obj(&mut m, 0, 0x400, 0, 0);
+    assert_ne!(pixel(&m, 0, 0), rgb555_to_rgb888(0x03e0));
+    obj(&mut m, 0, 0, 0, 0);
+    let normal = render(&m);
+    assert_eq!(normal.pixels()[0], rgb555_to_rgb888(0x03e0));
+    obj(&mut m, 0, 0xc00, 0, 0);
+    assert_eq!(render(&m).pixels(), normal.pixels());
 }
 
 #[test]

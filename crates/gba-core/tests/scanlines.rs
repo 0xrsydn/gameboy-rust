@@ -6,7 +6,7 @@ use gba_core::{
     io::*,
     machine::{Machine, StepKind},
     memory::{Memory, OAM_START as OAM, PALETTE_START as PAL, ROM_START, VRAM_START as VRAM},
-    video::{rgb555_to_rgb888 as rgb, Framebuffer, VideoError, HEIGHT, WIDTH},
+    video::{rgb555_to_rgb888 as rgb, Framebuffer, HEIGHT, WIDTH},
 };
 use gba_demos::raster_demo::{RasterDemo, RASTER_STATE, RASTER_TABLE};
 

@@ -224,21 +224,14 @@ fn cpu_diagnostics_preserve_the_failed_state_and_last_image() {
 }
 
 #[test]
-fn video_diagnostics_retain_the_last_complete_image() {
+fn prohibited_display_mode_keeps_presenting_frames() {
     let mut session = original();
     next_frame(&mut session, Buttons::default());
     session.machine.memory_mut().write16(DISPCNT, 6).unwrap();
-    let error = (0..100)
-        .find_map(|_| match session.update(Buttons::default()) {
-            Ok(Update::Running) => None,
-            Ok(other) => panic!("unexpected {other:?}"),
-            Err(error) => Some(error),
-        })
-        .expect("video error within bounded updates");
-    assert!(error.to_string().contains("6"));
-    assert_eq!(session.frames(), 1);
-    assert_color(&session, 0x7c00);
-    assert_eq!(session.machine.memory().display_position().vblanks, 2);
+    next_frame(&mut session, Buttons::default()); // Mode 6 draws the backdrop, as in mGBA.
+    assert_eq!(session.frames(), 2);
+    let first = session.frame().pixels()[0];
+    assert!(session.frame().pixels().iter().all(|&pixel| pixel == first));
 }
 
 #[test]

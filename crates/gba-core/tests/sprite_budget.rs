@@ -6,7 +6,7 @@ use gba_core::{
     io::*,
     machine::Machine,
     memory::{Memory, OAM_START as OAM, PALETTE_START as PAL, ROM_START, VRAM_START as VRAM},
-    video::{rgb555_to_rgb888 as rgb, Framebuffer, VideoError, WIDTH},
+    video::{rgb555_to_rgb888 as rgb, Framebuffer, WIDTH},
 };
 
 fn scene(free: bool) -> Memory {
@@ -282,25 +282,21 @@ fn hblank_dma_updates_allowance_for_the_following_preparation() {
 }
 
 #[test]
-fn exhausted_work_preserves_development_diagnostics_and_output_atomicity() {
-    let mut m = scene(false);
-    fillers(&mut m, 19);
-    obj(&mut m, 127, 0xc00, 0, 0);
-    let mut f = Framebuffer::default();
-    f.clear(0x3e0);
-    assert!(matches!(
-        m.render_frame(&mut f),
-        Err(VideoError::UnsupportedObject { index: 127, .. })
-    ));
-    assert!(f.pixels().iter().all(|&p| p == rgb(0x3e0)));
-    m.advance_cycles(VB);
-    assert!(matches!(
-        m.present_frame(&mut f),
-        Err(VideoError::UnsupportedObject { index: 127, .. })
-    ));
-    assert!(f.pixels().iter().all(|&p| p == rgb(0x3e0)));
-    for control in [0x40, 0x10c0] {
-        m.write16(DISPCNT, control).unwrap();
-        m.render_frame(&mut f).unwrap();
-    }
+fn prohibited_shape_costs_only_inspection_like_a_disabled_entry() {
+    // Twenty leading entries, then 18 transparent 64-pixel fillers and a visible
+    // object: the allowance left for the object depends on what the leaders cost.
+    let render = |leader: u16| {
+        let mut m = scene(false);
+        for i in 0..20 {
+            obj(&mut m, i, leader, 0xc000, 0);
+        }
+        for i in 20..38 {
+            obj(&mut m, i, 0, 0xc000, 0);
+        }
+        obj(&mut m, 38, 0, 0xc000 | 80, 256);
+        snapshot(&m)
+    };
+    let disabled = render(0x200);
+    assert_eq!(render(0xc000).pixels(), disabled.pixels()); // Prohibited shape, as in mGBA.
+    assert_ne!(render(0x4000).pixels(), disabled.pixels()); // Drawn leaders use it up.
 }

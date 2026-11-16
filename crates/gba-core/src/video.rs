@@ -229,7 +229,9 @@ pub(crate) fn render_rows(
         1 => 0x800,     // BG0/1 text, BG2 affine.
         2 => 0x300,     // BG2/3 affine.
         3..=5 => 0xb00, // BG2 bitmap.
-        _ => return Err(VideoError::UnsupportedMode(mode as u8)),
+        // Prohibited modes 6 and 7 show no background, as in mGBA 0.10.5; sprites and
+        // the backdrop remain. Hardware output for these modes is not verified here.
+        _ => 0xf00,
     };
     let control = control & !absent;
     // At most four layers: a fixed array, not a per-row allocation.

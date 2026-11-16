@@ -115,27 +115,24 @@ fn large_batches_publish_latest_frame_and_zero_cycles_have_no_effect() {
 }
 
 #[test]
-fn first_render_error_is_reported_at_publication_without_partial_output_then_recovers() {
+fn prohibited_mode_rows_capture_the_backdrop() {
     let mut m = memory();
     m.write16(PAL, 31).unwrap();
-    m.advance_cycles(VBLANK_START);
-    let mut f = present(&m);
-    m.advance_cycles(CYCLES_PER_FRAME - VBLANK_START);
-    m.write16(DISPCNT, 6).unwrap();
+    m.write16(DISPCNT, 0x403).unwrap(); // Mode 3, BG2 on: the first rows are blue.
+    for pixel in 0..WIDTH as u32 * 3 {
+        m.write16(VRAM + pixel * 2, 0x7c00).unwrap();
+    }
+    m.advance_cycles(CYCLES_PER_FRAME); // A whole frame, past the BG2 enable delay.
+    m.write16(DISPCNT, 0x406).unwrap(); // Row 0 in mode 6, row 1 in mode 7, row 2 in mode 3.
     m.advance_cycles(HBLANK_START);
-    m.write16(DISPCNT, 7).unwrap();
+    m.write16(DISPCNT, 0x407).unwrap();
     m.advance_cycles(CYCLES_PER_LINE);
-    m.write16(DISPCNT, 0).unwrap();
-    assert!(m.present_frame(&mut f).unwrap()); // Previous frame remains available while drawing.
-    m.advance_cycles(VBLANK_START - HBLANK_START - CYCLES_PER_LINE);
-    assert_eq!(m.captured_vblank(), Some(2));
-    assert_eq!(m.present_frame(&mut f), Err(VideoError::UnsupportedMode(6)));
-    assert!(f.pixels().iter().all(|&p| p == rgb(31)));
-    m.write16(PAL, 0x3e0).unwrap();
-    m.advance_cycles(CYCLES_PER_FRAME);
-    assert_eq!(m.captured_vblank(), Some(3));
-    assert!(m.present_frame(&mut f).unwrap());
-    assert!(f.pixels().iter().all(|&p| p == rgb(0x3e0)));
+    m.write16(DISPCNT, 0x403).unwrap();
+    m.advance_cycles(CYCLES_PER_FRAME - HBLANK_START - CYCLES_PER_LINE);
+    let f = present(&m);
+    assert_eq!(at(&f, 0, 0), rgb(31));
+    assert_eq!(at(&f, WIDTH - 1, 1), rgb(31));
+    assert_eq!(at(&f, 0, 2), rgb(0x7c00));
 }
 
 #[test]
