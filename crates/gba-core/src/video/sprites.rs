@@ -214,8 +214,15 @@ impl PreparedObjects {
             .zip(output.pixels.chunks_exact_mut(WIDTH))
         {
             let mut latched = Sample::default();
-            for (x, (&current, pixel)) in source.iter().zip(destination).enumerate() {
-                if x % mosaic_width == 0
+            // x % mosaic_width, counted instead of divided for every pixel.
+            let mut phase = 0;
+            for (&current, pixel) in source.iter().zip(destination) {
+                let block_start = phase == 0;
+                phase += 1;
+                if phase == mosaic_width {
+                    phase = 0;
+                }
+                if block_start
                     || !current.mosaic
                     || !latched.mosaic
                     || current.priority < latched.priority
