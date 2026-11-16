@@ -45,30 +45,47 @@ The [mGBA reference](mgba-reference.md) has the comparable `mgba-perf` command.
 
 Check that a change keeps game behavior with per-frame replay hashes. The `replay_hash` example replays a fixed
 input script and hashes the save state, CPU registers, and cycle count after every frame; `--capture` adds the
-rendered frame and captured audio. `tools/replays/check.sh` builds it, records the hashes before a change, and checks
-them after it:
+rendered frame and captured audio. The state enters the hash through the FNV-1a checksum that ends every save
+state, which covers all of it. `tools/replays/check.sh` builds the example, records the hashes before a change, and
+checks them after it:
 
 ```sh
-tools/replays/check.sh --record                 # before the change
-tools/replays/check.sh --check --quick          # while iterating: Mt. Moon stops at frame 45,700
-tools/replays/check.sh --check --idle-skip      # before committing: every frame of every replay
+tools/replays/check.sh --record                        # before the change
+tools/replays/check.sh --check --quick --idle-skip     # while iterating: Mt. Moon stops at frame 45,700
+tools/replays/check.sh --check --idle-skip             # before committing: every frame of every replay
 ```
 
 The script runs a private copy of the binary, so a rebuild during a long check does not change what is checked, and
 `--bin PATH` checks a given build instead of building one. Remaining flags go to every run. It exits 0 only when every
-run passes and otherwise names each failing replay and its log in `roms/replays/`. Six runs cover all the scripts below:
-each other script is a frame-for-frame prefix of one that runs, with the same flags, and its hashes would repeat the
-longer run's. A `--quick` check takes about five minutes; the full check is bound by the 425,024-frame Mt. Moon replay.
+run passes and otherwise names each failing run and its log in `roms/replays/logs/`. Six replays cover all the scripts
+below: each other script is a frame-for-frame prefix of one that runs, with the same flags, and its hashes would repeat
+the longer run's.
 
-To run one replay by hand:
+The 425,024-frame Mt. Moon replay sets the time of a full check, so a recording also writes its save state every
+40,000 frames to `roms/replays/states/firered-mtmoon/`, and a full check replays the segments between them in
+parallel. A segment resumes from its recorded state, and its last frame's hash covers the state the next segment
+starts from, so a check that passes every segment has reached every recorded state and checked every frame. A
+behavior that depends on something a save state leaves out (a cache that outlives a frame, say) could still differ
+only in a continuous run; `--check --continuous` replays Mt. Moon in one run for that, and a check falls back to it
+when no states were recorded. States from an older snapshot format do not load; the failing segment says so, and
+`--record` with a build that passed `--continuous` renews them. On an Apple M3 Pro with `--idle-skip`, a full check
+takes about 5 minutes, `--quick` about 3 minutes on a quarter of the cores, and `--continuous` about 35 minutes;
+`--record` runs Mt. Moon in one piece and takes about 40.
+
+To run one replay by hand, or to look at a frame:
 
 ```sh
 direnv exec . cargo build --locked --release -p gba-diff --example replay_hash
 R=./target/release/examples/replay_hash
 $R --rom roms/pokemon-firered.gba --save-type flash128 --frames 20000 \
-  --inputs tools/replays/firered-first-battle.inputs --capture --check roms/replays/firered-capture.hashes
+  --inputs tools/replays/firered-mtmoon.inputs --capture --check roms/replays/firered-mtmoon.hashes
+$R --rom roms/pokemon-firered.gba --save-type flash128 --frames 160001 \
+  --inputs tools/replays/firered-mtmoon.inputs --capture --states roms/replays/states/firered-mtmoon \
+  --start 160000 --png 160000:frame.png
 ```
 
+`--png FRAME:PATH` (repeatable, with `--capture`) writes that frame as a PNG image; `--start FRAME` with `--states`
+resumes from a recorded state, so any frame of a long replay is seconds away.
 `--check` prints the first frame whose hash differs and exits 1; it also accepts fewer `--frames` than were recorded.
 An optimization or refactor must keep every hash;
 a deliberate behavior change will move them, and the replay shows from which frame. Runs without `--capture` matter

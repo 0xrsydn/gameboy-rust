@@ -11,21 +11,30 @@
 //! scripts are plain button timings and live in `tools/replays/`. `--bench` skips the
 //! hashes, still presents each frame and drains audio as the window does with `--capture`,
 //! and reports the emulation speed of the replay.
+//!
+//! `--record --states DIR --every K` also writes the save state at the start of every K-th
+//! frame to `DIR/FRAME.state`. `--start FRAME --states DIR` resumes from one of them, so a
+//! long replay can be checked as parallel segments: each segment's last hash covers the
+//! save state the next segment starts from, so together they check every frame.
+//! `--png FRAME:PATH` (repeatable, with `--capture`) writes that frame as a PNG image.
 
 use std::{env, fs, path::PathBuf, process::ExitCode, time::Instant};
+
+#[path = "common/png.rs"]
+mod png;
 
 use gba_core::{
     bios,
     cartridge::{CartridgeHardware, RtcDateTime, SaveDevice},
     input::{Button, Buttons},
     machine::Machine,
-    video::Framebuffer,
+    video::{Framebuffer, HEIGHT, WIDTH},
 };
 
 /// Machine steps allowed between VBlanks before a frame is reported as stuck.
 const FRAME_STEP_LIMIT: usize = 2_000_000;
 
-const USAGE: &str = "usage: replay_hash --rom ROM --frames N [--save-type sram|flash64|flash128|eeprom512|eeprom8k] [--rtc SECONDS_SINCE_2000] [--inputs FILE] [--capture] [--idle-skip] [--load-save FILE] [--write-save FILE] [--record FILE | --check FILE | --bench]";
+const USAGE: &str = "usage: replay_hash --rom ROM --frames N [--save-type sram|flash64|flash128|eeprom512|eeprom8k] [--rtc SECONDS_SINCE_2000] [--inputs FILE] [--capture] [--idle-skip] [--load-save FILE] [--write-save FILE] [--record FILE | --check FILE | --bench] [--states DIR [--every K | --start FRAME]] [--png FRAME:PATH]...";
 
 struct Options {
     rom: PathBuf,
@@ -40,6 +49,10 @@ struct Options {
     record: Option<PathBuf>,
     check: Option<PathBuf>,
     bench: bool,
+    states: Option<PathBuf>,
+    every: Option<u64>,
+    start: u64,
+    png: Vec<(u64, PathBuf)>,
 }
 
 fn parse(args: &[String]) -> Result<Options, String> {
@@ -56,6 +69,10 @@ fn parse(args: &[String]) -> Result<Options, String> {
         record: None,
         check: None,
         bench: false,
+        states: None,
+        every: None,
+        start: 0,
+        png: Vec::new(),
     };
     let mut args = args.iter();
     while let Some(arg) = args.next() {
@@ -86,6 +103,16 @@ fn parse(args: &[String]) -> Result<Options, String> {
             "--record" => options.record = Some(value()?.into()),
             "--check" => options.check = Some(value()?.into()),
             "--bench" => options.bench = true,
+            "--states" => options.states = Some(value()?.into()),
+            "--every" => options.every = Some(number(value()?)?),
+            "--start" => options.start = number(value()?)?,
+            "--png" => {
+                let text = value()?;
+                let (frame, path) = text
+                    .split_once(':')
+                    .ok_or(format!("--png expects FRAME:PATH, got {text}"))?;
+                options.png.push((number(frame.to_owned())?, path.into()));
+            }
             _ => return Err(format!("unknown option: {arg}\n{USAGE}")),
         }
     }
@@ -103,6 +130,37 @@ fn parse(args: &[String]) -> Result<Options, String> {
         > 1
     {
         return Err("use one of --record, --check, and --bench".to_owned());
+    }
+    if !options.png.is_empty() && (!options.capture || options.bench) {
+        return Err("--png needs --capture and rejects --bench".to_owned());
+    }
+    if let Some((frame, _)) = options
+        .png
+        .iter()
+        .find(|(frame, _)| *frame < options.start || *frame >= options.frames)
+    {
+        return Err(format!(
+            "--png frame {frame} is outside the replayed frames"
+        ));
+    }
+    if options.every.is_some() && (options.record.is_none() || options.states.is_none()) {
+        return Err("--every needs --record and --states".to_owned());
+    }
+    if options.every == Some(0) {
+        return Err("--every needs a positive frame count".to_owned());
+    }
+    if options.start != 0 {
+        if options.states.is_none() || options.record.is_some() {
+            return Err("--start needs --states and --check or --bench".to_owned());
+        }
+        if options.load_save.is_some() || options.write_save.is_some() {
+            return Err(
+                "--start resumes a save state; it rejects --load-save and --write-save".to_owned(),
+            );
+        }
+        if options.start >= options.frames {
+            return Err("--start must be below --frames".to_owned());
+        }
     }
     Ok(options)
 }
@@ -145,7 +203,8 @@ fn parse_inputs(text: &str) -> Result<Vec<(u64, Button, u64)>, String> {
         .collect()
 }
 
-/// FNV-1a, 64-bit: fixed across toolchains, unlike the standard library's hasher.
+/// FNV-1a, 64-bit: fixed across toolchains, unlike the standard library's hasher. The
+/// save-state checksum is the same function.
 struct Fnv(u64);
 
 impl Fnv {
@@ -160,12 +219,19 @@ impl Fnv {
     }
 }
 
-fn frame_hash(machine: &mut Machine, capture: Option<&mut Framebuffer>) -> Result<u64, String> {
+fn frame_hash(
+    machine: &mut Machine,
+    state: &[u8],
+    capture: Option<&mut Framebuffer>,
+) -> Result<u64, String> {
     let mut hash = Fnv::new();
-    let state = machine
-        .save_state()
-        .map_err(|error| format!("save state: {error:?}"))?;
-    hash.bytes(&state);
+    // A save state ends with the FNV-1a checksum of everything before it, so its last
+    // eight bytes stand for the whole state without hashing it a second time.
+    let checksum = state
+        .len()
+        .checked_sub(8)
+        .ok_or("save state shorter than its checksum")?;
+    hash.bytes(&state[checksum..]);
     for register in machine.cpu().registers() {
         hash.bytes(&register.to_le_bytes());
     }
@@ -192,6 +258,15 @@ fn frame_hash(machine: &mut Machine, capture: Option<&mut Framebuffer>) -> Resul
         }
     }
     Ok(hash.0)
+}
+
+/// Where `--states` keeps the save state for the start of `frame`.
+fn state_path(options: &Options, frame: u64) -> PathBuf {
+    options
+        .states
+        .as_ref()
+        .expect("--states")
+        .join(format!("{frame}.state"))
 }
 
 /// The buttons held during each frame.
@@ -283,17 +358,28 @@ fn run(options: Options) -> Result<bool, String> {
     }
     machine.memory_mut().set_scanline_rendering(options.capture);
     machine.memory_mut().set_audio_capture(options.capture);
+    if options.start != 0 {
+        let path = state_path(&options, options.start);
+        let state = fs::read(&path).map_err(|error| format!("{}: {error}", path.display()))?;
+        machine
+            .load_state(&state)
+            .map_err(|error| format!("{}: {error:?}", path.display()))?;
+    }
     machine.set_idle_skip(options.idle_skip);
     let mut frame = Framebuffer::default();
     let held = held_buttons(&inputs, options.frames);
+    let start = options.start as usize;
 
     if options.bench {
-        return bench(&mut machine, &held, options.capture, &mut frame);
+        return bench(&mut machine, &held[start..], options.capture, &mut frame);
+    }
+    if let (Some(dir), Some(_)) = (&options.states, options.every) {
+        fs::create_dir_all(dir).map_err(|error| format!("{}: {error}", dir.display()))?;
     }
 
     let mut lines = Vec::with_capacity(options.frames as usize);
     let mut total = Fnv::new();
-    for index in 0..options.frames {
+    for index in options.start..options.frames {
         machine.memory_mut().set_buttons(held[index as usize]);
         machine
             .run_until_vblank(FRAME_STEP_LIMIT)
@@ -303,7 +389,19 @@ fn run(options: Options) -> Result<bool, String> {
                     machine.cpu().pc()
                 )
             })?;
-        let hash = frame_hash(&mut machine, options.capture.then_some(&mut frame))?;
+        let state = machine
+            .save_state()
+            .map_err(|error| format!("save state: {error:?}"))?;
+        let next = index + 1;
+        if options.every.is_some_and(|every| next % every == 0) && next < options.frames {
+            let path = state_path(&options, next);
+            fs::write(&path, &state).map_err(|error| format!("{}: {error}", path.display()))?;
+        }
+        let hash = frame_hash(&mut machine, &state, options.capture.then_some(&mut frame))?;
+        for (_, path) in options.png.iter().filter(|(frame, _)| *frame == index) {
+            let image = png::encode(WIDTH, HEIGHT, frame.pixels());
+            fs::write(path, image).map_err(|error| format!("{}: {error}", path.display()))?;
+        }
         total.bytes(&hash.to_le_bytes());
         let line = format!("{index} {hash:016x}");
         if let Some(expected) = &expected {
@@ -337,9 +435,16 @@ fn run(options: Options) -> Result<bool, String> {
         fs::write(path, lines.join("\n") + "\n")
             .map_err(|error| format!("{}: {error}", path.display()))?;
     }
-    println!("{} frames, combined hash {:016x}", options.frames, total.0);
+    let frames = options.frames - options.start;
+    println!("{frames} frames, combined hash {:016x}", total.0);
     if expected.is_some() {
-        println!("all {} frames match", options.frames);
+        match options.start {
+            0 => println!("all {frames} frames match"),
+            start => println!(
+                "all {frames} frames match (frames {start}-{})",
+                options.frames - 1
+            ),
+        }
     }
     Ok(true)
 }
