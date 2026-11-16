@@ -17,7 +17,6 @@ pub(crate) const DMA_END: u32 = DMA_BASE + 4 * DMA_STRIDE - 1;
 pub enum DmaError {
     Memory { channel: usize, error: MemoryError },
     UnsupportedControl { channel: usize, control: u16 },
-    UnsupportedSource { channel: usize, address: u32 },
     RegisterDestination { channel: usize, address: u32 },
     PowerControlDestination { channel: usize, address: u32 },
 }
@@ -28,9 +27,6 @@ impl fmt::Display for DmaError {
             Self::Memory { channel, error } => write!(f, "DMA{channel}: {error}"),
             Self::UnsupportedControl { channel, control } => {
                 write!(f, "DMA{channel}: unsupported control {control:#06x}")
-            }
-            Self::UnsupportedSource { channel, address } => {
-                write!(f, "DMA{channel}: unsupported source {address:#010x}")
             }
             Self::PowerControlDestination { channel, address } => {
                 write!(
@@ -83,12 +79,11 @@ impl Channel {
         (self.control >> 12) & 3
     }
 
+    /// DMA3 special timing (video capture) is not modeled yet. As in mGBA 0.10.5, Game Pak
+    /// DRQ is ignored (the transfer keeps its programmed timing), prohibited source mode 3
+    /// increments, and DMA1/2 special timing serves whichever FIFO its destination names.
     fn unsupported(&self, index: usize) -> bool {
-        (self.start_timing() == 3
-            && (!(1..=2).contains(&index)
-                || self.destination != crate::audio::FIFO_A + (index as u32 - 1) * 4))
-            || self.control & 0x800 != 0
-            || self.control & 0x180 == 0x180
+        self.start_timing() == 3 && index == 3
     }
 
     fn width(&self) -> AccessWidth {
@@ -208,9 +203,13 @@ impl Dma {
         }
     }
 
+    /// A FIFO request starts DMA1 or DMA2 when its destination is that FIFO, as in mGBA
+    /// 0.10.5. A special-timing channel aimed elsewhere is never requested.
     pub(crate) fn trigger_sound(&mut self, requests: [bool; 2]) {
-        for (index, requested) in requests.into_iter().enumerate() {
-            let channel = &mut self.channels[index + 1];
+        for channel in &mut self.channels[1..=2] {
+            let requested = (0..2).any(|fifo| {
+                requests[fifo] && channel.destination == crate::audio::FIFO_A + fifo as u32 * 4
+            });
             if requested && channel.enabled() && channel.start_timing() == 3 && !channel.active {
                 channel.active = true;
             }

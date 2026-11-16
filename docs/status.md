@@ -171,7 +171,7 @@ RTC persistence, interrupts, invalid-date correction, physical subsecond timing,
 The core uses deterministic caller time. Desktop RTC runs use host UTC/elapsed time and are not fully deterministic.
 The [audio subset](hardware/audio.md) supports Direct Sound, both PSG pulse channels, wave channel 3 with one or two banks, noise channel 4, and instantaneous digital mixing.
 Optional 32,768 Hz digital capture provides bounded, transactional stereo samples with explicit drop counts.
-Unverified sound-DMA pairings remain diagnostic.
+Sound DMA pairs channels with FIFOs by destination, as in mGBA; that routing is not hardware-verified.
 PSG timing and signed mixing are nominal; hardware startup edges and analog behavior remain unverified.
 The [serial subset](hardware/serial.md) supports disconnected normal 8/32-bit transfers, external-clock waiting, idle multiplayer configuration, and general-purpose pins.
 Internal clocks shift high input at nominal rates, clear busy, and request completion IRQs. External requests retain busy without clock edges.

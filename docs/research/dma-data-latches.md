@@ -50,7 +50,8 @@ No BIOS image read occurs in the blocked path.
 After a successful write and nominal device progress, completion commits the retained word with the unit's existing address/count changes.
 Enable, disable, cancellation, completion, and repeat do not clear retained data.
 Each channel remains independent. Host operations and CPU reads never seed channel data.
-Unknown blocked sources retain `DmaError::UnsupportedSource`; known zero is valid data.
+Unknown blocked sources retained `DmaError::UnsupportedSource`; known zero is valid data. (Since 2026-11-17 an unknown
+latch reads 0, mGBA's initial value; see [DMA](../hardware/dma.md).)
 Other unmapped sources and unsupported controls remain diagnostics even with known channel data.
 
 The existing atomic diagnostic policy commits no new latch value for a failed unit.

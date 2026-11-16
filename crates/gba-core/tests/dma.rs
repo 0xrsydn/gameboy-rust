@@ -694,54 +694,28 @@ fn special_timing_is_harmless_until_it_would_transfer() {
 }
 
 #[test]
-fn unsupported_controls_are_explicit_and_leave_state_and_time_unchanged() {
-    // Immediate transfers with the prohibited source mode, or DMA3's Game Pak DRQ bit.
+fn prohibited_source_mode_increments_and_drq_is_ignored_as_in_mgba() {
+    // Immediate halfword transfers of two units: an incrementing source copies both.
     for channel in 0..4 {
         let controls: &[u16] = if channel == 3 {
-            &[0x180, 0x980]
+            &[0x180, 0x980, 0x800]
         } else {
             &[0x180]
         };
         for &control in controls {
             let mut machine = machine();
-            configure(machine.memory_mut(), channel, SOURCE, DEST, 1, control);
-            let before = machine.cpu().clone();
-            let stored = machine.memory().read16(base(channel) + 10).unwrap();
-            for _ in 0..2 {
-                assert_eq!(
-                    machine.step(),
-                    Err(MachineError::Dma(DmaError::UnsupportedControl {
-                        channel,
-                        control: stored
-                    }))
-                );
-                assert_eq!(machine.cpu(), &before);
-                assert_eq!(machine.cycles(), 0);
-                assert_eq!(machine.last_timing().total(), 0);
-                assert_eq!(machine.memory().read32(DEST).unwrap(), 0);
-                assert!(enabled(&machine, channel));
-            }
+            machine.memory_mut().write32(SOURCE, 0x2222_1111).unwrap();
+            configure(machine.memory_mut(), channel, SOURCE, DEST, 2, control);
+            units(&mut machine, channel, 2);
+            assert_eq!(machine.memory().read32(DEST).unwrap(), 0x2222_1111);
+            assert!(!enabled(&machine, channel));
         }
     }
-    let mut machine = machine();
-    configure(machine.memory_mut(), 3, SOURCE, DEST, 1, 0x800); // DRQ even without special timing.
-    assert!(matches!(
-        machine.step(),
-        Err(MachineError::Dma(DmaError::UnsupportedControl { .. }))
-    ));
 }
 
 #[test]
 fn invalid_memory_and_dma_register_destinations_are_diagnostics() {
     for (source, destination, error) in [
-        (
-            0,
-            DEST,
-            DmaError::UnsupportedSource {
-                channel: 3,
-                address: 0,
-            },
-        ),
         (
             0x0e00_0000,
             DEST,
@@ -909,7 +883,7 @@ fn frame_runner_counts_dma_units_obeys_limits_and_reports_dma_errors() {
     assert_eq!(machine.run_until_vblank(1).unwrap(), 1);
     assert_eq!(machine.memory().display_position().scanline, 160);
     assert_eq!(machine.cpu().pc(), ROM_START);
-    configure(machine.memory_mut(), 0, SOURCE, DEST, 1, 0x180);
+    configure(machine.memory_mut(), 0, SOURCE, DMA_BASE, 1, 0); // Into DMA registers.
     assert!(matches!(
         machine.run_until_vblank(1),
         Err(FrameRunError::Dma(_))

@@ -105,30 +105,16 @@ fn latches_are_independent_and_survive_completion_disable_and_host_access() {
 }
 
 #[test]
-fn cold_channel_stays_unknown_despite_other_channels_and_host_reads() {
+fn cold_channel_reads_zero_despite_other_channels_and_host_reads() {
+    // A channel with no completed unit has no retained word; it reads 0, mGBA's initial latch.
     for channel in 0..4 {
         let mut machine = machine();
         seed(&mut machine, (channel + 1) % 4, DATA);
         assert_eq!(machine.memory().read32(DEST).unwrap(), DATA);
-        configure(machine.memory_mut(), channel, 0, DEST + 4, 1, 0x4400);
-        let cycles = machine.cycles();
-        let timing = machine.last_timing();
-        let cpu = machine.cpu().clone();
-        for _ in 0..2 {
-            assert_eq!(
-                machine.step(),
-                Err(MachineError::Dma(DmaError::UnsupportedSource {
-                    channel,
-                    address: 0
-                }))
-            );
-            assert_eq!(machine.cpu(), &cpu);
-            assert_eq!(machine.cycles(), cycles);
-            assert_eq!(machine.last_timing(), timing);
-            assert_eq!(machine.memory().read32(DEST + 4).unwrap(), 0);
-            assert_eq!(machine.memory().read16(IF).unwrap(), 0);
-            assert!(enabled(&machine, channel));
-        }
+        machine.memory_mut().write32(DEST + 4, OTHER).unwrap();
+        blocked(&mut machine, channel, DEST + 4, 0x4400);
+        assert_eq!(machine.memory().read32(DEST + 4).unwrap(), 0);
+        assert_ne!(machine.memory().read16(IF).unwrap() & (0x100 << channel), 0);
     }
 }
 
@@ -149,7 +135,6 @@ fn failed_units_preserve_the_old_latch_without_new_data_or_irq() {
         (SOURCE, 0x0400_0800, 0x4400),
         (SOURCE, DMA_BASE, 0x4400),
         (SOURCE, 0x0400_0300, 0x4400),
-        (SOURCE, DEST, 0x4580),   // Unsupported source mode.
         (0, 0x0d00_0000, 0x4400), // A blocked source cannot bypass destination checks.
     ] {
         let mut machine = machine();
@@ -178,15 +163,9 @@ fn failed_destination_does_not_seed_a_cold_channel() {
     configure(machine.memory_mut(), 3, SOURCE, 0x0d00_0000, 1, 0x400);
     assert!(machine.step().is_err());
     machine.memory_mut().write16(base(3) + 10, 0).unwrap();
-    configure(machine.memory_mut(), 3, 0, DEST, 1, 0x400);
-    assert_eq!(
-        machine.step(),
-        Err(MachineError::Dma(DmaError::UnsupportedSource {
-            channel: 3,
-            address: 0
-        }))
-    );
-    assert_eq!(machine.cycles(), 0);
+    machine.memory_mut().write32(DEST, OTHER).unwrap();
+    blocked(&mut machine, 3, DEST, 0x400);
+    assert_eq!(machine.memory().read32(DEST).unwrap(), 0); // Still cold: not the failed DATA.
 }
 
 #[test]

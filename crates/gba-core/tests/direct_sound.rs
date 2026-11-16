@@ -181,6 +181,33 @@ fn wave_banks_and_idle_channel_masks_preserve_explicit_limits() {
 }
 
 #[test]
+fn fifo_requests_select_dma_channels_by_destination_as_in_mgba() {
+    let mut bus = bus(); // FIFO A routed, timer 0.
+    for index in 0..4 {
+        bus.write32(0x02000000 + index * 4, 0x01010101 * (index + 1))
+            .unwrap();
+    }
+    // DMA1 has special timing but targets IWRAM: no FIFO requests it.
+    let dma1 = DMA_BASE + DMA_STRIDE;
+    bus.write32(dma1, 0x0200_0000).unwrap();
+    bus.write32(dma1 + 4, 0x0300_0000).unwrap();
+    bus.write32(dma1 + 8, 0xb200_0001).unwrap();
+    // DMA2 targets FIFO A, so FIFO A's request starts it.
+    let dma2 = DMA_BASE + 2 * DMA_STRIDE;
+    bus.write32(dma2, 0x0200_0000).unwrap();
+    bus.write32(dma2 + 4, FIFO_A).unwrap();
+    bus.write32(dma2 + 8, 0xb200_0001).unwrap();
+    timer(&mut bus, 0, 100, 0x80);
+    bus.advance_cycles(100); // Empty playback, request.
+    let mut machine = Machine::new(Cpu::new(ROM_START), bus);
+    for _ in 0..4 {
+        assert_eq!(machine.step().unwrap(), StepKind::Dma { channel: 2 });
+    }
+    assert_eq!(machine.step().unwrap(), StepKind::Instruction);
+    assert_eq!(machine.memory().read32(0x0300_0000).unwrap(), 0);
+}
+
+#[test]
 fn sound_dma_forces_four_words_and_fixed_destination_then_repeats_and_interrupts() {
     for channel in [1, 2] {
         let mut bus = bus();

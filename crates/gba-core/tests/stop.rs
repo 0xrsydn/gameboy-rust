@@ -210,14 +210,11 @@ fn dma_is_frozen_before_work_or_diagnostics_and_resumes_before_cpu_after_wake() 
         enable_keypad(m.memory_mut());
         m.memory_mut().write32(0x0200_0000, 0x1234_5678).unwrap();
         m.memory_mut().write32(DMA_BASE, 0x0200_0000).unwrap();
-        m.memory_mut().write32(DMA_BASE + 4, 0x0300_0000).unwrap();
+        // A transfer into the DMA registers is a diagnostic.
         m.memory_mut()
-            .write32(
-                DMA_BASE + 8,
-                // Prohibited source mode 3 with immediate timing is unsupported.
-                if invalid { 0x8580_0001 } else { 0x8400_0001 },
-            )
+            .write32(DMA_BASE + 4, if invalid { DMA_BASE } else { 0x0300_0000 })
             .unwrap();
+        m.memory_mut().write32(DMA_BASE + 8, 0x8400_0001).unwrap();
         stop(m.memory_mut());
         let cpu = m.cpu().clone();
         let cycles = m.cycles();
@@ -231,9 +228,9 @@ fn dma_is_frozen_before_work_or_diagnostics_and_resumes_before_cpu_after_wake() 
         if invalid {
             assert_eq!(
                 m.step(),
-                Err(MachineError::Dma(DmaError::UnsupportedControl {
+                Err(MachineError::Dma(DmaError::RegisterDestination {
                     channel: 0,
-                    control: 0x8580
+                    address: DMA_BASE
                 }))
             );
         } else {

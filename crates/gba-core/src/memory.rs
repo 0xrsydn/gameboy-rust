@@ -731,12 +731,6 @@ impl Memory {
                 address: transfer.destination,
             });
         }
-        if transfer.source < 0x0200_0000 && transfer.data_latch.is_none() {
-            return Err(DmaError::UnsupportedSource {
-                channel,
-                address: transfer.source,
-            });
-        }
         if (DMA_BASE..=DMA_END).contains(&transfer.destination) {
             return Err(DmaError::RegisterDestination {
                 channel,
@@ -804,9 +798,9 @@ impl Memory {
             self.advance_timer_step(internal_cycles + source_cycles);
             let data_latch = if transfer.source < 0x0200_0000 {
                 // Blocked reads retain channel data, not firmware or another channel's value.
-                transfer
-                    .data_latch
-                    .expect("unknown blocked source rejected above")
+                // Before any transfer the value is unknown; read 0, mGBA 0.10.5's initial
+                // transfer latch (`dmaTransferRegister`). Not verified on hardware.
+                transfer.data_latch.unwrap_or(0)
             } else if self.sram_lane(transfer.source) {
                 // The addressed SRAM byte appears on every lane, as for CPU loads.
                 u32::from(self.read8(transfer.source)?) * 0x0101_0101

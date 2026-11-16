@@ -1,6 +1,6 @@
 use super::*;
 use gba_core::{
-    dma::{DmaError, DMA_BASE, DMA_STRIDE},
+    dma::{DMA_BASE, DMA_STRIDE},
     input::Buttons,
     io::{
         BG0CNT, BG2PA, BG2PD, BG3PA, BG3PD, BLDALPHA, BLDCNT, DISPCNT, GREENSWAP, KEYCNT, KEYINPUT,
@@ -487,15 +487,12 @@ fn dma_reset_disables_channels_and_clears_write_only_address_and_count_latches()
         m.memory_mut().write32(base + 8, 0x9200_0001).unwrap(); // Repeating VBlank, count one.
         complete(&mut m, pc);
         assert_eq!(m.memory().read16(base + 10).unwrap(), 0);
-        // With only control re-enabled, the source must now be zero.
+        // With only control re-enabled, source and destination are zero: the cold
+        // channel reads 0 from the blocked source into the BIOS, which ignores it.
+        let vector = m.memory().read32(0).unwrap();
         m.memory_mut().write16(base + 10, 0x8000).unwrap();
-        assert_eq!(
-            m.step(),
-            Err(MachineError::Dma(DmaError::UnsupportedSource {
-                channel,
-                address: 0
-            }))
-        );
+        assert_eq!(m.step().unwrap(), StepKind::Dma { channel });
+        assert_eq!(m.memory().read32(0).unwrap(), vector);
         m.memory_mut().write16(base + 10, 0).unwrap();
         m.memory_mut().write32(base, SOURCE).unwrap();
         m.memory_mut().write32(SOURCE, MARKER).unwrap();

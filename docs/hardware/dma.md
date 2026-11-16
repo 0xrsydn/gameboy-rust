@@ -82,8 +82,12 @@ Channel-resumption costs, a full CPU fetch pipeline, and display-bus contention 
 
 Special timing supports DMA1/FIFO A and DMA2/FIFO B with four-word blocks, forced word width, and fixed destinations.
 Timer-driven requests, repeat, and completion IRQs are described in [Direct Sound](audio.md).
-Other special-mode pairings, video capture, Game Pak DRQ, and prohibited source mode 3 return `DmaError::UnsupportedControl`
-when the channel would transfer, not when it is programmed: the mGBA suite writes and restores every control bit.
+A FIFO request starts DMA1 or DMA2 when that channel's destination is the requesting FIFO, so either channel can feed
+either FIFO; a special-timing DMA1/2 aimed elsewhere is never requested. Game Pak DRQ is ignored and the transfer keeps
+its programmed timing, and prohibited source mode 3 increments like mode 0. All three follow mGBA 0.10.5
+(`GBAAudioScheduleFifoDma`, `GBADMAWriteCNT_HI`, and `DMA_OFFSET` in `src/gba/`); none is verified on hardware.
+DMA3 special timing (video capture) returns `DmaError::UnsupportedControl` when the channel would transfer, not when it
+is programmed: the mGBA suite writes and restores every control bit.
 DMA0 special timing never triggers, as in mGBA. DMA3 special timing (video capture) is reported at its first visible HBlank.
 DMA reads below work RAM reuse known channel data as described below. They never expose BIOS bytes.
 DMA writes to DMA registers return `DmaError::RegisterDestination`; self-modifying transfers are not supported.
@@ -126,9 +130,9 @@ This also applies when a source counter crosses into the blocked region during a
 
 Channel data survives completion, disable/cancel, re-enable, and repeated blanking transfers.
 Other channels, CPU reads, and host inspection/setup do not change it.
-Synthetic startup leaves each channel unknown, not zero.
-A blocked source with unknown channel data returns `DmaError::UnsupportedSource` and leaves the unit pending.
-A transferred zero is known data and can be reused.
+Synthetic startup leaves each channel without retained data. A blocked read on such a channel reads 0, the initial value
+of mGBA 0.10.5's transfer latch (`dmaTransferRegister`, shared by all channels there); hardware's power-on value is not
+verified here.
 
 The emulator commits retained data only after a complete successful unit, under its existing atomic diagnostic policy.
 Failed source reads, unsupported controls, and failed destinations preserve the previous value and clocks.

@@ -32,7 +32,6 @@ The original BIOS reset clears bank 1 and both FIFO queues. It retains bank 0 an
 This is a functional reset subset, not a claim of complete firmware ordering or sound-reset equivalence.
 
 All PSG writes are ignored while master sound is disabled.
-Reserved PSG volume selection 3 is rejected while master sound is enabled, including enable after disabled configuration.
 
 ## Pulse channels 1 and 2
 
@@ -204,9 +203,10 @@ Each request transfers four 32-bit words with a fixed destination, regardless of
 Source address control, channel priority, repeat enable, completion IRQ, and retained DMA data still apply.
 Without repeat, the channel disables after the fourth word. With repeat, it waits for another timer request.
 
-Other channel/FIFO pairings and non-FIFO destinations remain explicit `DmaError::UnsupportedControl` cases.
-The references disagree about request routing outside the supported pairing; hardware reports permit non-FIFO destinations.
-The core does not silently guess those configurations. Video capture and Game Pak DRQ remain unsupported.
+A FIFO's request starts whichever of DMA1 and DMA2 has that FIFO as its destination, as in mGBA 0.10.5; a special-timing
+channel with any other destination is never requested there or here. The references disagree about routing outside the
+usual DMA1→A, DMA2→B pairing, and hardware reports permit non-FIFO destinations, so this is mGBA's choice, not a
+hardware result. DMA3 video capture remains unsupported; Game Pak DRQ is ignored (see [DMA](dma.md)).
 
 Requests become visible at successful machine-step boundaries. Active DMA blocks ignore further requests.
 Device-only bulk advances coalesce unserviced requests; they do not execute or replay DMA blocks.
