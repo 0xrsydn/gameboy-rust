@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Summarize a samply profile of a `--profile profiling` build, inlined functions included.
 
-usage: python3 tools/profile/report.py PROFILE.json.gz BINARY [N]
+usage: python3 tools/profile/report.py PROFILE.json.gz BINARY [N] [--callers TEXT]
 
 PROFILE comes from `samply record --save-only --unstable-presymbolicate -o PROFILE -- BINARY ...`.
 Each sampled address in BINARY is expanded with `atos -i` into its chain of inlined functions,
@@ -11,6 +11,9 @@ line it came from. Prints the top N (default 25) of three tables:
 - self time by source line: where the program counter was;
 - self time by function: the innermost function at that line;
 - total time by function: every function on the stack, inlined or not, counted once per sample.
+
+With --callers TEXT, also ranks the call paths (three callers deep) into the innermost function whose
+name contains TEXT, by the time spent under them: which caller owns a hot helper such as `clone`.
 
 macOS only (atos). See docs/development.md.
 """
@@ -89,12 +92,18 @@ def inline_chains(binary, rvas):
 
 
 def main():
-    if len(sys.argv) not in (3, 4):
-        sys.exit("usage: python3 tools/profile/report.py PROFILE.json.gz BINARY [N]")
+    argv = sys.argv[1:]
+    callers = None
+    if "--callers" in argv:
+        index = argv.index("--callers")
+        callers = argv[index + 1]
+        del argv[index : index + 2]
+    if len(argv) not in (2, 3):
+        sys.exit(__doc__.strip().splitlines()[2])
     if sys.platform != "darwin":
         sys.exit("report.py symbolizes with atos and runs on macOS only")
-    profile_path, binary = sys.argv[1], sys.argv[2]
-    limit = int(sys.argv[3]) if len(sys.argv) == 4 else 25
+    profile_path, binary = argv[0], argv[1]
+    limit = int(argv[2]) if len(argv) == 3 else 25
     profile, symbols = load(profile_path)
     lookup = symbol_lookup(symbols, profile)
     thread = max(profile["threads"], key=lambda thread: thread["samples"]["length"])
@@ -126,6 +135,7 @@ def main():
     chains = inline_chains(binary, wanted)
     total = sum(weight for weight, _ in samples)
     self_line, self_func, total_func = Counter(), Counter(), Counter()
+    call_sites = Counter()
 
     def expand(lib, rva):
         if profile["libs"][lib]["name"] == binary_name:
@@ -149,6 +159,15 @@ def main():
                 if name not in seen:
                     seen.add(name)
                     total_func[name] += weight
+        if callers is not None:
+            # Innermost first; each frame's location is where it calls the frame inside it.
+            inner_first = [frame for lib, rva in walk for frame in reversed(expand(lib, rva))]
+            for depth, (name, _) in enumerate(inner_first):
+                if callers in name:
+                    # Three callers, nearest first: the nearest is often another std helper.
+                    outer = inner_first[depth + 1 : depth + 4]
+                    call_sites[" <- ".join(f"{where} {name}" for name, where in outer)] += weight
+                    break
 
     print(f"{total} samples from thread {thread['name']}")
     for title, table in (
@@ -158,6 +177,10 @@ def main():
     ):
         print(f"\n{title}:")
         for key, count in table.most_common(limit):
+            print(f"{count:8} {100 * count / max(total, 1):5.1f}%  {key}")
+    if callers is not None:
+        print(f"\ncall sites of the innermost function matching {callers!r} (total time):")
+        for key, count in call_sites.most_common(limit):
             print(f"{count:8} {100 * count / max(total, 1):5.1f}%  {key}")
 
 

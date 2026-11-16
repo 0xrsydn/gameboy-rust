@@ -91,6 +91,8 @@ python3 tools/profile/report.py target/profile.json.gz $B
 ```
 
 The report ranks self time by source line and by function, and total time by function, inlined functions included.
+`--callers TEXT` adds the call paths into a function whose name contains TEXT, three callers deep, which tells
+you whose `clone` or `Cell::set` is hot.
 Drop `--save-only` to open the profile in the Firefox Profiler instead. The profiling build's code is not
 byte-identical to the release build's, but paired `--bench` runs of the two measure the same speed.
 
