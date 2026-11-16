@@ -77,7 +77,7 @@ Next implementation steps:
 For each feature, inspect the source and hardware evidence, then write original regression tests.
 Implement the smallest general behavior that satisfies the requirement.
 Run focused tests, workspace validation, and relevant native-window checks through `direnv exec .`.
-Update behavior notes and compatibility evidence. Save a semantic jj change with its own bookmark.
+Update behavior notes and compatibility evidence. Commit a semantic change on `main` (see AGENTS.md conventions).
 Then select the next demonstrated requirement without waiting for another confirmation.
 
 Stop for missing access, a necessary product decision, or a destructive operation that needs approval.
