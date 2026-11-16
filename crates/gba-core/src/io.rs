@@ -545,6 +545,42 @@ impl Io {
         self.wake_if_requested();
     }
 
+    /// A machine step that staged no device, applied in one pass: the same changes that
+    /// `advance_staged_devices(cycles)` then `advance(cycles, false)` make when the step
+    /// stays inside the staged devices' quiet window and inside the current line, short
+    /// of HBlank and the background-enable sample, with no request raised or waiting and
+    /// the CPU running. Any other step returns false and changes nothing.
+    pub(crate) fn quiet_step(&mut self, cycles: u32) -> bool {
+        if cycles >= self.quiet_left
+            || self.enable & self.pending != 0
+            || self.irq_wait.is_some()
+            || self.power != PowerState::Running
+            || !(self.window_edges.started() && self.vertical_mosaic.started())
+        {
+            return false;
+        }
+        let position = self.display.position();
+        let line_cycle = u32::from(position.line_cycle);
+        if cycles >= CYCLES_PER_LINE - line_cycle
+            || (line_cycle < HBLANK_START && line_cycle + cycles >= HBLANK_START)
+            || (line_cycle < BG_ENABLE_SAMPLE_CYCLE
+                && line_cycle + cycles >= BG_ENABLE_SAMPLE_CYCLE)
+        {
+            return false;
+        }
+        // advance_staged_devices: deferred device time; the request line stays clear.
+        self.quiet_left -= cycles;
+        self.deferred += cycles;
+        // advance: DMA start delays, then the in-line window history and clock.
+        self.dma.elapse(cycles);
+        if self.window_cycles == 0 {
+            self.window_from = u32::from(position.scanline) * CYCLES_PER_LINE + line_cycle;
+        }
+        self.window_cycles += cycles;
+        self.display.advance_within_line(cycles);
+        true
+    }
+
     pub(crate) fn display_position(&self) -> DisplayPosition {
         self.display.position()
     }

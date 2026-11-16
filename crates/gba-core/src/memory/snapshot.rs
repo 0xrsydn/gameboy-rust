@@ -61,6 +61,10 @@ impl Snapshot for Memory {
             gamepak_prefetch,
             #[cfg(test)]
                 last_cpu_timing: _, // Test trace only.
+            #[cfg(test)]
+                general_steps_only: _, // Test switch.
+            #[cfg(test)]
+                quiet_steps: _, // Test counter.
             cpu_resume_nonsequential,
             cpu_access: _, // Staged transaction; empty between steps.
             dma_bus,
@@ -122,6 +126,10 @@ impl Snapshot for Memory {
             gamepak_prefetch,
             #[cfg(test)]
                 last_cpu_timing: _,
+            #[cfg(test)]
+                general_steps_only: _,
+            #[cfg(test)]
+                quiet_steps: _,
             cpu_resume_nonsequential,
             cpu_access: _,
             dma_bus,

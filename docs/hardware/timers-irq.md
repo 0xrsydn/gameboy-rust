@@ -270,6 +270,25 @@ window and `--bench-frames` enable it; `--steps`, `gba-diff`, and tests that cou
 idle-loop detection, it never skips a partial pass or approximates cycle counts, and it does not recognize loops
 that read I/O registers such as `VCOUNT` or `IF`.
 
+## Quiet CPU steps
+
+Every instruction step ends by advancing the devices over its cycles: the staged timer, sound, and serial clocks,
+the cartridge clock and save commit, the display clock with its HBlank, line-end, background-enable, and
+sprite-preparation edges, the window history, DMA start delays, and the request line. Most steps touch no device and
+cross none of those edges. `Memory::complete_quiet_step` finishes such a step in one short pass with the same changes:
+
+- The step staged no timer, sound, serial, or cartridge state, and the save device is idle, so the cartridge clock and
+  save commit have nothing to do.
+- No interrupt request is raised or waiting, and the CPU is running, so the request line stays clear.
+- The step stays inside the staged devices' quiet window (short of every timer, serial, and capture event) and inside
+  its line, short of HBlank, the background-enable sample, and sprite preparation, so no edge, row capture, or
+  display request falls inside it.
+
+Then only the deferred device time, the DMA start delays, the window history, and the display and machine clocks move,
+exactly as the general path moves them. Any other step takes the general path. A unit test runs a loop with timer and
+HBlank requests and a repeating HBlank DMA both ways and requires identical state at every step boundary; the
+[replay hashes](../testing.md) check it on games. In FireRed gameplay this makes emulation about 20% faster.
+
 ## STOP with keypad wake-up
 
 Writing HALTCNT with bit 7 set requests STOP. Bits 0–6 are ignored.

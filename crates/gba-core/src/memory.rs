@@ -29,6 +29,8 @@ mod multiplayer_step_tests;
 #[cfg(test)]
 mod prefetch_tests;
 #[cfg(test)]
+mod quiet_step_tests;
+#[cfg(test)]
 mod serial_step_tests;
 mod snapshot;
 #[cfg(test)]
@@ -201,6 +203,11 @@ pub struct Memory {
     gamepak_prefetch: Prefetch,
     #[cfg(test)]
     last_cpu_timing: Option<CpuTiming>,
+    /// Test switch: complete every CPU step through the general path.
+    #[cfg(test)]
+    general_steps_only: bool,
+    #[cfg(test)]
+    quiet_steps: u64,
     // A completed DMA unit breaks the CPU's next nominal code-access sequence.
     cpu_resume_nonsequential: bool,
     cpu_access: Option<CpuAccess>,
@@ -255,6 +262,10 @@ impl Memory {
             gamepak_prefetch: Prefetch::default(),
             #[cfg(test)]
             last_cpu_timing: None,
+            #[cfg(test)]
+            general_steps_only: false,
+            #[cfg(test)]
+            quiet_steps: 0,
             cpu_resume_nonsequential: false,
             cpu_access: None,
             dma_bus: None,
@@ -473,7 +484,44 @@ impl Memory {
         // vector fetch replaces whatever a transfer left on the bus.
         self.cpu_resume_nonsequential = false;
         self.dma_bus = None;
-        self.complete_timer_step(cycles);
+        if !self.complete_quiet_step(cycles) {
+            self.complete_timer_step(cycles);
+        }
+    }
+
+    /// `complete_timer_step` for a step that staged no device or cartridge, with the save
+    /// device idle and no sprite-preparation edge in the step: then the cartridge clock,
+    /// save commit, and row-capture splits have nothing to do, and `Io::quiet_step`
+    /// applies the rest. Returns false, changing nothing, for any other step.
+    fn complete_quiet_step(&mut self, cycles: u32) -> bool {
+        debug_assert!(self.step_active.get());
+        #[cfg(test)]
+        if self.general_steps_only {
+            return false;
+        }
+        if !self.sprite_pipeline.started
+            || self.timer_step.0.borrow().is_some()
+            || self.cartridge_step.0.borrow().is_some()
+            || self.cartridge.save_unfinished()
+        {
+            return false;
+        }
+        let line_cycle = u32::from(self.io.display_position().line_cycle);
+        if line_cycle < pipeline::PREPARE_CYCLE && line_cycle + cycles >= pipeline::PREPARE_CYCLE {
+            return false;
+        }
+        if !self.io.quiet_step(cycles) {
+            return false;
+        }
+        self.step_active.set(false);
+        self.step_elapsed.set(0);
+        self.cartridge_elapsed.set(0);
+        self.cycles = self.cycles.wrapping_add(u64::from(cycles));
+        #[cfg(test)]
+        {
+            self.quiet_steps += 1;
+        }
+        true
     }
 
     /// Open a machine step. Nothing is copied here: most steps never observe a
