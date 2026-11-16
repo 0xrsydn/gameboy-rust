@@ -385,18 +385,29 @@ fn text_row(bg: Background, vram: &[u8], palette: &[u8], y: usize, out: &mut [Op
         let tile = tiles + (entry & 0x3ff) * if eight_bit { 64 } else { 32 };
         let bank = if eight_bit { 0 } else { (entry >> 12) * 16 };
         // The rest of this tile: the scrolled x stays inside it, so it cannot wrap.
-        let span = (8 - (bx & 7)).min(WIDTH - x);
-        for (offset, color) in out[x..x + span].iter_mut().enumerate() {
-            let pixel = ty * 8 + (((bx & 7) + offset) ^ flip_x);
-            let address = tile + if eight_bit { pixel } else { pixel / 2 };
-            debug_assert!(address < 0x20000);
-            let byte = vram[vram_index(address)];
-            let index = if eight_bit {
-                usize::from(byte)
-            } else {
-                usize::from((byte >> ((pixel & 1) * 4)) & 15)
-            };
-            *color = (index != 0).then(|| halfword(palette, (bank + index) * 2));
+        let start = bx & 7;
+        let span = (8 - start).min(WIDTH - x);
+        let out = &mut out[x..x + span];
+        // Read the tile's row once: 8 bytes, or 4 bytes of nibbles. The row is aligned
+        // to its size, so the VRAM mirror boundary (0x18000) never splits it.
+        if eight_bit {
+            let row = tile + ty * 8;
+            debug_assert!(row < 0x20000);
+            let row = vram_index(row);
+            let row: [u8; 8] = vram[row..row + 8].try_into().expect("8-byte tile row");
+            for (offset, color) in out.iter_mut().enumerate() {
+                let index = usize::from(row[(start + offset) ^ flip_x]);
+                *color = (index != 0).then(|| halfword(palette, index * 2));
+            }
+        } else {
+            let row = tile + ty * 4;
+            debug_assert!(row < 0x20000);
+            let row = vram_index(row);
+            let row = u32::from_le_bytes(vram[row..row + 4].try_into().expect("4-byte tile row"));
+            for (offset, color) in out.iter_mut().enumerate() {
+                let index = (row >> (((start + offset) ^ flip_x) * 4)) as usize & 15;
+                *color = (index != 0).then(|| halfword(palette, (bank + index) * 2));
+            }
         }
         x += span;
     }
