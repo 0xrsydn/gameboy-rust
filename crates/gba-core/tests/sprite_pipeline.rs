@@ -250,7 +250,7 @@ fn zero_cycle_advances_and_failed_cpu_steps_do_not_prepare_rows() {
     m.advance_cycles(0);
     m.write16(OAM + 2, 16).unwrap();
     m.advance_cycles(39);
-    m.write32(0x0300_0000, 0xf000_0000).unwrap();
+    m.write32(0x0300_0000, 0xe7f0_00f0).unwrap();
     let mut machine = Machine::new(Cpu::new(0x0300_0000), m);
     assert!(machine.step().is_err());
     assert_eq!(machine.cycles(), 39);

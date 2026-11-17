@@ -30,6 +30,17 @@ The trace shows processor modes, instruction states, CPSR values, and two comple
 This test image is not a Nintendo BIOS and does not implement BIOS services.
 
 A failed condition skips the instruction without changing registers or flags, except for advancing r15.
+Condition `0xF` (NV) is the ARM7TDMI's "never" and always skips, as in mGBA 0.10.5 (`conditionLut` in
+`src/arm/arm.c`); ARMv5 unconditional instructions are not decoded.
+
+Some ARMv4T encodings are unpredictable or should not be used, and mGBA 0.10.5 executes them as their plain
+operation. This emulator does the same; none of these is hardware-verified:
+
+- Thumb format-5 `ADD`, `CMP`, and `MOV` with two low registers (H1=H2=0) act on r0–r7 like the high-register forms.
+- `LDRT`, `LDRBT`, `STRT`, and `STRBT` are post-indexed transfers. Their user-mode access is unobservable on the
+  GBA, which has no memory protection.
+- Halfword and signed transfers with post-indexing and W=1 are the same transfer as with W=0.
+- `MUL` ignores its should-be-zero Rn field.
 For subtraction, carry means no unsigned borrow occurred.
 Logical flag-setting operations preserve overflow and take carry from the shifter.
 Unshifted operands preserve the previous carry flag.

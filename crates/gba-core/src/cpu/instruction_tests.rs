@@ -523,7 +523,6 @@ fn invalid_or_unimplemented_encodings_do_not_change_state_or_memory() {
         0xe1a0_0f11, // Rs=pc (register shift)
         0xe3b0_f001, // status restore via MOVS pc
         0xe5bf_1000, // LDR with PC writeback
-        0xe4b0_1004, // LDRT user-mode transfer
         0xe5d0_f000, // LDRB pc
         0xe790_1012, // illegal register-specified memory shift
         0xe790_100f, // memory offset register PC
@@ -573,4 +572,24 @@ fn conditional_store_is_skipped_without_touching_memory() {
     cpu.registers[1] = 123;
     cpu.step(&mut memory).unwrap();
     assert_eq!(memory.read32(RAM).unwrap(), 0);
+}
+
+#[test]
+fn nv_condition_never_executes_and_mul_ignores_rn() {
+    // ARM7TDMI's NV condition never passes, as in mGBA 0.10.5.
+    for instruction in [0xf3a0_0001_u32, 0xffff_ffff, 0xfa00_0000] {
+        let mut memory = program(&[instruction]);
+        let mut cpu = Cpu::new(ROM_START);
+        let mut after = cpu.clone();
+        after.registers[15] += 4;
+        cpu.step(&mut memory).unwrap();
+        assert_cpu_arch_eq!(cpu, after);
+    }
+    // MUL r2,r0,r1 with a nonzero Rn field (should-be-zero) still multiplies.
+    let mut memory = program(&[0xe002_f190]);
+    let mut cpu = Cpu::new(ROM_START);
+    cpu.registers[0] = 6;
+    cpu.registers[1] = 7;
+    cpu.step(&mut memory).unwrap();
+    assert_eq!(cpu.registers[2], 42);
 }

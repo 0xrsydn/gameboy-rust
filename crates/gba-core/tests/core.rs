@@ -139,7 +139,6 @@ fn branches_use_signed_displacement_and_pipeline_offset() {
 #[test]
 fn unsupported_instructions_do_not_change_cpu() {
     for instruction in [
-        0xf3a0_0001, // reserved condition
         0xe340_0001, // CMP encoding with S=0
         0xe3b0_f001, // MOVS pc, #1 (status restore unsupported)
         0xe10f_f000, // MRS pc, CPSR

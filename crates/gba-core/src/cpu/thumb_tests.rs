@@ -690,8 +690,7 @@ fn arm_thumb_arm_round_trip_fetches_the_correct_instruction_width() {
 #[test]
 fn unsupported_thumb_instructions_preserve_registers_flags_and_state() {
     for instruction in [
-        0xde00, 0xdeff, 0xbe00, 0xe800, 0x4780, 0x4701, 0x4400, 0x4500, 0x4600, 0xb100, 0xb200,
-        0xb600, 0xbf00,
+        0xde00, 0xdeff, 0xbe00, 0xe800, 0x4780, 0x4701, 0xb100, 0xb200, 0xb600, 0xbf00,
     ] {
         let mut memory = program(&[instruction]);
         let mut cpu = thumb_cpu();
@@ -840,4 +839,25 @@ fn truncated_or_misaligned_thumb_fetches_do_not_advance_pc() {
         Err(CpuError::Memory(MemoryError::Unaligned(ROM_START + 1)))
     );
     assert_eq!(cpu.pc(), ROM_START + 1);
+}
+
+#[test]
+fn high_register_forms_with_two_low_registers_execute_as_in_mgba() {
+    // ADD r0,r1 / CMP r0,r1 / MOV r0,r1 in format 5 with H1=H2=0.
+    for (instruction, r0, zero) in [(0x4408, 12, false), (0x4508, 5, false), (0x4608, 7, false)] {
+        let mut memory = program(&[instruction]);
+        let mut cpu = thumb_cpu();
+        cpu.registers[0] = 5;
+        cpu.registers[1] = 7;
+        cpu.step(&mut memory).unwrap();
+        assert_eq!(cpu.registers[0], r0, "{instruction:04x}");
+        assert_eq!(cpu.flags.zero, zero);
+        assert_eq!(cpu.pc(), ROM_START + 2);
+    }
+    let mut memory = program(&[0x4508]); // CMP sets flags like CMP with high registers.
+    let mut cpu = thumb_cpu();
+    cpu.registers[0] = 7;
+    cpu.registers[1] = 7;
+    cpu.step(&mut memory).unwrap();
+    assert!(cpu.flags.zero && cpu.flags.carry);
 }

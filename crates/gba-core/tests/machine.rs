@@ -190,7 +190,7 @@ fn timer_irq_returns_to_thumb_without_skipping_the_interrupted_instruction() {
 
 #[test]
 fn diagnostics_do_not_advance_timers_or_clock() {
-    for instruction in [0xf3a0_0001, 0xe590_1000] {
+    for instruction in [0xe7f0_00f0, 0xe590_1000] {
         // Unsupported or unmapped LDR
         let mut bus = Memory::new(words(&[instruction])).unwrap();
         timer(&mut bus);

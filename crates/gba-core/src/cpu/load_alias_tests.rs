@@ -276,21 +276,17 @@ fn skipped_alias_loads_do_not_access_memory_or_apply_writeback() {
 }
 
 #[test]
-fn pc_writeback_and_user_transfer_encodings_remain_diagnostics() {
+fn pc_writeback_encodings_remain_diagnostics() {
     for kind in KINDS {
-        for instruction in [
-            load(kind, Index::Pre, true, false, 15),
-            load(kind, Index::Post, true, false, 0) | 1 << 21,
-        ] {
-            let mut cpu = Cpu::new(ROM_START);
-            cpu.registers[0] = RAM;
-            let before = cpu.clone();
-            assert!(matches!(
-                cpu.step(&mut memory(instruction)),
-                Err(CpuError::UnsupportedInstruction { .. })
-            ));
-            assert_eq!(cpu, before);
-        }
+        let instruction = load(kind, Index::Pre, true, false, 15);
+        let mut cpu = Cpu::new(ROM_START);
+        cpu.registers[0] = RAM;
+        let before = cpu.clone();
+        assert!(matches!(
+            cpu.step(&mut memory(instruction)),
+            Err(CpuError::UnsupportedInstruction { .. })
+        ));
+        assert_eq!(cpu, before);
     }
 }
 
@@ -320,5 +316,25 @@ fn alias_stores_still_store_the_original_base_before_writeback() {
                 assert_eq!(cpu.cpsr(), 0x1f);
             }
         }
+    }
+}
+
+#[test]
+fn post_index_with_w_set_is_the_same_transfer_as_in_mgba() {
+    // LDRT/LDRBT/STRT/STRBT access as user mode, which nothing on the GBA bus observes;
+    // halfword forms with W=1 are unpredictable and mGBA 0.10.5 decodes them unchanged.
+    let stores = [0xe480_1004, 0xe4c0_1004, 0xe0c0_10b4]; // STR/STRB/STRH r1,[r0],#4
+    let loads = KINDS.map(|kind| load(kind, Index::Post, true, false, 2) & !(15 << 16));
+    for plain in loads.into_iter().chain(stores) {
+        let [without, with] = [plain, plain | 1 << 21].map(|instruction| {
+            let mut bus = memory(instruction);
+            let mut cpu = Cpu::new(ROM_START);
+            cpu.registers[0] = RAM;
+            cpu.registers[1] = 0x1234_5678;
+            let timing = cpu.step_timed(&mut bus).unwrap();
+            (cpu, timing, bus.read32(RAM).unwrap())
+        });
+        assert_eq!(without, with, "{plain:08x}");
+        assert_eq!(without.0.registers[0], RAM + 4, "{plain:08x}");
     }
 }

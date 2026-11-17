@@ -258,10 +258,8 @@ impl Cpu {
             self.branch_exchange(self.operand_register(source, 4));
             return Ok(());
         }
-        // ARMv4T requires at least one high register in this instruction format.
-        if instruction & 0xc0 == 0 {
-            return Err(self.unsupported(instruction));
-        }
+        // ARMv4T leaves ADD/CMP/MOV with two low registers undefined; they execute as the
+        // same operation on r0-r7, as in mGBA 0.10.5 (`DEFINE_INSTRUCTION_WITH_HIGH_THUMB`).
         let a = self.operand_register(destination, 4);
         let b = self.operand_register(source, 4);
         let value = match opcode {

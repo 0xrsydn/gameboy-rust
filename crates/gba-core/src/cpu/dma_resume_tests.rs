@@ -150,7 +150,7 @@ fn failed_cpu_fetch_and_data_access_preserve_resume_until_success() {
     dma(&mut bus);
     cpu.registers[15] = 0x0e00_0000;
     assert!(cpu.step_timed(&mut bus).is_err());
-    bus.write32(DEST + 0x100, 0xffff_ffff).unwrap(); // Unsupported ARM encoding.
+    bus.write32(DEST + 0x100, 0xe7f0_00f0).unwrap(); // Undefined ARM encoding.
     cpu.registers[15] = DEST + 0x100;
     assert!(cpu.step_timed(&mut bus).is_err());
     cpu.registers[15] = PC;

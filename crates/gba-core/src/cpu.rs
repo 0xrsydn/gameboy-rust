@@ -294,11 +294,9 @@ impl Cpu {
             return self.execute_thumb(instruction as u16, memory);
         }
         let condition = instruction >> 28;
-        // Reserved in ARMv4. Do not decode ARMv5 unconditional extensions.
-        if condition == 0xf {
-            return Err(self.unsupported(instruction));
-        }
-        if !self.flags.condition_passed(condition) {
+        // ARM7TDMI's NV condition never passes, as in mGBA 0.10.5's condition table
+        // (`conditionLut` in src/arm/arm.c); ARMv5 unconditional extensions do not exist here.
+        if condition == 0xf || !self.flags.condition_passed(condition) {
             self.registers[15] = self.pc().wrapping_add(4);
             return Ok(());
         }

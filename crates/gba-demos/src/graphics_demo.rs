@@ -503,7 +503,7 @@ mod tests {
         let mut demo = GraphicsDemo {
             machine: Machine::new(
                 Cpu::new(ROM_START),
-                Memory::new(0xf000_0000_u32.to_le_bytes().to_vec()).unwrap(),
+                Memory::new(0xe7f0_00f0_u32.to_le_bytes().to_vec()).unwrap(),
             ),
             primed: false,
         };

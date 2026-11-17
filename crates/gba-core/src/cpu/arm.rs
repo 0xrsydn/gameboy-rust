@@ -142,10 +142,9 @@ impl Cpu {
         let write_back = !pre || write_bit;
         let byte = instruction & (1 << 22) != 0;
         let load = instruction & (1 << 20) != 0;
-        if (!pre && write_bit) // LDRT/STRT access semantics are not implemented.
-            || (write_back && base_register == 15)
-            || (byte && destination == 15)
-        {
+        // Post-indexed W=1 is LDRT/STRT/LDRBT/STRBT: a user-mode access. Nothing on the GBA
+        // bus depends on privilege, so it is the plain post-indexed transfer, as in mGBA 0.10.5.
+        if (write_back && base_register == 15) || (byte && destination == 15) {
             return Err(self.unsupported(instruction));
         }
         let offset = if instruction & (1 << 25) != 0 {
@@ -209,9 +208,10 @@ impl Cpu {
         let write_back = !pre || write_bit;
         let base_register = ((instruction >> 16) & 15) as usize;
         let destination = ((instruction >> 12) & 15) as usize;
+        // Post-indexed transfers always write back; W=1 there is unpredictable in ARMv4,
+        // and mGBA 0.10.5 decodes it as the same transfer.
         if kind == 0
             || (!load && kind != 1)
-            || (!pre && write_bit)
             || destination == 15
             || (write_back && base_register == 15)
         {
@@ -257,7 +257,8 @@ impl Cpu {
         let rs = ((instruction >> 8) & 15) as usize;
         let rm = (instruction & 15) as usize;
         let accumulate = instruction & (1 << 21) != 0;
-        if [rd, rn, rs, rm].contains(&15) || (!accumulate && rn != 0) {
+        // MUL's Rn field should be zero; like mGBA 0.10.5, other values are ignored.
+        if [rd, rs, rm].contains(&15) || (accumulate && rn == 15) {
             return Err(self.unsupported(instruction));
         }
         // Rd may equal Rm: every operand is read before the destination is written.

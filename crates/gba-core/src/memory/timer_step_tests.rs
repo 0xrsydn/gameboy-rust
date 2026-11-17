@@ -185,7 +185,7 @@ fn failed_instructions_discard_partial_timer_progress_and_pending_irqs() {
         (0xe591_0000, 0x0e00_0000),
         (0xe891_0005, 0x0400_07fc), // Open bus, then unmodeled memory control fails.
         (0xe881_00fd, 0x0400_07e8), // STMIA r1,{r0,r2-r7}; r7 reaches memory control.
-        (0xffff_ffff, 0),
+        (0xe7f0_00f0, 0),
     ] {
         let (cpu, mut memory) = prepared(false, &[instruction], &[(1, base)]);
         start(&mut memory, 0, 0xfffc, 0xc0);

@@ -412,7 +412,7 @@ fn frame_runner_limits_and_cpu_errors_preserve_completed_progress_only() {
     assert_eq!(machine.memory().display_position().line_cycle, 6);
     machine
         .memory_mut()
-        .write32(0x0300_0000, 0xf000_0000)
+        .write32(0x0300_0000, 0xe7f0_00f0)
         .unwrap();
     let position = machine.memory().display_position();
     assert!(matches!(

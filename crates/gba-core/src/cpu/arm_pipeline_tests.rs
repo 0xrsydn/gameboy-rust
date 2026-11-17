@@ -219,7 +219,7 @@ fn swi_and_machine_irq_refill_arm_vectors_before_handler_execution() {
 
 #[test]
 fn explicit_invalidation_repairs_buffered_unsupported_code_without_changing_registers() {
-    let (mut cpu, mut bus) = program(&[NOP, 0xffff_ffff, OLD]);
+    let (mut cpu, mut bus) = program(&[NOP, 0xe7f0_00f0, OLD]);
     cpu.step(&mut bus).unwrap();
     let before = cpu.clone();
     let mut fork = cpu.clone();

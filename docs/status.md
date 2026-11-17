@@ -138,10 +138,11 @@ Thumb execution includes:
 This is an interpreter scaffold, not an accurate GBA implementation.
 It models CPU reset state and an optional minimal firmware subset, not the complete GBA boot sequence or BIOS service set.
 Status handling covers ARM7 flags, modes, interrupt masks, and instruction state; reserved bits read as zero.
-The reserved ARM condition code `0xF` and Thumb condition code `0xE` return errors.
+ARM condition `0xF` (NV) never executes; Thumb condition code `0xE` returns an error.
 ARMv5+ extensions such as `BLX`, `BKPT`, and Thumb-2 instructions are not supported.
-The ARMv4T high-register format requires at least one high register; low-to-low forms in that format return errors.
-`LDRT`/`STRT` single-transfer variants and invalid register combinations return errors.
+Following mGBA 0.10.5, Thumb high-register ADD/CMP/MOV with two low registers execute normally, `LDRT`/`STRT`
+(and halfword transfers with post-indexed W=1) are plain post-indexed transfers, and `MUL` ignores its Rn field.
+Other invalid register combinations, such as PC writeback, return errors.
 CPU BIOS reads are protected by the executing address using bounded ARM and Thumb prefetch snapshots.
 Thumb BIOS execution retains the full word at `(PC+4) & ~3`, not a repeated halfword.
 Missing lookahead invalidates that history; protected reads with unknown history remain diagnostics.

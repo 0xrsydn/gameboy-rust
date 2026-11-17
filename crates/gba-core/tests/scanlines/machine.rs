@@ -109,7 +109,7 @@ fn instruction_crossing_hblank_uses_committed_write_for_entire_row() {
 
 #[test]
 fn failed_cpu_step_does_not_advance_or_discard_capture_progress() {
-    let mut m = Memory::new(word_rom(&[0xf000_0000])).unwrap();
+    let mut m = Memory::new(word_rom(&[0xe7f0_00f0])).unwrap();
     m.set_scanline_rendering(true);
     m.write16(PAL, 31).unwrap();
     m.advance_cycles(HBLANK_START);
