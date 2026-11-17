@@ -183,8 +183,8 @@ fn if_acknowledgement_clears_earlier_timer_events_but_not_later_ones() {
 fn failed_instructions_discard_partial_timer_progress_and_pending_irqs() {
     for (instruction, base) in [
         (0xe591_0000, 0x0e00_0000),
-        (0xe891_0005, 0x0400_07fc), // Open bus, then unmodeled memory control fails.
-        (0xe881_00fd, 0x0400_07e8), // STMIA r1,{r0,r2-r7}; r7 reaches memory control.
+        (0xe891_0005, 0xffff_fffc), // Open bus, then a protected BIOS read fails.
+        (0xe881_00fd, 0x0cff_ffe8), // STMIA r1,{r0,r2-r7}; ROM writes are ignored, r7 hits 0x0d.
         (0xe7f0_00f0, 0),
     ] {
         let (cpu, mut memory) = prepared(false, &[instruction], &[(1, base)]);
@@ -365,7 +365,7 @@ fn machine_enable_joins_the_shared_phase_and_commits_it_without_duplicate_ticks(
 
 #[test]
 fn failed_cpu_and_dma_work_cannot_consume_a_shared_prescaler_edge() {
-    let (cpu, mut memory) = prepared(false, &[0xe891_0005], &[(1, 0x0400_07fc)]);
+    let (cpu, mut memory) = prepared(false, &[0xe891_0005], &[(1, 0xffff_fffc)]);
     start(&mut memory, 0, 0xffff, 0xc1);
     memory.advance_cycles(63);
     let before = memory.io.timer_step();

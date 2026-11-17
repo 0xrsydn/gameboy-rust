@@ -123,7 +123,7 @@ The timer therefore runs two additional cycles before the handler stops it.
 - Cold-start costs and state-changing test/compare quirks are not hardware-validated.
 - Data timing still uses an instruction-local access trace. This is not a complete bus-event scheduler.
 - Device clocks still update once per instruction, IRQ entry, or DMA unit.
-- Configurable EWRAM timing, display contention, and DMA during internal cycles remain unimplemented.
+- Display contention and DMA during internal cycles remain unimplemented. EWRAM wait states follow memory control.
 - IRQ synchronization delays and complete BIOS/general-bus latch history remain incomplete.
 
 The later ordered timing transaction preserved these baseline totals.

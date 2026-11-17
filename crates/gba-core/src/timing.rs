@@ -1,5 +1,5 @@
 //! Nominal GBA bus costs. These calculations do not perform memory accesses.
-//! Game Pak prefetch has a separate nominal queue; display contention and configurable EWRAM timing remain unmodeled.
+//! Game Pak prefetch has a separate nominal queue; display contention remains unmodeled.
 
 mod prefetch;
 pub(crate) use prefetch::Prefetch;
@@ -50,13 +50,24 @@ impl StepTiming {
 /// address against the memory map. Unmapped regions retain a one-cycle fallback
 /// so a branch can finish before the next instruction fetch reports a diagnostic.
 /// WAITCNT's prefetch and PHI bits are stored but do not affect this calculation.
-pub fn bus_cycles(waitcnt: u16, address: u32, width: AccessWidth, kind: AccessKind) -> u32 {
+/// Pack WAITCNT and the external work RAM wait states set through memory control
+/// (`0x04000800`) into the value `bus_cycles` takes. Bits 16-19 hold the EWRAM waits
+/// relative to the reset value of two, so a bare WAITCNT value keeps reset EWRAM timing.
+pub fn bus_waits(waitcnt: u16, ewram_wait: u8) -> u32 {
+    u32::from(waitcnt) | u32::from(ewram_wait.wrapping_sub(2) & 15) << 16
+}
+
+/// Nominal cycles of one access. `waits` is WAITCNT, or a `bus_waits` value.
+pub fn bus_cycles(waits: u32, address: u32, width: AccessWidth, kind: AccessKind) -> u32 {
+    let waitcnt = waits as u16;
     match address >> 24 {
         0x02 => {
+            // EWRAM's 16-bit bus: 1 + waits per halfword; a word is two halfwords.
+            let halfword = 1 + (((waits >> 16) + 2) & 15);
             if width == AccessWidth::Word {
-                6
+                2 * halfword
             } else {
-                3
+                halfword
             }
         }
         0x05 | 0x06 => {
@@ -103,7 +114,7 @@ pub(crate) struct CpuTiming {
     pub total: StepTiming,
     pub prefetch: Prefetch,
     #[cfg(test)]
-    code_waitcnt: u16,
+    code_waitcnt: u32,
     next_data: Option<u32>,
     // The largest supported step is LDM with PC: source + 16 data + I + 2 targets.
     // Production builds keep only costs and sequencing state, not an event log.
@@ -114,7 +125,7 @@ pub(crate) struct CpuTiming {
 }
 
 impl CpuTiming {
-    pub fn new(code_waitcnt: u16, mut prefetch: Prefetch) -> Self {
+    pub fn new(code_waitcnt: u32, mut prefetch: Prefetch) -> Self {
         prefetch.configure(code_waitcnt);
         Self {
             prefetch,
@@ -137,7 +148,7 @@ impl CpuTiming {
         });
     }
 
-    pub fn data(&mut self, waitcnt: u16, address: u32, width: AccessWidth) {
+    pub fn data(&mut self, waitcnt: u32, address: u32, width: AccessWidth) {
         let kind = if self.next_data == Some(address) {
             AccessKind::Sequential
         } else {
@@ -188,14 +199,14 @@ pub(crate) enum TimingEvent {
         address: u32,
         width: AccessWidth,
         kind: AccessKind,
-        waitcnt: u16,
+        waitcnt: u32,
         cycles: u32,
     },
     Data {
         address: u32,
         width: AccessWidth,
         kind: AccessKind,
-        waitcnt: u16,
+        waitcnt: u32,
         cycles: u32,
     },
     Internal {

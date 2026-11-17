@@ -89,6 +89,7 @@ impl Snapshot for Io {
             irq_wait,
             master_enable,
             waitcnt,
+            memory_control,
             dispcnt,
             bg_enable_lines,
             greenswap,
@@ -121,6 +122,7 @@ impl Snapshot for Io {
         writer.option(irq_wait.as_ref(), |wait, writer| writer.u32(*wait));
         writer.bool(*master_enable);
         writer.u16(*waitcnt);
+        memory_control.save(writer);
         writer.u16(*dispcnt);
         writer.bytes(bg_enable_lines);
         writer.bool(*greenswap);
@@ -151,6 +153,7 @@ impl Snapshot for Io {
             irq_wait,
             master_enable,
             waitcnt,
+            memory_control,
             dispcnt,
             bg_enable_lines,
             greenswap,
@@ -187,6 +190,7 @@ impl Snapshot for Io {
         *irq_wait = reader.option(Reader::u32)?;
         *master_enable = reader.bool()?;
         *waitcnt = reader.u16()?;
+        memory_control.load(reader)?;
         *dispcnt = reader.u16()?;
         reader.bytes_into(bg_enable_lines)?;
         *greenswap = reader.bool()?;

@@ -777,7 +777,7 @@ impl Memory {
             AccessKind::Sequential
         };
         let mut prefetch = self.gamepak_prefetch;
-        prefetch.configure(self.waitcnt());
+        prefetch.configure(self.io.bus_waits());
         // Keep the existing whole-unit DMA startup model; no sub-instruction arbitration.
         // Opcode prefetch does not run while DMA owns the bus, and its queue survives the
         // transfer; see docs/hardware/dma.md for the hardware measurements behind both.
@@ -790,7 +790,7 @@ impl Memory {
             0
         };
         let internal_cycles = if transfer.first { 2 } else { 0 } + stall;
-        let waitcnt = self.waitcnt();
+        let waitcnt = self.io.bus_waits();
         let source_cycles =
             crate::timing::bus_cycles(waitcnt, transfer.source, transfer.width, kind);
         // A transfer between two Game Pak addresses writes its first unit as a
@@ -868,7 +868,7 @@ impl Memory {
             }
         };
         // Only a successful unit commits queue progress. A WAITCNT destination can reset it.
-        prefetch.configure(self.waitcnt());
+        prefetch.configure(self.io.bus_waits());
         self.gamepak_prefetch = prefetch;
         // DMA runs before the resumed CPU fetch. Only actual IWRAM accesses drive
         // its local lanes, in read/write order. Channel halfword duplication is not
@@ -1100,7 +1100,7 @@ impl Memory {
             prefetch.clear();
         }
         self.cpu_timing
-            .set(Some(CpuTiming::new(self.waitcnt(), prefetch)));
+            .set(Some(CpuTiming::new(self.io.bus_waits(), prefetch)));
     }
 
     pub(crate) fn advance_halt_cycles(&mut self, cycles: u32) {
@@ -1148,7 +1148,7 @@ impl Memory {
 
     fn record_access(&self, address: u32, width: AccessWidth) {
         if let Some(mut trace) = self.cpu_timing.get() {
-            trace.data(self.waitcnt(), address, width);
+            trace.data(self.io.bus_waits(), address, width);
             self.cpu_timing.set(Some(trace));
             self.advance_timer_step(trace.total.total());
         }
@@ -1440,10 +1440,10 @@ impl Memory {
             if address & !3 == crate::io::WAITCNT {
                 // CPU changes are speculative with their timing transaction; host/DMA changes are immediate.
                 if let Some(mut trace) = self.cpu_timing.get() {
-                    trace.prefetch.configure(self.waitcnt());
+                    trace.prefetch.configure(self.io.bus_waits());
                     self.cpu_timing.set(Some(trace));
                 } else {
-                    self.gamepak_prefetch.configure(self.waitcnt());
+                    self.gamepak_prefetch.configure(self.io.bus_waits());
                 }
             }
             return Ok(());

@@ -2,9 +2,9 @@
 use super::*;
 
 const PC: u32 = 0x0800_1000;
-const ENABLE: u16 = 0x4000;
+const ENABLE: u32 = 0x4000;
 
-fn queue(waitcnt: u16) -> Prefetch {
+fn queue(waitcnt: u32) -> Prefetch {
     let mut queue = Prefetch::default();
     queue.configure(waitcnt);
     queue
@@ -20,7 +20,7 @@ fn save_wait_changes_preserve_the_queue_until_a_flash_data_access_cancels_it() {
         );
         q.advance(2); // One cycle remains in the nominal three-cycle ROM halfword.
         let stream = q.stream;
-        q.configure(ENABLE | wait as u16);
+        q.configure(ENABLE | wait as u32);
         assert_eq!(q.stream, stream);
         assert_eq!(
             q.data(0x0e005555, AccessWidth::Byte, AccessKind::NonSequential),

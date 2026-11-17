@@ -136,7 +136,7 @@ During ARM execution, data reads from `0x00004000..0x01ffffff` and `0x10000000..
 Open bus means the bus retains previously driven data. GBATEK identifies this ARM value as the instruction word at PC+8.
 These high addresses do not mirror BIOS, RAM, or cartridge addresses.
 The I/O page above its register block, `0x04000400..0x04ffffff`, reads the same way, except the
-64 KiB-repeated `0x04xx0800` register. GBATEK treats entirely unused I/O ports like unused memory.
+64 KiB-repeated memory control register at `0x04xx0800`. GBATEK treats entirely unused I/O ports like unused memory.
 mGBA's debug-port probe at `0x04fff780` lands in this range.
 
 The interpreter samples mapped bytes at PC+8 before executing each ARM instruction.
@@ -375,7 +375,8 @@ and [persistent access kinds](../research/fetch-access-sequencing.md) for eviden
 
 Data costs use the addresses and widths of actual CPU bus calls, after alignment handling.
 BIOS, internal work RAM, OAM, and supported I/O accesses cost one cycle.
-External work RAM costs 3 cycles for byte/halfword accesses and 6 for words.
+External work RAM costs 1 + W cycles for byte/halfword accesses and twice that for words, where W is the
+wait-state count set through memory control (two after reset, so 3 and 6 cycles).
 Palette and video RAM cost 1 cycle for byte/halfword accesses and 2 for words, without display contention.
 ROM costs include one cycle plus the configured wait states for each 16-bit transfer.
 A ROM word uses two halfword accesses; its second halfword always uses sequential timing.
@@ -387,6 +388,16 @@ Sequential and non-sequential save requests use the same nominal cost. Flash dat
 The writable mask is `0x5fff`; the Game Pak type flag reads as GBA, and the upper halfword reads as zero.
 A CPU write to WAITCNT does not retroactively change that instruction's code-access cost.
 The new settings apply to subsequent code accesses.
+
+The internal memory control register at `0x04000800` repeats every 64 KiB of the I/O page (GBATEK) and follows
+mGBA 0.10.5 (`GBAIOWrite` for `REG_EXWAITCNT_HI` and `GBAAdjustEWRAMWaitstates` in `src/gba/`):
+
+- It resets to `0x0d000020`. The low halfword ignores writes and keeps reading `0x0020`, so the work RAM enable and
+  disable bits have no effect.
+- The high halfword keeps bits 8–15 of what is written. Bits 24–27 (N) set the EWRAM wait states to 15 − N, which
+  applies from the next access. N = 15 (no wait states) is stored but keeps the previous timing, as in mGBA; GBATEK
+  reports that hardware cannot run EWRAM that fast.
+- None of this is hardware-verified. Games commonly write `0x0e000020` for one wait state.
 
 Timed CPU execution uses an ordered `CpuTiming` transaction: source fetch, actual data accesses, internal work, then target-pair fetches.
 A failed instruction discards the entire transaction. Target samples do not add duplicate fetch or data costs.

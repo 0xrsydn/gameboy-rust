@@ -259,8 +259,8 @@ fn dma_and_irq_consume_slice_budget_and_dma_failure_preserves_progress() {
         .unwrap();
     assert_eq!(session.stats.irq_entries, 1);
     let bus = session.machine.memory_mut();
-    // DMA0 masks cartridge addresses to BIOS; use an actually unmapped destination.
-    bus.write32(DMA_BASE + 4, 0x0400_0800).unwrap(); // Unmodeled memory control stays diagnostic.
+    // DMA0 masks cartridge addresses to BIOS; a DMA register destination stays diagnostic.
+    bus.write32(DMA_BASE + 4, DMA_BASE + 12).unwrap();
     bus.write32(DMA_BASE + 8, 0x8000_0001).unwrap();
     let cycles = session.machine.cycles();
     assert!(session.update(Buttons::default()).is_err());

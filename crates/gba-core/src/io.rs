@@ -3,9 +3,12 @@
 //! Timers share a free-running prescaler phase. Timer start, stop, and reload edges and
 //! the interrupt request delay follow docs/hardware/timers-irq.md.
 
+mod memory_control;
 mod serial;
 use crate::audio::Audio;
 pub use crate::audio::{FIFO_A, FIFO_B, SOUNDBIAS, SOUNDCNT_H, SOUNDCNT_X, SOUND_START, WAVE_RAM};
+use memory_control::MemoryControl;
+pub use memory_control::MEMCNT;
 pub(crate) use serial::Serial;
 pub use serial::{
     JOYCNT, JOYSTAT, JOY_RECV, JOY_TRANS, RCNT, SIOCNT, SIODATA32, SIODATA8, SIOMLT_SEND,
@@ -254,6 +257,7 @@ pub(crate) struct Io {
     irq_wait: Option<u32>,
     master_enable: bool,
     waitcnt: u16,
+    memory_control: MemoryControl,
     dispcnt: u16,
     // DISPCNT background enables (bits 8-11) as sampled at BG_ENABLE_SAMPLE_CYCLE of the
     // current line and of the two lines before it, newest first.
@@ -285,6 +289,7 @@ impl Io {
     pub(crate) fn mapped(address: u32) -> bool {
         Audio::mapped(address)
             || Serial::mapped(address)
+            || MemoryControl::mapped(address)
             || matches!(address, 0x0400_0000..=0x0400_0057 | DMA_BASE..=DMA_END | 0x0400_0100..=0x0400_010f | 0x0400_0130..=0x0400_0133 | 0x0400_0200..=0x0400_020b | POSTFLG..=0x0400_0303)
     }
 
@@ -316,10 +321,8 @@ impl Io {
     }
 
     /// I/O-page addresses with no register. CPU and DMA writes there are ignored.
-    /// The mirrored internal memory control register at `0x04xx0800` is a real,
-    /// unmodeled register and stays a diagnostic.
     pub(crate) fn unused(address: u32) -> bool {
-        address >> 24 == 0x04 && !Self::mapped(address) && address & 0xfffc != 0x0800
+        address >> 24 == 0x04 && !Self::mapped(address)
     }
 
     pub(crate) fn read8(&self, address: u32) -> Option<u8> {
@@ -341,6 +344,9 @@ impl Io {
         }
         if Serial::mapped(address) {
             return self.serial.read8(address);
+        }
+        if MemoryControl::mapped(address) {
+            return Some(self.memory_control.read8(address));
         }
         if (DMA_BASE..=DMA_END).contains(&address) {
             return Some(self.dma.read8(address));
@@ -389,6 +395,10 @@ impl Io {
         }
         if (DMA_BASE..=DMA_END).contains(&address) {
             self.dma.write8(address, value);
+            return;
+        }
+        if MemoryControl::mapped(address) {
+            self.memory_control.write8(address, value);
             return;
         }
         match address & !1 {
@@ -652,6 +662,11 @@ impl Io {
 
     pub(crate) fn waitcnt(&self) -> u16 {
         self.waitcnt
+    }
+
+    /// WAITCNT with the EWRAM wait states from memory control, for bus timing.
+    pub(crate) fn bus_waits(&self) -> u32 {
+        crate::timing::bus_waits(self.waitcnt, self.memory_control.ewram_wait())
     }
 
     pub(crate) fn irq_pending(&self) -> bool {

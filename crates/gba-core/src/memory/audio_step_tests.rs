@@ -139,7 +139,7 @@ fn master_enable_store_does_not_replay_earlier_timer_edges() {
 
 #[test]
 fn failed_cpu_load_rolls_back_timer_audio_and_pending_refill_requests() {
-    let (cpu, mut memory) = prepared(false, &[0xe8910005], &[(1, 0x0400_07fc)]); // LDM: open bus at 0x7fc, then unmodeled memory control fails.
+    let (cpu, mut memory) = prepared(false, &[0xe8910005], &[(1, 0xffff_fffc)]); // LDM: open bus, then a protected BIOS read fails.
     sound(&mut memory, 1);
     memory.write32(FIFO_A, 0x04030201).unwrap();
     let audio = memory.io.audio;

@@ -92,6 +92,7 @@ The repository is a Cargo workspace with three crates:
 | `crates/gba-core/tests/pulse_sound/channel2.rs` | Channel 2 mapping, register gaps, independent state, shared clocks, and sum-before-rounding mixing |
 | `crates/gba-core/tests/direct_sound.rs` | FIFO lanes/reset, signed mixing, timer selection, DMA refill, and HALT/STOP |
 | `crates/gba-core/src/memory/audio_step_tests.rs` | Audio access phases, shadow validation, and CPU/DMA failure rollback |
+| `crates/gba-core/src/io/memory_control.rs` | Internal memory control at `0x04xx0800`: reset value, high-byte storage, and EWRAM wait states as mGBA sets them |
 | `crates/gba-core/src/io/serial.rs` | Disconnected normal serial shifter, internal clocks, external waiting, idle multiplayer and local Joybus registers, GPIO latches, and live-write validation |
 | `crates/gba-core/tests/inactive_devices.rs` | Device masks, wave RAM, GPIO pull-ups, serial data, and failed CPU/DMA write isolation |
 | `crates/gba-core/tests/serial_control.rs` | RCNT mode gating, inactive bits, byte/halfword lanes, CPU/DMA diagnostics, and interrupt isolation |

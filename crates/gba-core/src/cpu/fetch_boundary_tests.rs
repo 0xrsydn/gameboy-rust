@@ -223,7 +223,7 @@ fn rom_page_and_wait_window_crossings_use_mapped_halfwords_and_fetch_address_cos
                 assert_eq!(
                     timing.code_cycles,
                     bus_cycles(
-                        memory.waitcnt(),
+                        memory.waitcnt().into(),
                         pc + 4,
                         AccessWidth::Halfword,
                         AccessKind::Sequential

@@ -31,7 +31,7 @@ fn arm_and_thumb_program_start_excludes_preceding_bus_cycles() {
 }
 #[test]
 fn failed_block_load_restores_completion_and_dirty_state() {
-    let (cpu, mut m) = prepared(false, &[0xe8910005], &[(1, 0x0400_07fc)]); // Open bus, then a failing read.
+    let (cpu, mut m) = prepared(false, &[0xe8910005], &[(1, 0xffff_fffc)]); // Open bus, then a protected BIOS read fails.
     setup(&mut m);
     m.write8(BASE, 0x12).unwrap();
     m.advance_cycles(PROGRAM - 7);

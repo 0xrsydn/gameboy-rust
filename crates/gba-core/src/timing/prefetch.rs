@@ -5,7 +5,7 @@ use crate::snapshot::{Reader, Snapshot, SnapshotError, Writer};
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Prefetch {
-    waitcnt: u16,
+    waitcnt: u32,
     stream: Option<Stream>,
 }
 
@@ -18,7 +18,7 @@ struct Stream {
 }
 
 impl Prefetch {
-    pub fn configure(&mut self, waitcnt: u16) {
+    pub fn configure(&mut self, waitcnt: u32) {
         // Changes to ROM waits or enable invalidate timing metadata. PHI/SRAM do not.
         // Exact hardware behavior of disabling a partially filled queue remains unverified.
         if (self.waitcnt ^ waitcnt) & 0x47fc != 0 {
@@ -191,7 +191,7 @@ impl Snapshot for Prefetch {
     fn save(&self, writer: &mut Writer) {
         let Self { waitcnt, stream } = self;
         writer.tag(b"PFCH");
-        writer.u16(*waitcnt);
+        writer.u32(*waitcnt);
         writer.option(stream.as_ref(), |stream, writer| {
             let Stream {
                 head,
@@ -209,7 +209,7 @@ impl Snapshot for Prefetch {
     fn load(&mut self, reader: &mut Reader<'_>) -> Result<(), SnapshotError> {
         let Self { waitcnt, stream } = self;
         reader.tag(b"PFCH")?;
-        *waitcnt = reader.u16()?;
+        *waitcnt = reader.u32()?;
         *stream = reader.option(|reader| {
             let head = reader.u32()?;
             let ready = reader.u8()?;
@@ -275,7 +275,7 @@ mod snapshot_tests {
     #[test]
     fn prefetch_rejects_invalid_stream_values() {
         let mut bytes = save(&populated_prefetch());
-        bytes[11] = 9;
+        bytes[13] = 9; // Stream `ready`, after the tag, the 32-bit waits, and the option.
         let mut restored = Prefetch::default();
         assert!(matches!(
             restored.load(&mut Reader::new(&bytes)),

@@ -33,7 +33,7 @@ fn save_byte_access_costs_follow_waitcnt_and_ignore_sequential_kind() {
         for kind in [AccessKind::NonSequential, AccessKind::Sequential] {
             for address in [0x0e000000, 0x0e005555, 0x0e00ffff] {
                 assert_eq!(
-                    bus_cycles(wait as u16, address, AccessWidth::Byte, kind),
+                    bus_cycles(wait as u32, address, AccessWidth::Byte, kind),
                     cycles
                 );
             }

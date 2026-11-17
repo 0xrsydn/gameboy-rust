@@ -245,7 +245,7 @@ Host inspection and instruction fetches remain strict. Other unmapped reads retu
 CPU and DMA writes to unused I/O addresses and to unused memory are ignored, as on hardware; host writes there stay strict.
 CPU reads above the I/O register block (`0x04000400..0x04ffffff`) return open bus like other unused memory.
 CPU reads of write-only registers and unused slots inside the register block return open bus or zero, per the mGBA suite's hardware I/O read table.
-The unmodeled internal memory control register at `0x04xx0800` remains a diagnostic.
+The internal memory control register at `0x04xx0800` sets EWRAM wait states as mGBA 0.10.5 does; its work RAM enable bits are ignored.
 CPU and DMA reads beyond the power-of-two ROM chip return the Game Pak halfword-address pattern; reads inside a trimmed image's chip, host reads, and instruction fetches past the image return errors.
 Direct memory-bus halfword and word accesses require alignment.
 CPU load/store instructions apply ARM7TDMI alignment and rotation rules before accessing the bus.

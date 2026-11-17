@@ -340,14 +340,7 @@ fn cold_fills_and_mapped_crossings_succeed_only_with_known_fetch_lanes() {
 
 #[test]
 fn unsupported_data_regions_and_unused_stores_do_not_gain_fallbacks() {
-    for address in [
-        0,
-        0x3ffc,
-        0x0400_0800,
-        ROM_START + 12,
-        0x0e00_0000,
-        0x0fff_fffc,
-    ] {
+    for address in [0, 0x3ffc, ROM_START + 12, 0x0e00_0000, 0x0fff_fffc] {
         let mut bus = program(ROM_START, LDR);
         let mut cpu = cpu(ROM_START);
         cpu.registers[0] = address;

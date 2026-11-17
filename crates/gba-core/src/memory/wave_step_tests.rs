@@ -68,10 +68,10 @@ fn failed_block_access_rolls_back_rotated_ram_samples_configuration_and_clocks()
             prepared(
                 false,
                 &[0xe8a0003e],
-                // Four ignored unused-I/O words while the wave channel plays, then a
-                // write to unmodeled memory control fails the whole block.
+                // Four ignored Game Pak ROM words while the wave channel plays, then a
+                // write to the 0x0d window (no EEPROM) fails the whole block.
                 &[
-                    (0, 0x0400_07f0),
+                    (0, 0x0cff_fff0),
                     (1, 0x20000080),
                     (2, 0x87ff),
                     (3, 0),
@@ -80,7 +80,7 @@ fn failed_block_access_rolls_back_rotated_ram_samples_configuration_and_clocks()
                 ],
             )
         } else {
-            prepared(false, &[0xe8910005], &[(1, 0x0400_07fc)]) // Open bus, then 0x800 fails.
+            prepared(false, &[0xe8910005], &[(1, 0xffff_fffc)]) // Open bus, then a protected BIOS read fails.
         };
         setup(&mut memory);
         memory.write16(0x04000074, 0x87ff).unwrap();

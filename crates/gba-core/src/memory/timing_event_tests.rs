@@ -236,7 +236,7 @@ fn waitcnt_store_records_old_source_settings_and_next_step_records_new_settings(
                 address: pc + 12,
                 width: AccessWidth::Word,
                 kind: AccessKind::NonSequential,
-                waitcnt: waitcnt as u16,
+                waitcnt,
                 cycles: 5,
             }]
         );
@@ -287,7 +287,7 @@ fn failed_instructions_discard_events_and_preserve_the_last_successful_trace() {
     }
     // A late block-load error must also discard already recorded data accesses.
     {
-        let (mut cpu, mut memory) = prepared(false, &[ARM_NOP, 0xe8b1_0005], &[(1, 0x0400_07fc)]); // Open bus, then 0x800 fails.
+        let (mut cpu, mut memory) = prepared(false, &[ARM_NOP, 0xe8b1_0005], &[(1, 0xffff_fffc)]); // Open bus, then a protected BIOS read fails.
         cpu.step_timed(&mut memory).unwrap();
         let previous = events(&memory);
         let before = cpu.clone();

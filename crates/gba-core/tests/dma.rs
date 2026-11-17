@@ -605,7 +605,7 @@ fn rom_dma_uses_waitcnt_sequential_costs_and_forces_source_increment() {
                     for index in 0..2 {
                         units(&mut machine, channel, 1);
                         let expected = bus_cycles(
-                            machine.memory().waitcnt(),
+                            machine.memory().waitcnt().into(),
                             window + index * stride,
                             width,
                             if index == 0 {

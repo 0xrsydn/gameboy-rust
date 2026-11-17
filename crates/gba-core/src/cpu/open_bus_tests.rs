@@ -72,12 +72,13 @@ fn arm_reads_above_the_io_registers_return_pc_plus_eight() {
         assert_cpu_arch_eq!(cpu, expected, "{address:#010x}");
         assert_eq!(bus.read32(address), Err(MemoryError::Unmapped(address)));
     }
-    // Unused slots inside the register block and the memory-control mirror stay strict.
+    // The memory control register and its 64 KiB mirrors read their reset value.
     for address in [0x0400_0800, 0x0401_0800] {
         let mut bus = memory(LDR);
         let mut cpu = Cpu::new(ROM_START);
         cpu.registers[0] = address;
-        assert!(cpu.step(&mut bus).is_err(), "{address:#010x}");
+        cpu.step(&mut bus).unwrap();
+        assert_eq!(cpu.registers[1], 0x0d00_0020, "{address:#010x}");
     }
 }
 
@@ -241,14 +242,7 @@ fn skipped_loads_need_no_prefetch_and_charge_no_data_cycles() {
 
 #[test]
 fn missing_bios_rom_save_and_unsupported_io_reads_remain_errors() {
-    for address in [
-        0,
-        0x3ffc,
-        0x0400_0800, // Unmodeled memory control; unused I/O slots read open bus or zero.
-        ROM_START + 12,
-        0x0e00_0000,
-        0x0fff_fffc,
-    ] {
+    for address in [0, 0x3ffc, ROM_START + 12, 0x0e00_0000, 0x0fff_fffc] {
         let mut bus = memory(LDR);
         let mut cpu = Cpu::new(ROM_START);
         cpu.registers[0] = address;

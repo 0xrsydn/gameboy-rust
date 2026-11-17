@@ -283,7 +283,7 @@ fn cpu_only_step_does_not_advance_device_time_or_deliver_irq() {
 }
 
 #[test]
-fn cpu_stores_to_unused_io_are_ignored_but_memory_control_and_host_writes_stay_strict() {
+fn cpu_stores_to_unused_io_are_ignored_but_host_and_unmapped_save_writes_stay_strict() {
     for address in [
         0x0400_0058,
         0x0400_00e0,
@@ -298,11 +298,46 @@ fn cpu_stores_to_unused_io_are_ignored_but_memory_control_and_host_writes_stay_s
             Err(MemoryError::Unmapped(address))
         );
     }
-    let mut machine = prepared(0xe580_1000, &[(0, 0x0400_0800), (1, 0)]);
+    let mut machine = prepared(0xe580_1000, &[(0, 0x0e00_0000), (1, 0)]);
     let before = machine.cpu().clone();
     assert_eq!(
         machine.step(),
-        Err(MachineError::Cpu(MemoryError::Unmapped(0x0400_0800).into()))
+        Err(MachineError::Cpu(MemoryError::Unmapped(0x0e00_0000).into()))
     );
     assert_eq!(machine.cpu(), &before);
+}
+
+#[test]
+fn memory_control_sets_ewram_wait_states_as_in_mgba() {
+    // STR r1,[r0] to memory control, then LDR r2,[r3] from EWRAM. N (bits 24-27) gives
+    // 15 - N wait states per halfword; N = 15 is refused and keeps the previous timing.
+    for (control, word_cycles) in [
+        (0x0d00_0020, 6), // Reset value: two wait states.
+        (0x0e00_0020, 4),
+        (0x0f00_0020, 6),
+        (0x0000_00ff, 32),
+    ] {
+        let code = [
+            0xe59f_000c, // LDR r0,=0x04000800
+            0xe59f_100c, // LDR r1,=control
+            0xe59f_300c, // LDR r3,=0x02000000
+            0xe580_1000, // STR r1,[r0]
+            0xe593_2000, // LDR r2,[r3]
+            0x0400_0800,
+            control,
+            0x0200_0000,
+        ];
+        let mut machine = Machine::new(Cpu::new(ROM_START), Memory::new(words(&code)).unwrap());
+        for _ in 0..4 {
+            assert_eq!(machine.step().unwrap(), StepKind::Instruction);
+        }
+        let readback = machine.memory().read32(0x0401_0800).unwrap(); // A 64 KiB mirror.
+        assert_eq!(readback, control & 0xff00_0000 | 0x20, "{control:#010x}");
+        assert_eq!(machine.step().unwrap(), StepKind::Instruction);
+        assert_eq!(
+            machine.last_timing().data_cycles,
+            word_cycles,
+            "{control:#010x}"
+        );
+    }
 }
