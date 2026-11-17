@@ -740,7 +740,7 @@ impl Memory {
     /// Execute at most one DMA unit. Validate before side effects, then advance
     /// device clocks with the CPU paused. Earlier units remain committed on error.
     pub(crate) fn step_dma(&mut self) -> Result<Option<(usize, StepTiming)>, DmaError> {
-        let Some(transfer) = self.io.next_dma()? else {
+        let Some(transfer) = self.io.next_dma() else {
             return Ok(None);
         };
         let channel = transfer.channel;

@@ -1,22 +1,23 @@
 //! Four-channel GBA direct memory access (DMA) controller.
 //! Transfers are scheduled one data unit at a time. Startup/resumption delays,
-//! CPU bus handoff, video capture, and Game Pak DRQ are not modeled.
-//! Sound requests support DMA1/FIFO A and DMA2/FIFO B; other pairings are diagnostic.
+//! CPU bus handoff, and Game Pak DRQ are not modeled.
+//! Special timing serves the sound FIFOs on DMA1/2 and video capture on DMA3.
 //! Each channel retains known source data across blocks, including blocked reads.
 
 use std::{error::Error, fmt};
 
 use crate::snapshot::{Reader, Snapshot, SnapshotError, Writer};
-use crate::{memory::MemoryError, timing::AccessWidth};
+use crate::{display::DmaEvents, memory::MemoryError, timing::AccessWidth};
 
 pub const DMA_BASE: u32 = 0x0400_00b0;
 pub const DMA_STRIDE: u32 = 12;
 pub(crate) const DMA_END: u32 = DMA_BASE + 4 * DMA_STRIDE - 1;
+/// The last scanline whose HBlank requests a DMA3 video-capture block.
+const LAST_CAPTURE_LINE: u16 = 161;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DmaError {
     Memory { channel: usize, error: MemoryError },
-    UnsupportedControl { channel: usize, control: u16 },
     RegisterDestination { channel: usize, address: u32 },
     PowerControlDestination { channel: usize, address: u32 },
 }
@@ -25,9 +26,6 @@ impl fmt::Display for DmaError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Memory { channel, error } => write!(f, "DMA{channel}: {error}"),
-            Self::UnsupportedControl { channel, control } => {
-                write!(f, "DMA{channel}: unsupported control {control:#06x}")
-            }
             Self::PowerControlDestination { channel, address } => {
                 write!(
                     f,
@@ -79,15 +77,16 @@ impl Channel {
         (self.control >> 12) & 3
     }
 
-    /// DMA3 special timing (video capture) is not modeled yet. As in mGBA 0.10.5, Game Pak
-    /// DRQ is ignored (the transfer keeps its programmed timing), prohibited source mode 3
-    /// increments, and DMA1/2 special timing serves whichever FIFO its destination names.
-    fn unsupported(&self, index: usize) -> bool {
-        self.start_timing() == 3 && index == 3
+    /// DMA1/2 special timing feeds a sound FIFO: four words to a fixed destination.
+    /// As in mGBA 0.10.5, Game Pak DRQ is ignored (the transfer keeps its programmed
+    /// timing), prohibited source mode 3 increments, and DMA1/2 special timing serves
+    /// whichever FIFO its destination names.
+    fn sound(&self, index: usize) -> bool {
+        self.start_timing() == 3 && (index == 1 || index == 2)
     }
 
-    fn width(&self) -> AccessWidth {
-        if self.start_timing() == 3 || self.control & 0x400 != 0 {
+    fn width(&self, index: usize) -> AccessWidth {
+        if self.sound(index) || self.control & 0x400 != 0 {
             AccessWidth::Word
         } else {
             AccessWidth::Halfword
@@ -95,7 +94,7 @@ impl Channel {
     }
 
     fn initial_count(&self, index: usize) -> u32 {
-        if self.start_timing() == 3 {
+        if self.sound(index) {
             4
         } else if self.count != 0 {
             u32::from(self.count)
@@ -165,7 +164,7 @@ impl Dma {
                     channel.active = false;
                     channel.start_delay = 0; // A cancelled transfer has no start to wait for.
                 } else if !was_enabled {
-                    let mask = !(channel.width().bytes() - 1);
+                    let mask = !(channel.width(index).bytes() - 1);
                     channel.current_source = channel.source & mask;
                     channel.current_destination = channel.destination & mask;
                     channel.remaining = channel.initial_count(index);
@@ -181,23 +180,17 @@ impl Dma {
     /// Blanking requests are edges, not queued jobs. An active channel ignores
     /// further edges until its current block completes. Each delay is what remains of
     /// START_DELAY at the end of the clock batch that crossed that edge.
-    pub(crate) fn trigger(
-        &mut self,
-        vblank: bool,
-        hblank: bool,
-        vblank_delay: u8,
-        hblank_delay: u8,
-    ) {
+    pub(crate) fn trigger(&mut self, events: DmaEvents, vblank_delay: u8, hblank_delay: u8) {
         for (index, channel) in self.channels.iter_mut().enumerate() {
             if !channel.enabled() || channel.active {
                 continue;
             }
-            // DMA3 special timing (video capture) is unmodeled: its HBlank request makes
-            // the channel ready so `next` reports it instead of silently never running.
             let delay = match channel.start_timing() {
-                1 if vblank => vblank_delay,
-                2 if hblank => hblank_delay,
-                3 if hblank && index == 3 => hblank_delay,
+                1 if events.vblank => vblank_delay,
+                2 if events.hblank => hblank_delay,
+                // DMA3 video capture starts at the HBlank of lines 2-161, as mGBA 0.10.5
+                // does (`GBADMARunDisplayStart` from `_startHblank`); not hardware-verified.
+                3 if events.capture && index == 3 => hblank_delay,
                 _ => continue,
             };
             channel.active = true;
@@ -219,40 +212,30 @@ impl Dma {
     }
 
     /// Select the highest-priority ready channel without changing its state.
-    /// An unsupported mode reports a diagnostic when it would transfer. Programming one
-    /// is harmless until then (the mGBA suite writes and restores every control bit);
     /// DMA0 special timing never triggers, as in mGBA.
-    pub(crate) fn next(&self) -> Result<Option<Transfer>, DmaError> {
-        for (index, channel) in self.channels.iter().enumerate() {
-            if !channel.enabled() {
-                continue;
-            }
-            if channel.active && channel.unsupported(index) {
-                return Err(DmaError::UnsupportedControl {
-                    channel: index,
-                    control: channel.control,
-                });
-            }
-            if channel.active && channel.start_delay == 0 {
-                return Ok(Some(Transfer {
-                    channel: index,
-                    source: channel.current_source,
-                    destination: channel.current_destination,
-                    width: channel.width(),
-                    first: channel.first,
-                    data_latch: channel.data_latch,
-                    remaining: channel.remaining,
-                }));
-            }
-        }
-        Ok(None)
+    pub(crate) fn next(&self) -> Option<Transfer> {
+        self.channels
+            .iter()
+            .enumerate()
+            .find(|(_, channel)| channel.enabled() && channel.active && channel.start_delay == 0)
+            .map(|(index, channel)| Transfer {
+                channel: index,
+                source: channel.current_source,
+                destination: channel.current_destination,
+                width: channel.width(index),
+                first: channel.first,
+                data_latch: channel.data_latch,
+                remaining: channel.remaining,
+            })
     }
 
     /// Commit one successful data unit after its bus cycles. Return completion IRQ bits.
-    pub(crate) fn complete_unit(&mut self, index: usize, data_latch: u32) -> u16 {
+    /// `line` is the current scanline: a video-capture block that ends on line 161
+    /// disables DMA3, as mGBA 0.10.5's `_dmaEvent` does.
+    pub(crate) fn complete_unit(&mut self, index: usize, data_latch: u32, line: u16) -> u16 {
         let channel = &mut self.channels[index];
         channel.data_latch = Some(data_latch);
-        let width = channel.width().bytes();
+        let width = channel.width(index).bytes();
         // The Game Pak source counter increments regardless of source control.
         let source_mode = if (0x08..=0x0d).contains(&(channel.current_source >> 24)) {
             0
@@ -263,7 +246,7 @@ impl Dma {
         channel.current_destination = advance_address(
             channel.current_destination,
             width,
-            if channel.start_timing() == 3 {
+            if channel.sound(index) {
                 2
             } else {
                 (channel.control >> 5) & 3
@@ -275,10 +258,11 @@ impl Dma {
             return 0;
         }
         channel.active = false;
-        if channel.control & 0x200 != 0 && channel.start_timing() != 0 {
+        let capture_done = index == 3 && channel.start_timing() == 3 && line == LAST_CAPTURE_LINE;
+        if channel.control & 0x200 != 0 && channel.start_timing() != 0 && !capture_done {
             channel.remaining = channel.initial_count(index);
             channel.first = true;
-            if channel.start_timing() != 3 && channel.control & 0x60 == 0x60 {
+            if !channel.sound(index) && channel.control & 0x60 == 0x60 {
                 channel.current_destination = channel.destination & !(width - 1);
             }
         } else {

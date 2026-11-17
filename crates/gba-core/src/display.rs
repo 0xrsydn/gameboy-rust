@@ -24,6 +24,15 @@ pub struct DisplayPosition {
     pub vblanks: u64,
 }
 
+/// Display DMA request edges crossed by one clock batch.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct DmaEvents {
+    pub vblank: bool,
+    pub hblank: bool,
+    /// An HBlank of lines 2-161, which requests DMA3 video capture.
+    pub capture: bool,
+}
+
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub(crate) struct Display {
     phase: u32,
@@ -76,19 +85,27 @@ impl Display {
     }
 
     /// Display DMA requests are independent of DISPSTAT interrupt enables.
-    /// Unlike HBlank IRQs, HBlank DMA requests occur only on visible lines.
-    pub(crate) fn dma_events(&self, cycles: u32) -> (bool, bool) {
-        let vblank = crossings(self.phase, cycles, CYCLES_PER_FRAME, VBLANK_START) != 0;
-        let visible_hblanks = |time: u64| {
+    /// Unlike HBlank IRQs, HBlank DMA requests occur only on visible lines, and DMA3
+    /// video-capture requests only at the HBlanks of lines 2-161.
+    /// Returns whether the interval (old time, new time] crossed each kind.
+    pub(crate) fn dma_events(&self, cycles: u32) -> DmaEvents {
+        // HBlanks of lines first..=last up to `time`, counted across whole frames.
+        let hblanks = |time: u64, first: u64, last: u64| {
             let frame = u64::from(CYCLES_PER_FRAME);
             let line = u64::from(CYCLES_PER_LINE);
-            let visible = u64::from(VISIBLE_LINES);
-            time / frame * visible
-                + ((time % frame + line - u64::from(HBLANK_START)) / line).min(visible)
+            let started = (time % frame + line - u64::from(HBLANK_START)) / line;
+            time / frame * (last + 1 - first) + started.clamp(first, last + 1) - first
         };
-        let begin = u64::from(self.phase);
-        let hblank = visible_hblanks(begin + u64::from(cycles)) != visible_hblanks(begin);
-        (vblank, hblank)
+        let (begin, end) = (
+            u64::from(self.phase),
+            u64::from(self.phase) + u64::from(cycles),
+        );
+        let crossed = |first, last| hblanks(end, first, last) != hblanks(begin, first, last);
+        DmaEvents {
+            vblank: crossings(self.phase, cycles, CYCLES_PER_FRAME, VBLANK_START) != 0,
+            hblank: crossed(0, u64::from(VISIBLE_LINES) - 1),
+            capture: crossed(2, 161),
+        }
     }
 
     /// Advance inside one line without reaching its HBlank or the next line start.

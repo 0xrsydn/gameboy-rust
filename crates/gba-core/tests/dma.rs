@@ -672,7 +672,7 @@ fn video_palette_mirrors_and_mapped_io_use_the_normal_bus() {
 }
 
 #[test]
-fn special_timing_is_harmless_until_it_would_transfer() {
+fn dma0_special_timing_never_triggers() {
     // DMA0 special timing never triggers, as in mGBA: a whole frame passes untouched.
     let mut machine = machine();
     configure(machine.memory_mut(), 0, SOURCE, DEST, 1, 0x3000);
@@ -680,17 +680,56 @@ fn special_timing_is_harmless_until_it_would_transfer() {
     assert!(machine.run_until_vblank(400_000).is_ok());
     assert_eq!(machine.memory().read32(DEST).unwrap(), 0);
     assert!(enabled(&machine, 0));
-    // DMA3 video capture is unmodeled: its first visible HBlank request is reported.
-    let mut capture = self::machine();
-    configure(capture.memory_mut(), 3, SOURCE, DEST, 1, 0x3000);
-    let error = (0..400_000)
-        .find_map(|_| capture.step().err())
-        .expect("video capture request");
-    assert!(matches!(
-        error,
-        MachineError::Dma(DmaError::UnsupportedControl { channel: 3, .. })
-    ));
-    assert_eq!(capture.memory().read32(DEST).unwrap(), 0);
+}
+
+/// Run DMA3 video capture of `count` halfwords per block for one frame from line 0.
+/// Returns the scanline of every block's first unit and the final enable bit.
+fn capture(control: u16, count: u16) -> (Machine, Vec<u16>) {
+    let mut machine = machine();
+    for index in 0..0x400 {
+        machine
+            .memory_mut()
+            .write16(SOURCE + index * 2, index as u16 + 1)
+            .unwrap();
+    }
+    configure(machine.memory_mut(), 3, SOURCE, DEST, count, control);
+    let mut starts = Vec::new();
+    while machine.cycles() < u64::from(CYCLES_PER_FRAME) + u64::from(CYCLES_PER_LINE * 3) {
+        let line = machine.memory().display_position().scanline;
+        if machine.step().unwrap() == (StepKind::Dma { channel: 3 })
+            && machine.last_timing().internal_cycles != 0
+        {
+            starts.push(line);
+        }
+    }
+    (machine, starts)
+}
+
+#[test]
+fn dma3_video_capture_runs_one_block_per_hblank_of_lines_2_to_161_as_in_mgba() {
+    // Repeat: a normal-width block of `count` units at each HBlank of lines 2-161, then the
+    // block that ends on line 161 clears the enable bit (mGBA 0.10.5's `_dmaEvent`).
+    let (machine, starts) = capture(0x3200, 2);
+    assert_eq!(starts, (2..=161).collect::<Vec<u16>>());
+    assert!(!enabled(&machine, 3));
+    for index in 0..320 {
+        let address = DEST + index * 2;
+        assert_eq!(machine.memory().read16(address).unwrap(), index as u16 + 1);
+    }
+    assert_eq!(machine.memory().read16(DEST + 640).unwrap(), 0);
+
+    // Without repeat, only the first block runs.
+    let (machine, starts) = capture(0x3000, 2);
+    assert_eq!(starts, [2]);
+    assert!(!enabled(&machine, 3));
+    assert_eq!(machine.memory().read32(DEST).unwrap(), 0x0002_0001);
+    assert_eq!(machine.memory().read16(DEST + 4).unwrap(), 0);
+
+    // Word width, decrementing destination, and destination reload keep their usual meaning.
+    let (machine, starts) = capture(0x3660, 1);
+    assert_eq!(starts.len(), 160);
+    assert_eq!(machine.memory().read32(DEST).unwrap(), 0x0140_013f); // The last block's word.
+    assert_eq!(machine.memory().read32(DEST + 4).unwrap(), 0);
 }
 
 #[test]

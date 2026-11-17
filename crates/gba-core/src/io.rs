@@ -22,7 +22,7 @@ use crate::{
     display::{
         Display, DisplayPosition, CYCLES_PER_LINE, HBLANK_START, LINES_PER_FRAME, VISIBLE_LINES,
     },
-    dma::{Dma, DmaError, Transfer, DMA_BASE, DMA_END},
+    dma::{Dma, Transfer, DMA_BASE, DMA_END},
     input::{Buttons, Keypad},
 };
 
@@ -662,12 +662,13 @@ impl Io {
         self.dma.expedite();
     }
 
-    pub(crate) fn next_dma(&self) -> Result<Option<Transfer>, DmaError> {
+    pub(crate) fn next_dma(&self) -> Option<Transfer> {
         self.dma.next()
     }
 
     pub(crate) fn complete_dma_unit(&mut self, channel: usize, data_latch: u32) {
-        self.pending |= self.dma.complete_unit(channel, data_latch);
+        let line = self.display.position().scanline;
+        self.pending |= self.dma.complete_unit(channel, data_latch, line);
         self.update_irq_line(Some(0));
     }
 
@@ -798,9 +799,9 @@ impl Io {
                 [enables, self.bg_enable_lines[0], self.bg_enable_lines[1]]
             };
         }
-        let (vblank, hblank) = self.display.dma_events(cycles);
+        let events = self.display.dma_events(cycles);
         self.pending |= self.display.advance(cycles);
-        if vblank || hblank {
+        if events.vblank || events.hblank || events.capture {
             // A blanking transfer starts START_DELAY cycles after its edge. A batch
             // that ends past the edge has already spent part of that wait.
             let position = self.display.position();
@@ -812,7 +813,7 @@ impl Io {
                 + line_cycle;
             let left = |since: u32| u32::from(crate::dma::START_DELAY).saturating_sub(since) as u8;
             self.dma
-                .trigger(vblank, hblank, left(since_vblank), left(since_hblank));
+                .trigger(events, left(since_vblank), left(since_hblank));
         }
         self.advance_timers_and_wake(cycles, advance_timers);
     }

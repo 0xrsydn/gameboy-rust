@@ -86,9 +86,18 @@ A FIFO request starts DMA1 or DMA2 when that channel's destination is the reques
 either FIFO; a special-timing DMA1/2 aimed elsewhere is never requested. Game Pak DRQ is ignored and the transfer keeps
 its programmed timing, and prohibited source mode 3 increments like mode 0. All three follow mGBA 0.10.5
 (`GBAAudioScheduleFifoDma`, `GBADMAWriteCNT_HI`, and `DMA_OFFSET` in `src/gba/`); none is verified on hardware.
-DMA3 special timing (video capture) returns `DmaError::UnsupportedControl` when the channel would transfer, not when it
-is programmed: the mGBA suite writes and restores every control bit.
-DMA0 special timing never triggers, as in mGBA. DMA3 special timing (video capture) is reported at its first visible HBlank.
+DMA0 special timing never triggers, as in mGBA.
+
+DMA3 special timing is video capture, modeled on mGBA 0.10.5 (`GBADMARunDisplayStart`, called from `_startHblank`
+in `src/gba/video.c`, and `_dmaEvent` in `src/gba/dma.c`); none of it is hardware-verified:
+
+- The HBlank of each line 2–161 requests one block, which starts after the usual HBlank start delay.
+  An active channel ignores further requests until its block completes.
+- A block is an ordinary transfer: the programmed count (0 means 0x10000), width, and address controls,
+  including destination reload with repeat.
+- Without repeat, the first block clears the enable bit. With repeat, a block that completes while VCOUNT is 161
+  clears it, so capture stops after the last visible line. A long block that ends on a later line keeps the
+  channel enabled, and capture resumes at line 2 of the next frame, as in mGBA.
 DMA reads below work RAM reuse known channel data as described below. They never expose BIOS bytes.
 DMA writes to DMA registers return `DmaError::RegisterDestination`; self-modifying transfers are not supported.
 Writes into the mapped 16 KiB BIOS [complete without changing its image](bios.md#writes-to-the-mapped-bios).

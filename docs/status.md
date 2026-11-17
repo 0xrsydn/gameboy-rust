@@ -41,7 +41,7 @@ Update this file when a feature lands or a limit is removed.
 - The replacement BIOS dispatches IRQs with a minimal `LDR pc` path.
 - Interrupt requests reach the CPU and HALT three cycles late, timers stop one cycle late, and a reload write misses an overflow in the next cycle; the mGBA test suite's Timer IRQ, Timer count-up, and SIO timing sub-suites pass in full.
 - A 228-line display clock, VCOUNT/DISPSTAT, and VBlank/HBlank/VCount-match interrupts.
-- Four direct memory access (DMA) channels, with immediate, VBlank, and visible-line HBlank triggers.
+- Four direct memory access (DMA) channels, with immediate, VBlank, and visible-line HBlank triggers, Direct Sound FIFO requests, and DMA3 video capture at the HBlanks of lines 2–161 as mGBA models it.
 - Halfword/word DMA, address controls, repeat, channel priority, CPU pausing, and completion IRQs.
 - Separate retained DMA channel data, with known-value reuse for blocked sources below work RAM.
 - One-shot non-sequential nominal CPU code timing after successful DMA, including RAM-only transfers.

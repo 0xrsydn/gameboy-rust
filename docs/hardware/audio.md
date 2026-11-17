@@ -206,7 +206,7 @@ Without repeat, the channel disables after the fourth word. With repeat, it wait
 A FIFO's request starts whichever of DMA1 and DMA2 has that FIFO as its destination, as in mGBA 0.10.5; a special-timing
 channel with any other destination is never requested there or here. The references disagree about routing outside the
 usual DMA1→A, DMA2→B pairing, and hardware reports permit non-FIFO destinations, so this is mGBA's choice, not a
-hardware result. DMA3 video capture remains unsupported; Game Pak DRQ is ignored (see [DMA](dma.md)).
+hardware result. DMA3 special timing is video capture, not a sound request; Game Pak DRQ is ignored (see [DMA](dma.md)).
 
 Requests become visible at successful machine-step boundaries. Active DMA blocks ignore further requests.
 Device-only bulk advances coalesce unserviced requests; they do not execute or replay DMA blocks.
