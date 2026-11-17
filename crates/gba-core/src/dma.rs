@@ -120,6 +120,8 @@ pub(crate) struct Transfer {
     pub width: AccessWidth,
     pub first: bool,
     pub data_latch: Option<u32>,
+    /// Units left in this block, including this one.
+    pub remaining: u32,
 }
 
 impl Dma {
@@ -239,6 +241,7 @@ impl Dma {
                     width: channel.width(),
                     first: channel.first,
                     data_latch: channel.data_latch,
+                    remaining: channel.remaining,
                 }));
             }
         }

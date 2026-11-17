@@ -6,6 +6,7 @@ Hardware references used for the core:
 
 - [GBATEK ARM instruction cycle times](https://problemkaputt.de/gbatek-arm-cpu-instruction-cycle-times.htm).
 - [GBATEK GBA system control and WAITCNT](https://problemkaputt.de/gbatek-gba-system-control.htm), including HALTCNT power-mode selection.
+- [GBATEK GBA cart backup IDs](https://problemkaputt.de/gbatek-gba-cart-backup-ids.htm), for the word-aligned save-library ID strings used to select the save type.
 - [GBATEK GBA cart backup EEPROM](https://problemkaputt.de/gbatek-gba-cart-backup-eeprom.htm), for the 0x0d mapping by ROM size, request and read-out bitstreams, bit-0 bus, DMA3-only transfers, 10 decoded address bits, and the ~108,368-cycle write.
 - [GBATEK GBA unpredictable things](https://problemkaputt.de/gbatek-gba-unpredictable-things.htm): with no cartridge, the ROM area reads as `Address/2 AND FFFFh`, because the Game Pak shares its data lines with the low address lines. The emulator applies the same undriven-bus pattern beyond the ROM chip.
 - [GBATEK GBA unpredictable things](https://problemkaputt.de/gbatek-gba-unpredictable-things.htm): entirely unused I/O ports behave like unused memory and return the prefetched opcode; the I/O area is not mirrored except `4000800h`, repeated every 64K.

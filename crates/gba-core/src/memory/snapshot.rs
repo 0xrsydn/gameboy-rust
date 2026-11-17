@@ -67,6 +67,7 @@ impl Snapshot for Memory {
                 quiet_steps: _, // Test counter.
             cpu_resume_nonsequential,
             cpu_access: _, // Staged transaction; empty between steps.
+            dma_units: _,  // Set only while a DMA unit writes.
             dma_bus,
             bios_prefetch,
             iwram_bus,
@@ -132,6 +133,7 @@ impl Snapshot for Memory {
                 quiet_steps: _,
             cpu_resume_nonsequential,
             cpu_access: _,
+            dma_units: _,
             dma_bus,
             bios_prefetch,
             iwram_bus,

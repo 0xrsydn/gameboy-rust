@@ -90,7 +90,8 @@ Update this file when a feature lands or a limit is removed.
 - Transactional Flash completion and modification tracking, with exact-size core image loading and inspection.
 - Explicit 32 KiB byte-wide SRAM (`--save-type sram`), mirrored through the save window and readable from ROM code.
   CPU, block-transfer, and DMA halfword/word accesses use the 8-bit bus byte lanes; SRAM mirrors through `0x0fffffff`.
-- Explicit 512-byte and 8 KiB serial EEPROM (`--save-type eeprom512|eeprom8k`) over DMA3 bitstreams, with nominal write busy time.
+- 512-byte and 8 KiB serial EEPROM over DMA3 bitstreams, with nominal write busy time. `--save-type eeprom` (or a detected `EEPROM_V` ID) takes the size from the game's first request, as mGBA does.
+- Save type from the ROM's save-library ID (`EEPROM_V`, `SRAM_V`, `FLASH_V`, `FLASH512_V`, `FLASH1M_V`) when `--save-type` is omitted.
 - Optional desktop `--save-file` loading and clean-exit persistence, with exclusive locks, atomic installation, and unique previous-image backups.
 - Original ROM save/restart/load checks across processes, including native-window persistence on Darwin arm64.
 - Whole-machine [save states](hardware/save-states.md): `Machine::save_state`/`load_state` with image and cartridge identity checks, a checksum, and verify-before-mutate loading; ROM windows bind F5 (save) and F9 (load) to a `--state-file` slot.

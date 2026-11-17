@@ -28,7 +28,7 @@ fn options_require_both_flags_in_either_order() {
                     path: "original program.gba".into(),
                     mode: Mode::Terminal { steps: count },
                     hardware: CartridgeHardware::None,
-                    save_device: SaveDevice::None,
+                    save_device: None,
                     save_file: None,
                     state_file: None,
                     audio: false,
@@ -40,10 +40,12 @@ fn options_require_both_flags_in_either_order() {
 }
 
 #[test]
-fn save_file_requires_explicit_device_and_one_nonempty_path() {
+fn save_file_needs_one_nonempty_path_and_a_save_type_other_than_none() {
     let base = args(&["--rom", "test.gba", "--steps", "100"]);
     for tail in [
-        vec!["--save-file", "test.sav"],
+        vec!["--save-type", "none", "--save-file", "test.sav"],
+        vec!["--save-type", "flash128", "--save-type", "sram"],
+        vec!["--save-type", "eeprom4k"],
         vec!["--save-type", "flash128", "--save-file", ""],
         vec!["--save-type", "flash128", "--save-file"],
         vec![
@@ -59,7 +61,7 @@ fn save_file_requires_explicit_device_and_one_nonempty_path() {
         arguments.extend(args(&tail));
         assert!(parse_args(&arguments).is_err());
     }
-    let mut arguments = base;
+    let mut arguments = base.clone();
     arguments.extend(args(&[
         "--save-file",
         "test.sav",
@@ -70,6 +72,18 @@ fn save_file_requires_explicit_device_and_one_nonempty_path() {
         parse_args(&arguments).unwrap().save_file,
         Some("test.sav".into())
     );
+    // Without --save-type, execution selects the device from the ROM.
+    let mut arguments = base;
+    arguments.extend(args(&["--save-file", "test.sav"]));
+    let options = parse_args(&arguments).unwrap();
+    assert_eq!(
+        (options.save_device, options.save_file),
+        (None, Some("test.sav".into()))
+    );
+    for (name, device) in [("eeprom", SaveDevice::Eeprom), ("none", SaveDevice::None)] {
+        let options = parse_args(&args(&["--rom", "a", "--steps", "1", "--save-type", name]));
+        assert_eq!(options.unwrap().save_device, Some(device));
+    }
 }
 
 #[test]

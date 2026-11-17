@@ -26,7 +26,7 @@ const MAX_STEPS: u64 = 100_000_000;
 const MAX_FRAMES: u64 = 100_000;
 /// Machine steps allowed between VBlanks before a benchmark frame fails.
 const FRAME_STEP_LIMIT: usize = 2_000_000;
-const USAGE: &str = "usage: gameboy-rust --rom PATH [--rtc] [--save-type flash64|flash128|sram|eeprom512|eeprom8k] [--save-file PATH] (--steps COUNT | --bench-frames COUNT | --window [--frames COUNT] [--audio] [--speed MULTIPLIER] [--state-file PATH]); speed: integer 1..=16 (default 1, audio muted above 1); steps: 1..=100000000, frames: 1..=100000; bench frames: 1..=100000 without --rtc, audio, speed, or a state file; state file (window only): F5 saves and F9 loads a save state, default is the ROM path with a .state extension; do not combine with demo or help options";
+const USAGE: &str = "usage: gameboy-rust --rom PATH [--rtc] [--save-type flash64|flash128|sram|eeprom|eeprom512|eeprom8k|none] [--save-file PATH] (--steps COUNT | --bench-frames COUNT | --window [--frames COUNT] [--audio] [--speed MULTIPLIER] [--state-file PATH]); without --save-type the ROM's save-library ID selects the save type; speed: integer 1..=16 (default 1, audio muted above 1); steps: 1..=100000000, frames: 1..=100000; bench frames: 1..=100000 without --rtc, audio, speed, or a state file; state file (window only): F5 saves and F9 loads a save state, default is the ROM path with a .state extension; do not combine with demo or help options";
 
 #[derive(Debug, PartialEq, Eq)]
 enum Mode {
@@ -47,7 +47,8 @@ pub struct Options {
     path: PathBuf,
     mode: Mode,
     hardware: CartridgeHardware,
-    save_device: SaveDevice,
+    /// `None` selects the device from the ROM's save-library ID.
+    save_device: Option<SaveDevice>,
     audio: bool,
     speed: u32,
     save_file: Option<PathBuf>,
@@ -64,7 +65,7 @@ pub fn parse_args(args: &[OsString]) -> io::Result<Options> {
     let mut audio = false;
     let mut speed = None;
     let mut hardware = CartridgeHardware::None;
-    let mut save_device = SaveDevice::None;
+    let mut save_device = None;
     let mut save_file = None;
     let mut state_file = None;
     let mut args = args.iter();
@@ -77,15 +78,17 @@ pub fn parse_args(args: &[OsString]) -> io::Result<Options> {
             path = Some(PathBuf::from(value));
         } else if arg == "--rtc" && hardware == CartridgeHardware::None {
             hardware = CartridgeHardware::Rtc;
-        } else if arg == "--save-type" && save_device == SaveDevice::None {
-            save_device = match args.next().and_then(|value| value.to_str()) {
+        } else if arg == "--save-type" && save_device.is_none() {
+            save_device = Some(match args.next().and_then(|value| value.to_str()) {
                 Some("flash64") => SaveDevice::Flash64,
                 Some("flash128") => SaveDevice::Flash128,
                 Some("sram") => SaveDevice::Sram,
+                Some("eeprom") => SaveDevice::Eeprom,
                 Some("eeprom512") => SaveDevice::Eeprom512,
                 Some("eeprom8k") => SaveDevice::Eeprom8k,
+                Some("none") => SaveDevice::None,
                 _ => return Err(invalid()),
-            };
+            });
         } else if arg == "--save-file" && save_file.is_none() {
             save_file = Some(PathBuf::from(
                 args.next().filter(|v| !v.is_empty()).ok_or_else(invalid)?,
@@ -142,7 +145,7 @@ pub fn parse_args(args: &[OsString]) -> io::Result<Options> {
             return Err(invalid());
         }
     }
-    if save_file.is_some() && save_device == SaveDevice::None {
+    if save_file.is_some() && save_device == Some(SaveDevice::None) {
         return Err(invalid());
     }
     if (audio || speed.is_some() || state_file.is_some()) && !window {
@@ -391,21 +394,29 @@ pub fn execute(options: Options, writer: &mut impl Write) -> Result<(), Box<dyn 
     if options.hardware == CartridgeHardware::Rtc {
         writeln!(writer, "RTC selected: UTC at startup, then host elapsed time; no persistence or RTC interrupts.")?;
     }
-    if options.save_device != SaveDevice::None {
+    let save_device = options
+        .save_device
+        .unwrap_or_else(|| SaveDevice::detect(&bytes));
+    if save_device != SaveDevice::None {
+        let source = if options.save_device.is_some() {
+            "selected"
+        } else {
+            "detected from the ROM's save-library ID"
+        };
         writeln!(
             writer,
-            "Flash selected: {} KiB Macronix; nominal program/erase timing and DQ7 polling.",
-            options.save_device.capacity() / 1024
+            "Save type: {} ({source}).",
+            describe_save(save_device)
         )?;
     }
     let mut save_file = options
         .save_file
         .as_ref()
-        .map(|path| save_file::SaveFile::open(path, &options.path, options.save_device))
+        .map(|path| save_file::SaveFile::open(path, &options.path, save_device))
         .transpose()?;
     if let Some(save) = save_file.as_ref() {
         writeln!(writer, "Save file: {}; writes on clean exit or a ROM window diagnostic, with unique backups when replacing existing data.", if save.loaded() { "loaded" } else { "new erased image" })?;
-    } else if options.save_device != SaveDevice::None {
+    } else if save_device != SaveDevice::None {
         writeln!(
             writer,
             "Save storage is volatile; use --save-file PATH for persistence."
@@ -419,7 +430,7 @@ pub fn execute(options: Options, writer: &mut impl Write) -> Result<(), Box<dyn 
                 bytes,
                 frames,
                 options.hardware,
-                options.save_device,
+                save_device,
                 crate::desktop::RomPlayback {
                     audio: options.audio,
                     speed: options.speed,
@@ -447,7 +458,7 @@ pub fn execute(options: Options, writer: &mut impl Write) -> Result<(), Box<dyn 
     machine
         .memory_mut()
         .set_cartridge_hardware(options.hardware);
-    machine.memory_mut().set_save_device(options.save_device);
+    machine.memory_mut().set_save_device(save_device);
     if let Some(save) = save_file.as_ref() {
         save.initialize(machine.memory_mut())?;
     }
@@ -474,6 +485,18 @@ pub fn execute(options: Options, writer: &mut impl Write) -> Result<(), Box<dyn 
         persist_save(save, machine.memory(), writer)?;
     }
     Ok(())
+}
+
+fn describe_save(device: SaveDevice) -> &'static str {
+    match device {
+        SaveDevice::None => "none",
+        SaveDevice::Flash64 => "64 KiB Macronix Flash, nominal program/erase timing",
+        SaveDevice::Flash128 => "128 KiB Macronix Flash, nominal program/erase timing",
+        SaveDevice::Sram => "32 KiB SRAM",
+        SaveDevice::Eeprom => "EEPROM, 512 B or 8 KiB as the game's first request selects",
+        SaveDevice::Eeprom512 => "512 B EEPROM",
+        SaveDevice::Eeprom8k => "8 KiB EEPROM",
+    }
 }
 
 pub(crate) fn persist_save(

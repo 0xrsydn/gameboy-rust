@@ -47,8 +47,9 @@ The desktop seeds UTC once, then supplies monotonic host elapsed seconds indepen
 Both modes call `bios::boot` with the loaded bytes.
 With `--rtc`, the host then selects the cartridge peripheral before the first machine step.
 Without that option, no RTC is attached. Duplicate `--rtc` options are rejected.
-Save-device selection is independent of RTC selection. Omitting `--save-type` leaves save memory unmapped.
-Unknown save types and duplicate options fail before file access. No ROM-based hardware detection is used.
+Save-device selection is independent of RTC selection. Omitting `--save-type` selects the save device from the
+ROM's save-library ID ([saves](saves.md#selection-and-core-api)); `--save-type none` leaves save memory unmapped.
+Unknown save types and duplicate options fail before file access. RTC hardware is never detected from the ROM.
 The [original BIOS replacement](bios.md) executes its minimal boot before entering `0x08000000` in ARM System mode.
 There is no command-line option for external BIOS files.
 Unsupported services remain diagnostics. RegisterRamReset now accepts sound/serial reset flags, including `r0=0xff`, within the initialization subset.

@@ -36,7 +36,8 @@ fn same_file(a: &fs::Metadata, b: &fs::Metadata) -> bool {
         false
     }
 }
-fn read_image(path: &Path, size: usize) -> io::Result<Option<Vec<u8>>> {
+/// Read an existing image whose length is one of `sizes`; a missing file is `None`.
+fn read_image(path: &Path, sizes: &[usize]) -> io::Result<Option<Vec<u8>>> {
     let metadata = match fs::symlink_metadata(path) {
         Ok(m) => m,
         Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(None),
@@ -47,11 +48,16 @@ fn read_image(path: &Path, size: usize) -> io::Result<Option<Vec<u8>>> {
             "save path must be a regular file, not a symlink or directory",
         ));
     }
-    if metadata.len() != size as u64 {
+    let Some(&size) = sizes.iter().find(|&&size| metadata.len() == size as u64) else {
+        let sizes = sizes
+            .iter()
+            .map(usize::to_string)
+            .collect::<Vec<_>>()
+            .join(" or ");
         return Err(io::Error::other(format!(
-            "save file must contain exactly {size} bytes"
+            "save file must contain exactly {sizes} bytes for the selected save type"
         )));
-    }
+    };
     if metadata.permissions().readonly() {
         return Err(io::Error::new(
             io::ErrorKind::PermissionDenied,
@@ -133,7 +139,8 @@ pub(crate) struct Persisted {
 pub(crate) struct SaveFile {
     path: PathBuf,
     original: Option<Vec<u8>>,
-    size: usize,
+    /// Image lengths the device allows; an automatically sized EEPROM allows two.
+    sizes: &'static [usize],
     _lease: Lease,
 }
 impl SaveFile {
@@ -148,7 +155,9 @@ impl SaveFile {
         #[cfg(unix)]
         {
             if device == SaveDevice::None {
-                return Err(io::Error::other("--save-file requires --save-type"));
+                return Err(io::Error::other(
+                    "--save-file needs a save type: the ROM has no save-library ID, so pass --save-type",
+                ));
             }
             let filename = path
                 .file_name()
@@ -180,11 +189,12 @@ impl SaveFile {
             };
             writeln!(lease.file, "gameboy-rust pid={}", std::process::id())?;
             lease.file.sync_all()?;
-            let original = read_image(&path, device.capacity())?;
+            let sizes = device.image_sizes();
+            let original = read_image(&path, sizes)?;
             Ok(Self {
                 path,
                 original,
-                size: device.capacity(),
+                sizes,
                 _lease: lease,
             })
         }
@@ -210,13 +220,15 @@ impl SaveFile {
         let image = memory
             .save_image()
             .ok_or_else(|| io::Error::other("no save image"))?;
-        if image.len() != self.size {
+        // An existing file fixes the length; a new file takes the image's.
+        let size = self.original.as_ref().map_or(image.len(), Vec::len);
+        if image.len() != size || !self.sizes.contains(&size) {
             return Err(io::Error::other("save device changed during execution"));
         }
         if self.original.as_deref() == Some(image) {
             return Ok(None);
         }
-        if read_image(&self.path, self.size)? != self.original {
+        if read_image(&self.path, &[size])? != self.original {
             return Err(io::Error::other(
                 "save file changed externally; refusing overwrite",
             ));
@@ -237,7 +249,7 @@ impl SaveFile {
         };
         // Recheck immediately before installation. The lock coordinates this frontend,
         // not unrelated programs; this is not an atomic compare-and-swap filesystem API.
-        if read_image(&self.path, self.size)? != self.original {
+        if read_image(&self.path, &[size])? != self.original {
             return Err(io::Error::other(
                 "save file changed before replacement; refusing overwrite",
             ));

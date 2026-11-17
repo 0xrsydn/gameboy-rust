@@ -4,25 +4,41 @@ The core supports explicit Macronix Flash selection, identification, bank select
 Operations complete after nominal delays and expose bounded data polling. They do not complete immediately on the command write.
 The desktop can load and persist raw images through explicit `--save-file PATH` selection.
 Original ROM tests verify save/restart/load across processes. Saving in an external game remains unverified.
-The core also supports explicit 32 KiB SRAM and 512-byte or 8 KiB serial EEPROM; see [SRAM](#sram) and [EEPROM](#eeprom).
+The core also supports 32 KiB SRAM and 512-byte or 8 KiB serial EEPROM; see [SRAM](#sram) and [EEPROM](#eeprom).
 Other manufacturers' Flash protocols remain separate work.
 
 ## Selection and core API
 
-Use `--save-type flash64`, `flash128`, `sram`, `eeprom512`, or `eeprom8k` in terminal or window ROM modes.
-EEPROM games do not identify their part size, so the type must match the game (GBATEK: no autodetection mechanism exists).
-Selection is independent of `--rtc`. Omitting the save type leaves save memory unmapped.
-No filename, ROM signature, or first-write detection changes the selected device.
+Without `--save-type`, the desktop selects the device from the save library's ID string in the ROM
+(`SaveDevice::detect`). Nintendo's save libraries embed a word-aligned ASCII ID followed by a three-digit version
+(GBATEK, "GBA Cart Backup IDs"), and emulators commonly key on it:
+
+| ID | Device |
+| --- | --- |
+| `EEPROM_Vnnn` | `Eeprom`: 512 B or 8 KiB, as the game's first request selects (below) |
+| `SRAM_Vnnn`, `SRAM_F_Vnnn` | `Sram` (32 KiB SRAM or FRAM) |
+| `FLASH_Vnnn`, `FLASH512_Vnnn` | `Flash64` |
+| `FLASH1M_Vnnn` | `Flash128` |
+
+The first aligned ID in ROM order wins; a ROM without one gets no save device. Games built without the library, or
+whose ID was stripped, need an explicit type. mGBA 0.10.5 does not scan for these IDs: it picks the type on the first
+save access and takes Flash size from its built-in game list, which this repository does not copy.
+`--save-type flash64`, `flash128`, `sram`, `eeprom`, `eeprom512`, or `eeprom8k` overrides detection, and
+`--save-type none` leaves save memory unmapped. The terminal output names the type and whether it was detected.
+Selection is independent of `--rtc`. File extensions and first-write behavior never change the device.
 Without `--save-file`, the selected device starts erased (`0xff`) and all changes remain volatile.
 The ROM suite schema still has no save-selection or save-file field.
 
 Core APIs on `Memory`:
 
-- `set_save_device(SaveDevice)` selects `None`, `Flash64`, `Flash128`, `Sram`, `Eeprom512`, or `Eeprom8k` and initializes an erased array.
+- `SaveDevice::detect(&[u8])` returns the device a ROM's save-library ID names, or `None`.
+- `set_save_device(SaveDevice)` selects `None`, `Flash64`, `Flash128`, `Sram`, `Eeprom`, `Eeprom512`, or `Eeprom8k` and initializes an erased array.
   GPIO/RTC state is preserved.
-- `load_save_image(&[u8])` accepts exactly the selected capacity. It resets commands, pending operations, ID mode, bank, and modification tracking.
+- `load_save_image(&[u8])` accepts one of `SaveDevice::image_sizes()`: the capacity, or 512 or 8192 bytes for `Eeprom`.
+  It resets commands, pending operations, ID mode, bank, and modification tracking.
   Invalid size or missing hardware changes nothing.
 - `save_image()` inspects the full committed array, independent of bank and ID mode. No selected device returns `None`.
+  For `Eeprom` it is 512 bytes once the game chose the small part, and 8 KiB otherwise.
 - `save_modified()` reports whether a completed operation changed bytes since setup or loading.
   It remains set after host persistence; hosts compare against their last persisted image to avoid redundant writes.
 - `save_write_pending()` reports an incomplete command or operation. Hosts must not persist an exit snapshot in this state.
@@ -58,7 +74,7 @@ A save state records the selected device. Restoring it into a machine with anoth
 
 ## EEPROM
 
-`Eeprom512` and `Eeprom8k` follow GBATEK's serial protocol on Game Pak data bit 0, one bit per halfword.
+`Eeprom512`, `Eeprom8k`, and `Eeprom` follow GBATEK's serial protocol on Game Pak data bit 0, one bit per halfword.
 With ROM up to 16 MiB the part answers anywhere in `0x0d000000..0x0dffffff`; above 16 MiB only `0x0dffff00..0x0dffffff`.
 Elsewhere in that window, reads and writes behave as ordinary ROM.
 
@@ -69,6 +85,17 @@ Elsewhere in that window, reads and writes behave as ordinary ROM.
 - Idle and ready status reads return 1. Bits 1–15 read as zero; hardware drives only bit 0.
 
 Block bytes are stored in transfer order: the first data bit is byte 0, bit 7, matching common `.sav` layouts.
+
+A game cannot ask the part for its size (GBATEK: no detection mechanism exists); it is built for one and sends requests
+with that address width. `Eeprom` therefore leaves the width open until the first request and takes it from that DMA's
+length: 9 (read) or 73 (write) halfwords select 6 address bits and a 512-byte image, 17 or 81 select 14 bits and 8 KiB.
+Any other first-request length, or a first request without a DMA, is a diagnostic and decides nothing.
+This follows mGBA 0.10.5, which derives a request's address bits from the remaining DMA count
+(`GBASavedataWriteEEPROM` in `src/gba/savedata.c`); it is not hardware-verified. Unlike mGBA, which accepts any length
+and grows a 512-byte image when an address beyond it appears, the width here is fixed after the first request.
+Loading a 512- or 8192-byte image fixes it up front, so an existing save keeps its size.
+The decided width is save-state data; the state's setup identity records `Eeprom`, so states restore into any
+automatically sized session but not into an explicit `eeprom512` or `eeprom8k` one.
 Bitstreams must come from DMA (or host setup writes). GBATEK states manual `STRH` transfers do not work, so CPU stores are diagnostics.
 A CPU `LDRH` polls status; a CPU read during a data read-out, byte or word accesses, a missing leading `1`,
 a missing trailing `0`, a request while busy, and a request during a read-out are all diagnostics.
@@ -162,7 +189,9 @@ Omit `--audio` for muted execution. This command is not a game-save compatibilit
 Use a copy of any valuable existing save while compatibility remains unverified.
 
 The save path's parent directory must exist. File extensions do not select the format.
-Existing raw images must contain exactly 65,536 or 131,072 bytes, matching the selected hardware.
+Existing raw images must have the selected device's size: 65,536 or 131,072 bytes for Flash, 32,768 for SRAM,
+512 or 8,192 for EEPROM. An automatically sized EEPROM accepts either and keeps it; a new file takes the size the
+game's first request chose. A size that does not match is refused, never resized.
 Loading occurs before the first machine step. A missing file starts an erased array without creating a file immediately.
 Directories, symlinks, read-only files, and paths that alias the ROM are rejected.
 The ROM is never opened for writing.
@@ -215,10 +244,11 @@ No game code, user save, firmware, or copyrighted assets are included in the tes
 
 Next, validate an external game's completed save and load using a disposable save path.
 Add independent hardware coverage for timing, status bits, busy addresses, and reset behavior before broadening the model.
-Implement SRAM and EEPROM separately when a demonstrated compatibility requirement needs them.
+Validate detection and automatic EEPROM sizing against a game that uses EEPROM.
 
 ## References
 
+- [GBATEK backup IDs](https://problemkaputt.de/gbatek-gba-cart-backup-ids.htm): the save-library ID strings and their word alignment.
 - [GBATEK backup Flash](https://problemkaputt.de/gbatek-gba-cart-backup-flash-rom.htm): capacities, IDs, command sequences, banking, program/erase polling, Macronix reset, byte-only access, and RAM execution.
 - [GBATEK](https://mgba-emu.github.io/gbatek/), WAITCNT section: save waits and one-cycle-plus-wait timing.
 - [mGBA savedata at 3a5e34be](https://github.com/mgba-emu/mgba/blob/3a5e34be33dc7f8f707e5bc9db69e8a430046f21/src/gba/savedata.c): comparison for controller phases, bank addressing, ID overlays, idle reset, and nominal 650/30,000-cycle delays. Its DQ7 approximation is not hardware evidence. Our array mutation is deferred to transactional completion rather than applied immediately.

@@ -372,12 +372,42 @@ fn explicit_flash_selection_runs_ram_byte_reader_and_leaves_files_unchanged() {
             .unwrap();
         assert!(output.status.success(), "{}", stderr(&output));
         let text = stdout(&output);
-        assert!(text.contains("nominal program/erase timing and DQ7 polling"));
+        assert!(text.contains("Macronix Flash, nominal program/erase timing (selected)"));
         assert!(text.contains("r5=0x000000c2"), "{text}");
         assert!(text.contains(id), "{text}");
         assert_eq!(fs::read(&path).unwrap(), bytes);
     }
     assert_eq!(fs::read_dir(&fixture.0).unwrap().count(), 1); // No save file is invented.
+}
+
+#[test]
+fn a_save_library_id_selects_the_device_unless_the_type_is_given() {
+    let fixture = Fixture::new();
+    let mut code = flash_setup();
+    // Word-aligned "FLASH1M_V103", as Nintendo's save library embeds it.
+    code.extend(
+        b"FLASH1M_V103"
+            .chunks(4)
+            .map(|word| u32::from_le_bytes(word.try_into().unwrap())),
+    );
+    let path = fixture.rom(&code);
+    let output = run(&path, "1000");
+    assert!(output.status.success(), "{}", stderr(&output));
+    let text = stdout(&output);
+    assert!(text.contains("Save type: 128 KiB Macronix Flash"), "{text}");
+    assert!(
+        text.contains("(detected from the ROM's save-library ID)"),
+        "{text}"
+    );
+    assert!(text.contains("r6=0x00000009"), "{text}"); // Flash128 device ID.
+    let output = command()
+        .args(["--save-type", "none", "--rom"])
+        .arg(&path)
+        .args(["--steps", "1000"])
+        .output()
+        .unwrap();
+    assert!(stderr(&output).contains("unmapped memory at 0x0e005555"));
+    assert!(!stdout(&output).contains("Save type"));
 }
 
 #[test]
@@ -528,9 +558,8 @@ fn help_describes_terminal_rom_mode_and_existing_cpu_demo_still_runs() {
     assert!(output.status.success());
     assert!(stdout(&output).contains("--rom PATH --steps COUNT"));
     assert!(stdout(&output).contains("--rom PATH --window"));
-    assert!(stdout(&output).contains(
-        "ROM windows offer --audio on macOS. Saves require --save-type and --save-file."
-    ));
+    assert!(stdout(&output)
+        .contains("ROM windows offer --audio on macOS. Saves persist only with --save-file."));
     let output = command().arg("--cpu-demo").output().unwrap();
     assert!(output.status.success());
     assert!(stdout(&output).contains("Exception demo"));

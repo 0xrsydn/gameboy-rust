@@ -92,7 +92,7 @@ fn parse_args(args: &[OsString]) -> Result<RunMode, io::Error> {
         [arg] if arg == "--help" || arg == "-h" => Ok(RunMode::Help),
         _ => Err(io::Error::new(
             io::ErrorKind::InvalidInput,
-            "usage: gameboy-rust [--cpu-demo | --timer-demo | --graphics-demo | --smoke-test | --graphics-smoke-test | --raster-demo | --raster-smoke-test | --mosaic-demo | --mosaic-smoke-test | --effects-demo | --effects-smoke-test | --tile-demo | --tile-smoke-test | --affine-demo | --affine-smoke-test | --affine-raster-demo | --affine-raster-smoke-test | --bitmap4-demo | --bitmap5-demo | --bitmap4-smoke-test | --bitmap5-smoke-test | --help]; or gameboy-rust --rom PATH [--rtc] [--save-type flash64|flash128|sram|eeprom512|eeprom8k] [--save-file PATH] (--steps COUNT | --bench-frames COUNT | --window [--frames COUNT] [--audio] [--speed MULTIPLIER] [--state-file PATH]); or gameboy-rust --test-suite PATH.json",
+            "usage: gameboy-rust [--cpu-demo | --timer-demo | --graphics-demo | --smoke-test | --graphics-smoke-test | --raster-demo | --raster-smoke-test | --mosaic-demo | --mosaic-smoke-test | --effects-demo | --effects-smoke-test | --tile-demo | --tile-smoke-test | --affine-demo | --affine-smoke-test | --affine-raster-demo | --affine-raster-smoke-test | --bitmap4-demo | --bitmap5-demo | --bitmap4-smoke-test | --bitmap5-smoke-test | --help]; or gameboy-rust --rom PATH [--rtc] [--save-type flash64|flash128|sram|eeprom|eeprom512|eeprom8k|none] [--save-file PATH] (--steps COUNT | --bench-frames COUNT | --window [--frames COUNT] [--audio] [--speed MULTIPLIER] [--state-file PATH]); or gameboy-rust --test-suite PATH.json",
         )),
     }
 }
@@ -142,7 +142,7 @@ fn run() -> Result<(), Box<dyn Error>> {
                 --speed MULTIPLIER       ROM-window speed: integer 1..=16 (default: 1); mutes audio above 1x\n\
                 --audio                  Enable macOS output at 1x (default: muted)\n\
                 --rtc                    Select cartridge RTC (UTC startup, host elapsed time)\n\
-                --save-type flash64|flash128|sram|eeprom512|eeprom8k  Select nominal Flash, 32 KiB SRAM, or serial EEPROM\n\
+                --save-type TYPE         flash64|flash128|sram|eeprom|eeprom512|eeprom8k|none (default: from the ROM's save-library ID)\n\
                 --save-file PATH         Load raw save image; persist on clean exit or window diagnostic\n\
                 --state-file PATH        ROM window save state; F5 saves, F9 loads (default: ROM path + .state)\n\
                 --test-suite PATH.json    Run bounded ROM assertions; write a JSON report\n\
@@ -178,7 +178,7 @@ fn run() -> Result<(), Box<dyn Error>> {
                 Affine backgrounds: Arrows pan; Q rotates; W zooms; Z disables wrapping; Enter resets; Escape exits.\n\
                 Bitmap pages: Arrows pan; Q rotates; W zooms; Z forces page1; Enter resets; Escape exits.\n\
                 All demos use original test content. ROM mode uses our limited BIOS replacement.\n\
-                Terminal ROM mode has no window, input, or audio. ROM windows offer --audio on macOS. Saves require --save-type and --save-file.\n\
+                Terminal ROM mode has no window, input, or audio. ROM windows offer --audio on macOS. Saves persist only with --save-file.\n\
                 ROM window: Arrows=D-pad; Z/X=A/B; Q/W=L/R; Enter=Start; Backspace=Select; F5=save state; F9=load state; Escape exits.\n\
                 Commercial games are not supported."
             );

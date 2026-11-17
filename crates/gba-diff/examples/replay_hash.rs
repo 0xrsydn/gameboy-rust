@@ -34,7 +34,7 @@ use gba_core::{
 /// Machine steps allowed between VBlanks before a frame is reported as stuck.
 const FRAME_STEP_LIMIT: usize = 2_000_000;
 
-const USAGE: &str = "usage: replay_hash --rom ROM --frames N [--save-type sram|flash64|flash128|eeprom512|eeprom8k] [--rtc SECONDS_SINCE_2000] [--inputs FILE] [--capture] [--idle-skip] [--load-save FILE] [--write-save FILE] [--record FILE | --check FILE | --bench] [--states DIR [--every K | --start FRAME]] [--png FRAME:PATH]...";
+const USAGE: &str = "usage: replay_hash --rom ROM --frames N [--save-type sram|flash64|flash128|eeprom|eeprom512|eeprom8k] [--rtc SECONDS_SINCE_2000] [--inputs FILE] [--capture] [--idle-skip] [--load-save FILE] [--write-save FILE] [--record FILE | --check FILE | --bench] [--states DIR [--every K | --start FRAME]] [--png FRAME:PATH]...";
 
 struct Options {
     rom: PathBuf,
@@ -89,6 +89,7 @@ fn parse(args: &[String]) -> Result<Options, String> {
                     "sram" => SaveDevice::Sram,
                     "flash64" => SaveDevice::Flash64,
                     "flash128" => SaveDevice::Flash128,
+                    "eeprom" => SaveDevice::Eeprom,
                     "eeprom512" => SaveDevice::Eeprom512,
                     "eeprom8k" => SaveDevice::Eeprom8k,
                     other => return Err(format!("unknown save type: {other}")),

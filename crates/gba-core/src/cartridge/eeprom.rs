@@ -3,8 +3,11 @@
 //! `10` + address + 64 data bits + `0` writes one. A read returns 4 ignored bits, then the
 //! block MSB first. A write completes after a nominal delay; until then status reads 0.
 //! Block bytes are stored in transfer order, the first data bit as byte 0 bit 7.
+//! `SaveDevice::Eeprom` leaves the address width open until the first request: its DMA
+//! length (9 or 73 halfwords for 6 address bits, 17 or 81 for 14) decides it, as mGBA 0.10.5
+//! derives address bits from the remaining DMA count (`GBASavedataWriteEEPROM`).
 
-use super::SaveDevice;
+use super::{SaveDevice, Store};
 use crate::memory::MemoryError;
 use crate::snapshot::{Reader, Snapshot, SnapshotError, Writer};
 
@@ -16,7 +19,10 @@ const LARGE_ROM: usize = 16 * 1024 * 1024;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct Eeprom {
-    large: bool,
+    /// The game selects the size (`SaveDevice::Eeprom`); `large` is then state.
+    auto: bool,
+    /// 14-bit addressing; `None` until an automatically sized part sees its first request.
+    large: Option<bool>,
     start: u32,
     input: u128,
     count: u8,
@@ -40,11 +46,13 @@ struct Busy {
 impl Eeprom {
     pub(super) fn new(device: SaveDevice, rom_len: usize) -> Option<Self> {
         let large = match device {
-            SaveDevice::Eeprom512 => false,
-            SaveDevice::Eeprom8k => true,
+            SaveDevice::Eeprom512 => Some(false),
+            SaveDevice::Eeprom8k => Some(true),
+            SaveDevice::Eeprom => None,
             _ => return None,
         };
         Some(Self {
+            auto: large.is_none(),
             large,
             start: if rom_len > LARGE_ROM {
                 0x0dff_ff00
@@ -59,11 +67,30 @@ impl Eeprom {
     }
 
     pub(super) fn device(self) -> SaveDevice {
-        if self.large {
-            SaveDevice::Eeprom8k
-        } else {
-            SaveDevice::Eeprom512
+        match (self.auto, self.large) {
+            (true, _) => SaveDevice::Eeprom,
+            (false, Some(true)) => SaveDevice::Eeprom8k,
+            (false, _) => SaveDevice::Eeprom512,
         }
+    }
+
+    /// Bytes of the save image in use: 512 once 6-bit addressing is chosen, else 8 KiB.
+    pub(super) fn image_len(self) -> usize {
+        if self.large == Some(false) {
+            512
+        } else {
+            8 * 1024
+        }
+    }
+
+    /// Fix an automatically sized part's addressing, as a loaded image's length does.
+    pub(super) fn resolve(&mut self, large: bool) {
+        debug_assert!(self.auto);
+        self.large = Some(large);
+    }
+
+    fn is_large(self) -> bool {
+        self.large == Some(true)
     }
 
     pub(super) fn mapped(self, address: u32) -> bool {
@@ -71,7 +98,7 @@ impl Eeprom {
     }
 
     fn address_bits(self) -> u8 {
-        if self.large {
+        if self.is_large() {
             14
         } else {
             6
@@ -80,7 +107,7 @@ impl Eeprom {
 
     /// Block index from a request's address field. 8 KiB parts decode the low 10 bits.
     fn block(self, address: u128) -> u16 {
-        (address as u16) & if self.large { 0x3ff } else { 0x3f }
+        (address as u16) & if self.is_large() { 0x3ff } else { 0x3f }
     }
 
     /// One halfword read. CPU reads only poll status; DMA reads also shift out data.
@@ -112,7 +139,7 @@ impl Eeprom {
         &mut self,
         address: u32,
         value: u16,
-        cpu: bool,
+        store: Store,
         image: &[u8],
     ) -> Result<(), MemoryError> {
         let fail = |operation| MemoryError::UnsupportedIo {
@@ -120,7 +147,7 @@ impl Eeprom {
             value: value as u8,
             operation,
         };
-        if cpu {
+        if store == Store::Cpu {
             // GBATEK: bitstreams need DMA3; manual STRH transfers do not work.
             return Err(fail("EEPROM CPU bitstream write"));
         }
@@ -131,12 +158,19 @@ impl Eeprom {
             return Err(fail("EEPROM request during a data read-out"));
         }
         let mut next = *self;
+        if next.large.is_none() {
+            next.large = Some(match store {
+                Store::Dma { units: 9 | 73 } => false,
+                Store::Dma { units: 17 | 81 } => true,
+                _ => return Err(fail("EEPROM sizing request not 9, 17, 73, or 81 DMA units")),
+            });
+        }
         next.input = (next.input << 1) | u128::from(value & 1);
         next.count += 1;
         if next.count == 1 && value & 1 == 0 {
             return Err(fail("EEPROM request without a leading 1 bit"));
         }
-        let address_bits = self.address_bits();
+        let address_bits = next.address_bits();
         let read_bits = 2 + address_bits + 1;
         let write_bits = 2 + address_bits + 64 + 1;
         let reading = next.count >= 2 && (next.input >> (next.count - 2)) & 1 == 1;
@@ -189,6 +223,7 @@ impl Eeprom {
 impl Snapshot for Eeprom {
     fn save(&self, writer: &mut Writer) {
         let Self {
+            auto: _, // Configuration, checked through the cartridge's save-device identity.
             large,
             start,
             input,
@@ -197,7 +232,11 @@ impl Snapshot for Eeprom {
             busy,
         } = self;
         writer.tag(b"EEPR");
-        writer.bool(*large);
+        writer.u8(match large {
+            Some(false) => 0,
+            Some(true) => 1,
+            None => 2,
+        });
         writer.u32(*start);
         writer.u64((*input >> 64) as u64);
         writer.u64(*input as u64);
@@ -215,7 +254,12 @@ impl Snapshot for Eeprom {
 
     fn load(&mut self, reader: &mut Reader<'_>) -> Result<(), SnapshotError> {
         reader.tag(b"EEPR")?;
-        let large = reader.bool()?;
+        let large = match reader.u8()? {
+            0 => Some(false),
+            1 => Some(true),
+            2 => None,
+            _ => return Err(SnapshotError::Corrupt("EEPROM size")),
+        };
         let start = reader.u32()?;
         let input = (u128::from(reader.u64()?) << 64) | u128::from(reader.u64()?);
         let count = reader.u8()?;
@@ -234,10 +278,11 @@ impl Snapshot for Eeprom {
                 remaining: reader.u32()?,
             })
         })?;
-        if large != self.large || start != self.start {
+        if (!self.auto && large != self.large) || start != self.start {
             return Err(SnapshotError::ConfigMismatch("save device"));
         }
         let restored = Self {
+            auto: self.auto,
             large,
             start,
             input,
@@ -246,7 +291,8 @@ impl Snapshot for Eeprom {
             busy,
         };
         let write_bits = 2 + restored.address_bits() + 64 + 1;
-        if count >= write_bits
+        if (large.is_none() && (count != 0 || output.is_some() || busy.is_some()))
+            || count >= write_bits
             || input >> count != 0
             || output.is_some_and(|o| o.remaining == 0 || o.remaining > READ_BITS)
             || busy.is_some_and(|b| b.block != restored.block(u128::from(b.block)))
@@ -266,7 +312,7 @@ mod tests {
     fn bits(eeprom: &mut Eeprom, value: u128, count: u8, image: &[u8]) {
         for shift in (0..count).rev() {
             let bit = ((value >> shift) & 1) as u16;
-            eeprom.write(0x0d00_0000, bit, false, image).unwrap();
+            eeprom.write(0x0d00_0000, bit, Store::Host, image).unwrap();
         }
     }
 
@@ -327,13 +373,13 @@ mod tests {
     fn malformed_requests_cpu_stores_and_busy_writes_are_diagnostics() {
         let image = vec![0xff; SaveDevice::Eeprom512.capacity()];
         let mut eeprom = Eeprom::new(SaveDevice::Eeprom512, 0).unwrap();
-        assert!(eeprom.write(0x0d00_0000, 0, false, &image).is_err());
-        assert!(eeprom.write(0x0d00_0000, 1, true, &image).is_err());
+        assert!(eeprom.write(0x0d00_0000, 0, Store::Host, &image).is_err());
+        assert!(eeprom.write(0x0d00_0000, 1, Store::Cpu, &image).is_err());
         let mut trailing = Eeprom::new(SaveDevice::Eeprom512, 0).unwrap();
         bits(&mut trailing, 0b11_000000, 8, &image);
-        assert!(trailing.write(0x0d00_0000, 1, false, &image).is_err());
+        assert!(trailing.write(0x0d00_0000, 1, Store::Host, &image).is_err());
         bits(&mut eeprom, 0b10 << 71, 73, &image);
-        assert!(eeprom.write(0x0d00_0000, 1, false, &image).is_err());
+        assert!(eeprom.write(0x0d00_0000, 1, Store::Host, &image).is_err());
     }
 
     #[test]
@@ -360,6 +406,75 @@ mod tests {
         assert_eq!(
             other.load(&mut Reader::new(&bytes)),
             Err(SnapshotError::ConfigMismatch("save device"))
+        );
+    }
+
+    #[test]
+    fn automatic_size_follows_the_first_request_dma_length() {
+        let image = vec![0xff; SaveDevice::Eeprom.capacity()];
+        for (units, large) in [(9, false), (73, false), (17, true), (81, true)] {
+            let mut eeprom = Eeprom::new(SaveDevice::Eeprom, 0).unwrap();
+            assert_eq!(
+                (eeprom.device(), eeprom.image_len()),
+                (SaveDevice::Eeprom, 8192)
+            );
+            eeprom
+                .write(0x0d00_0000, 1, Store::Dma { units }, &image)
+                .unwrap();
+            assert_eq!(eeprom.is_large(), large, "{units} units");
+            assert_eq!(eeprom.image_len(), if large { 8192 } else { 512 });
+            assert_eq!(eeprom.device(), SaveDevice::Eeprom);
+        }
+        for store in [Store::Dma { units: 10 }, Store::Host, Store::Cpu] {
+            let mut eeprom = Eeprom::new(SaveDevice::Eeprom, 0).unwrap();
+            assert!(eeprom.write(0x0d00_0000, 1, store, &image).is_err());
+            assert_eq!(eeprom.large, None); // A rejected request decides nothing.
+        }
+        // A fixed part ignores the request length.
+        let mut fixed = Eeprom::new(SaveDevice::Eeprom512, 0).unwrap();
+        fixed
+            .write(0x0d00_0000, 1, Store::Dma { units: 81 }, &image)
+            .unwrap();
+        assert!(!fixed.is_large());
+    }
+
+    #[test]
+    fn automatic_size_is_snapshot_state_but_the_fixed_size_is_configuration() {
+        let image = vec![0xff; SaveDevice::Eeprom.capacity()];
+        let encode = |eeprom: &Eeprom| {
+            let mut writer = Writer::new();
+            eeprom.save(&mut writer);
+            writer.finish().unwrap()
+        };
+        let unresolved = Eeprom::new(SaveDevice::Eeprom, 0).unwrap();
+        let mut resolved = unresolved;
+        resolved
+            .write(0x0d00_0000, 1, Store::Dma { units: 17 }, &image)
+            .unwrap();
+        for state in [unresolved, resolved] {
+            let mut target = Eeprom::new(SaveDevice::Eeprom, 0).unwrap();
+            target.resolve(false);
+            target.load(&mut Reader::new(&encode(&state))).unwrap();
+            assert_eq!(target, state);
+        }
+        let mut fixed = Eeprom::new(SaveDevice::Eeprom8k, 0).unwrap();
+        assert_eq!(
+            fixed.load(&mut Reader::new(&encode(&resolved))),
+            Ok(()),
+            "same addressing, but the identity check lives in the cartridge"
+        );
+        assert_eq!(
+            fixed.load(&mut Reader::new(&encode(&unresolved))),
+            Err(SnapshotError::ConfigMismatch("save device"))
+        );
+        // An undecided size with request bits in flight cannot occur.
+        let mut corrupt = encode(&resolved);
+        corrupt[4] = 2;
+        assert_eq!(
+            Eeprom::new(SaveDevice::Eeprom, 0)
+                .unwrap()
+                .load(&mut Reader::new(&corrupt)),
+            Err(SnapshotError::Corrupt("EEPROM state"))
         );
     }
 }

@@ -224,3 +224,75 @@ fn save_states_restore_a_read_out_in_progress() {
     );
     assert!(!machine.memory().save_write_pending());
 }
+
+/// The read-back helpers above take their address width from a fixed-size device.
+fn fixed(large: bool) -> SaveDevice {
+    if large {
+        SaveDevice::Eeprom8k
+    } else {
+        SaveDevice::Eeprom512
+    }
+}
+
+#[test]
+fn automatic_size_follows_the_games_first_request_length() {
+    for (large, first_is_write) in [(false, true), (false, false), (true, true), (true, false)] {
+        let mut machine = machine(SaveDevice::Eeprom);
+        assert_eq!(machine.memory().save_image().unwrap().len(), 8192); // Undecided.
+        if !first_is_write {
+            // A 9- or 17-unit read request decides the size before any write.
+            assert_eq!(read_block(&mut machine, fixed(large), 3), u64::MAX);
+        }
+        send(&mut machine, &write_request(fixed(large), 3, 0x5aa5));
+        machine.memory_mut().advance_cycles(EEPROM_WRITE_CYCLES);
+        assert_eq!(read_block(&mut machine, fixed(large), 3), 0x5aa5);
+        let image = machine.memory().save_image().unwrap();
+        assert_eq!(image.len(), if large { 8192 } else { 512 });
+        assert_eq!(image[24..32], 0x5aa5_u64.to_be_bytes());
+    }
+}
+
+#[test]
+fn automatic_size_rejects_other_request_lengths_and_a_loaded_image_decides_it() {
+    let mut machine = machine(SaveDevice::Eeprom);
+    machine.memory_mut().write16(BUFFER, 1).unwrap();
+    let bus = machine.memory_mut();
+    bus.write32(DMA3, BUFFER).unwrap();
+    bus.write32(DMA3 + 4, EEPROM).unwrap();
+    bus.write32(DMA3 + 8, 0x8000_0010).unwrap(); // 16 units: neither part's request.
+    assert!(matches!(machine.step(), Err(MachineError::Dma(_))));
+    assert_eq!(machine.memory().save_image().unwrap().len(), 8192);
+
+    for (length, large) in [(512, false), (8192, true)] {
+        let mut loaded = self::machine(SaveDevice::Eeprom);
+        let mut image = vec![0xff; length];
+        image[8..16].copy_from_slice(&42_u64.to_be_bytes());
+        loaded.memory_mut().load_save_image(&image).unwrap();
+        assert_eq!(loaded.memory().save_image().unwrap(), image);
+        assert_eq!(read_block(&mut loaded, fixed(large), 1), 42);
+    }
+    assert_eq!(
+        machine.memory_mut().load_save_image(&[0; 1024]),
+        Err(gba_core::cartridge::SaveError::InvalidEepromSize { actual: 1024 })
+    );
+}
+
+#[test]
+fn automatic_size_states_restore_into_any_automatic_session() {
+    let mut machine = machine(SaveDevice::Eeprom);
+    let undecided = machine.save_state().unwrap();
+    send(&mut machine, &write_request(SaveDevice::Eeprom8k, 9, 1));
+    machine.memory_mut().advance_cycles(EEPROM_WRITE_CYCLES);
+    let decided = machine.save_state().unwrap();
+
+    let mut other = self::machine(SaveDevice::Eeprom);
+    other.memory_mut().load_save_image(&[0xff; 512]).unwrap();
+    other.load_state(&decided).unwrap();
+    assert_eq!(other.memory().save_image().unwrap().len(), 8192);
+    assert_eq!(read_block(&mut other, SaveDevice::Eeprom8k, 9), 1);
+    other.load_state(&undecided).unwrap();
+    assert_eq!(other.memory().save_image().unwrap().len(), 8192);
+    assert!(self::machine(SaveDevice::Eeprom8k)
+        .load_state(&decided)
+        .is_err()); // The configured device is part of a state's setup identity.
+}

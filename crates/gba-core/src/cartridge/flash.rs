@@ -25,6 +25,9 @@ pub enum SaveDevice {
     Eeprom512,
     /// 8 KiB serial EEPROM with 14-bit block addresses, in the 0x0d window.
     Eeprom8k,
+    /// Serial EEPROM whose size the game selects: the length of its first DMA request
+    /// decides between `Eeprom512` and `Eeprom8k` addressing, or a loaded image's size does.
+    Eeprom,
 }
 
 impl SaveDevice {
@@ -35,7 +38,20 @@ impl SaveDevice {
             Self::Flash128 => 128 * 1024,
             Self::Sram => 32 * 1024,
             Self::Eeprom512 => 512,
-            Self::Eeprom8k => 8 * 1024,
+            Self::Eeprom8k | Self::Eeprom => 8 * 1024,
+        }
+    }
+
+    /// Image lengths `Memory::load_save_image` accepts and `Memory::save_image` returns.
+    pub fn image_sizes(self) -> &'static [usize] {
+        match self {
+            Self::None => &[],
+            Self::Flash64 => &[64 * 1024],
+            Self::Flash128 => &[128 * 1024],
+            Self::Sram => &[32 * 1024],
+            Self::Eeprom512 => &[512],
+            Self::Eeprom8k => &[8 * 1024],
+            Self::Eeprom => &[512, 8 * 1024],
         }
     }
 }
@@ -43,7 +59,14 @@ impl SaveDevice {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SaveError {
     NoDevice,
-    InvalidSize { expected: usize, actual: usize },
+    InvalidSize {
+        expected: usize,
+        actual: usize,
+    },
+    /// An image for `SaveDevice::Eeprom` must hold 512 or 8192 bytes.
+    InvalidEepromSize {
+        actual: usize,
+    },
 }
 impl fmt::Display for SaveError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -52,6 +75,10 @@ impl fmt::Display for SaveError {
             Self::InvalidSize { expected, actual } => write!(
                 f,
                 "save image size {actual}; expected exactly {expected} bytes"
+            ),
+            Self::InvalidEepromSize { actual } => write!(
+                f,
+                "EEPROM save image size {actual}; expected 512 or 8192 bytes"
             ),
         }
     }
@@ -497,7 +524,10 @@ impl Snapshot for Flash {
             SaveDevice::None => 0,
             SaveDevice::Flash64 => 1,
             SaveDevice::Flash128 => 2,
-            SaveDevice::Sram | SaveDevice::Eeprom512 | SaveDevice::Eeprom8k => {
+            SaveDevice::Sram
+            | SaveDevice::Eeprom512
+            | SaveDevice::Eeprom8k
+            | SaveDevice::Eeprom => {
                 unreachable!("only Flash devices have Flash state")
             }
         });

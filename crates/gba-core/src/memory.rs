@@ -44,7 +44,9 @@ use iwram_bus::IwramBus;
 
 use crate::{
     audio::{Audio, StereoLevel},
-    cartridge::{Cartridge, CartridgeHardware, RtcDateTime, RtcError, SaveDevice, SaveError},
+    cartridge::{
+        Cartridge, CartridgeHardware, RtcDateTime, RtcError, SaveDevice, SaveError, Store,
+    },
     cpu::InstructionSet,
     display::{DisplayPosition, CYCLES_PER_LINE, HBLANK_START, VISIBLE_LINES},
     dma::{DmaError, DMA_BASE, DMA_END},
@@ -211,6 +213,8 @@ pub struct Memory {
     // A completed DMA unit breaks the CPU's next nominal code-access sequence.
     cpu_resume_nonsequential: bool,
     cpu_access: Option<CpuAccess>,
+    /// Units left in the DMA transfer whose unit is being written, including it.
+    dma_units: Option<u32>,
     // Data of the last DMA unit, until a CPU step consumes it.
     dma_bus: Option<u32>,
     bios_prefetch: Option<u32>,
@@ -268,6 +272,7 @@ impl Memory {
             quiet_steps: 0,
             cpu_resume_nonsequential: false,
             cpu_access: None,
+            dma_units: None,
             dma_bus: None,
             bios_prefetch: None,
             iwram_bus: IwramBus::default(),
@@ -305,8 +310,10 @@ impl Memory {
     }
 
     /// Inspect the complete save array, independently of ID mode and selected bank.
+    /// An automatically sized EEPROM returns 512 bytes once the game chose 6-bit addressing.
     pub fn save_image(&self) -> Option<&[u8]> {
-        (self.cartridge.save_device() != SaveDevice::None).then_some(self.save_image.as_slice())
+        (self.cartridge.save_device() != SaveDevice::None)
+            .then(|| &self.save_image[..self.cartridge.save_image_len()])
     }
 
     /// Replace the entire array and reset Flash command/bank state. RTC state is unchanged.
@@ -317,15 +324,27 @@ impl Memory {
         if device == SaveDevice::None {
             return Err(SaveError::NoDevice);
         }
-        if bytes.len() != device.capacity() {
-            return Err(SaveError::InvalidSize {
-                expected: device.capacity(),
-                actual: bytes.len(),
+        if !device.image_sizes().contains(&bytes.len()) {
+            return Err(if device == SaveDevice::Eeprom {
+                SaveError::InvalidEepromSize {
+                    actual: bytes.len(),
+                }
+            } else {
+                SaveError::InvalidSize {
+                    expected: device.capacity(),
+                    actual: bytes.len(),
+                }
             });
         }
-        self.save_image.copy_from_slice(bytes);
+        self.save_image.fill(0xff);
+        self.save_image[..bytes.len()].copy_from_slice(bytes);
         self.save_modified = false;
         self.cartridge.set_save_device(device, self.rom.len());
+        if device == SaveDevice::Eeprom {
+            // The image's length fixes the part's addressing, as the game's own size would.
+            self.cartridge
+                .resolve_eeprom(bytes.len() == SaveDevice::Eeprom.capacity());
+        }
         Ok(())
     }
 
@@ -794,6 +813,7 @@ impl Memory {
             idle_cycles: 0,
         };
         self.begin_timer_step();
+        self.dma_units = Some(transfer.remaining);
         let result = (|| {
             self.advance_timer_step(internal_cycles + source_cycles);
             let data_latch = if transfer.source < 0x0200_0000 {
@@ -839,6 +859,7 @@ impl Memory {
             }?;
             Ok::<_, MemoryError>((data_latch, value))
         })();
+        self.dma_units = None;
         let (data_latch, value) = match result {
             Ok(result) => result,
             Err(error) => {
@@ -863,6 +884,14 @@ impl Memory {
         self.cpu_resume_nonsequential = true;
         self.dma_bus = Some(data_latch);
         Ok(Some((channel, timing)))
+    }
+
+    fn store(&self) -> Store {
+        match (self.cpu_access, self.dma_units) {
+            (Some(_), _) => Store::Cpu,
+            (None, Some(units)) => Store::Dma { units },
+            (None, None) => Store::Host,
+        }
     }
 
     /// Whether HALT is waiting for IE & IF to become nonzero.
@@ -1319,7 +1348,7 @@ impl Memory {
         if address >> 24 >= 0x08 && self.with_cartridge(|cartridge| cartridge.mapped(address)) {
             // Write a copy first: a rejected access must change nothing.
             let mut cartridge = self.cartridge_now();
-            cartridge.write(address, &bytes, &self.save_image, self.cpu_access.is_some())?;
+            cartridge.write(address, &bytes, &self.save_image, self.store())?;
             if self.step_active.get() {
                 *self.staged_cartridge().expect("step is active") = cartridge;
             } else {
@@ -1574,7 +1603,7 @@ impl Memory {
                     // One byte per word on SRAM's 8-bit bus; see store32.
                     self.write_index::<1>(address, self.write_access())?;
                     let byte = [(value >> ((address & 3) * 8)) as u8];
-                    cartridge.write(address, &byte, &self.save_image, self.cpu_access.is_some())?;
+                    cartridge.write(address, &byte, &self.save_image, self.store())?;
                     self.record_access(address, AccessWidth::Byte);
                     continue;
                 }
@@ -1582,7 +1611,7 @@ impl Memory {
                 self.write_index::<4>(address, self.write_access())?;
                 let bytes = value.to_le_bytes();
                 Self::validate_io_values(&mut audio, address, &bytes)?;
-                cartridge.write(address, &bytes, &self.save_image, self.cpu_access.is_some())?;
+                cartridge.write(address, &bytes, &self.save_image, self.store())?;
                 self.record_access(address, AccessWidth::Word);
                 if Serial::mapped(address) {
                     if let Some(mut step) = self.staged_devices() {

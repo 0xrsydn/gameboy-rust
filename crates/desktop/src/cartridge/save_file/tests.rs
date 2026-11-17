@@ -252,3 +252,60 @@ fn failed_state_restores_never_write_the_save() {
     assert_eq!(fs::read(&f.save).unwrap(), original);
     assert_eq!(fs::read_dir(&f.dir).unwrap().count(), 3); // ROM, image, owned lock only.
 }
+
+/// Send one EEPROM write request by DMA3: `10`, the 6-bit block, 64 data bits, `0`.
+fn eeprom_write(machine: &mut gba_core::machine::Machine, block: u64, data: u64) {
+    use gba_core::{cartridge::EEPROM_WRITE_CYCLES, dma::DMA_BASE};
+    let bits: Vec<u64> = [1, 0]
+        .into_iter()
+        .chain((0..6).rev().map(|shift| (block >> shift) & 1))
+        .chain((0..64).rev().map(|shift| (data >> shift) & 1))
+        .chain([0])
+        .collect();
+    let bus = machine.memory_mut();
+    for (index, &bit) in bits.iter().enumerate() {
+        bus.write16(0x0200_0000 + index as u32 * 2, bit as u16)
+            .unwrap();
+    }
+    bus.write32(DMA_BASE + 0x24, 0x0200_0000).unwrap();
+    bus.write32(DMA_BASE + 0x28, 0x0d00_0000).unwrap();
+    bus.write32(DMA_BASE + 0x2c, 0x8000_0000 | bits.len() as u32)
+        .unwrap();
+    for _ in &bits {
+        machine.step().unwrap();
+    }
+    machine.memory_mut().advance_cycles(EEPROM_WRITE_CYCLES);
+}
+
+#[test]
+fn automatic_eeprom_keeps_an_existing_size_and_new_files_take_the_games_size() {
+    let f = Fixture::new();
+    for length in [512, 8192] {
+        let bytes = vec![0x5a; length];
+        fs::write(&f.save, &bytes).unwrap();
+        let save = SaveFile::open(&f.save, &f.rom, SaveDevice::Eeprom).unwrap();
+        let mut m = Memory::new(vec![]).unwrap();
+        m.set_save_device(SaveDevice::Eeprom);
+        save.initialize(&mut m).unwrap();
+        assert_eq!(m.save_image().unwrap(), bytes);
+    }
+    for length in [0, 511, 1024, 8193] {
+        fs::write(&f.save, vec![0; length]).unwrap();
+        let error = SaveFile::open(&f.save, &f.rom, SaveDevice::Eeprom)
+            .err()
+            .unwrap();
+        assert!(error.to_string().contains("512 or 8192 bytes"), "{error}");
+    }
+    fs::remove_file(&f.save).unwrap();
+    let mut save = SaveFile::open(&f.save, &f.rom, SaveDevice::Eeprom).unwrap();
+    let mut m = Memory::new(vec![]).unwrap();
+    m.set_save_device(SaveDevice::Eeprom);
+    save.initialize(&mut m).unwrap();
+    let cpu = gba_core::cpu::Cpu::new(gba_core::memory::ROM_START);
+    let mut machine = gba_core::machine::Machine::new(cpu, m);
+    eeprom_write(&mut machine, 1, 0x0123_4567_89ab_cdef);
+    assert!(save.persist(machine.memory()).unwrap().is_some());
+    let written = fs::read(&f.save).unwrap();
+    assert_eq!(written.len(), 512); // A 73-unit request selects the 512-byte part.
+    assert_eq!(written[8..16], 0x0123_4567_89ab_cdef_u64.to_be_bytes());
+}

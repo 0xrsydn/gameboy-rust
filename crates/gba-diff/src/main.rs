@@ -27,7 +27,7 @@ const DISPCNT: u32 = 0x0400_0000;
 /// Machine steps allowed between VBlanks before the run is reported as stuck.
 const FRAME_STEP_LIMIT: usize = 2_000_000;
 
-const USAGE: &str = "usage: gba-diff --reference MGBA_REF --rom ROM [--frames N] [--save-type sram|flash64|flash128|eeprom512|eeprom8k] [--rtc UNIX_SECONDS] [--input FRAME:BUTTON:HOLD[,...]] [--ignore START-END[,...]] [--max-report N] [--out DIR] [--images FRAME[,...]] [--detail-frame FRAME[,...]] [--no-align] [--trace INSTRUCTIONS]";
+const USAGE: &str = "usage: gba-diff --reference MGBA_REF --rom ROM [--frames N] [--save-type sram|flash64|flash128|eeprom|eeprom512|eeprom8k] [--rtc UNIX_SECONDS] [--input FRAME:BUTTON:HOLD[,...]] [--ignore START-END[,...]] [--max-report N] [--out DIR] [--images FRAME[,...]] [--detail-frame FRAME[,...]] [--no-align] [--trace INSTRUCTIONS]";
 
 /// Memory compared every frame. Video memory is compared after both frames render.
 const REGIONS: [(&str, u32, usize); 5] = [
@@ -164,6 +164,7 @@ fn parse(args: &[String]) -> Result<Options, String> {
                     "sram" => SaveDevice::Sram,
                     "flash64" => SaveDevice::Flash64,
                     "flash128" => SaveDevice::Flash128,
+                    "eeprom" => SaveDevice::Eeprom,
                     "eeprom512" => SaveDevice::Eeprom512,
                     "eeprom8k" => SaveDevice::Eeprom8k,
                     other => return Err(format!("unknown save type: {other}")),

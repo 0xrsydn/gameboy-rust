@@ -4,6 +4,7 @@ use crate::memory::MemoryError;
 use crate::snapshot::{Reader, Snapshot, SnapshotError, Writer};
 
 mod calendar;
+mod detect;
 mod eeprom;
 mod flash;
 mod rtc;
@@ -23,6 +24,18 @@ use sram::Sram;
 pub const GPIO_DATA: u32 = 0x0800_00c4;
 pub const GPIO_DIRECTION: u32 = 0x0800_00c6;
 pub const GPIO_CONTROL: u32 = 0x0800_00c8;
+
+/// Who drives a cartridge store. EEPROM bitstreams need DMA, and an automatically sized
+/// EEPROM takes its address width from the remaining units of that DMA.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Store {
+    Cpu,
+    Dma {
+        units: u32,
+    },
+    /// A host write between machine steps.
+    Host,
+}
 
 /// Explicit peripheral selection; ROM contents do not select a device.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -61,6 +74,20 @@ impl Cartridge {
             return eeprom.device();
         }
         self.flash.map_or(SaveDevice::None, Flash::device)
+    }
+
+    /// Bytes of the save image in use. Only an automatically sized EEPROM uses fewer.
+    pub(crate) fn save_image_len(&self) -> usize {
+        self.eeprom
+            .map_or(self.save_device().capacity(), Eeprom::image_len)
+    }
+
+    /// Fix an automatically sized EEPROM's addressing from a loaded image's length.
+    pub(crate) fn resolve_eeprom(&mut self, large: bool) {
+        self.eeprom
+            .as_mut()
+            .expect("EEPROM selected")
+            .resolve(large);
     }
 
     pub(crate) fn eeprom_mapped(&self, address: u32) -> bool {
@@ -171,13 +198,12 @@ impl Cartridge {
     }
 
     /// Apply one access to a copy first. A rejected second halfword changes nothing.
-    /// `cpu` marks CPU stores, which cannot carry EEPROM bitstreams.
     pub(crate) fn write(
         &mut self,
         address: u32,
         bytes: &[u8],
         image: &[u8],
-        cpu: bool,
+        store: Store,
     ) -> Result<(), MemoryError> {
         if !self.mapped(address) {
             return Ok(()); // Non-cartridge accesses are validated by the bus.
@@ -194,7 +220,7 @@ impl Cartridge {
                 .eeprom
                 .as_mut()
                 .unwrap()
-                .write(address, value, cpu, image);
+                .write(address, value, store, image);
         }
         if self.save_mapped(address) {
             if bytes.len() != 1 {
@@ -272,6 +298,7 @@ impl Cartridge {
                 SaveDevice::Sram => 3,
                 SaveDevice::Eeprom512 => 4,
                 SaveDevice::Eeprom8k => 5,
+                SaveDevice::Eeprom => 6,
             },
         ]
     }
@@ -326,6 +353,7 @@ impl Snapshot for Cartridge {
             3 => SaveDevice::Sram,
             4 => SaveDevice::Eeprom512,
             5 => SaveDevice::Eeprom8k,
+            6 => SaveDevice::Eeprom,
             _ => return Err(SnapshotError::Corrupt("save device")),
         };
         if save_device != target_device {
