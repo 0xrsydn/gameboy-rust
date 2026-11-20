@@ -10,6 +10,8 @@ pub const SRAM_MIRROR_END: u32 = 0x0fff_ffff;
 /// Nominal simulation delays, not measured Macronix operation times.
 pub const FLASH_PROGRAM_CYCLES: u32 = 650;
 pub const FLASH_ERASE_CYCLES: u32 = 30000;
+/// One erasable Flash sector.
+const SECTOR: usize = 0x1000;
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum SaveDevice {
@@ -139,33 +141,35 @@ impl Flash {
         let offset = (address - SAVE_START) as usize;
         let index = usize::from(self.bank) * 0x10000 + offset;
         if let Some(pending) = self.pending {
+            let range = pending.mutation.start..pending.mutation.end;
             if pending.remaining != 0 {
-                if address != pending.poll {
-                    return Err(MemoryError::UnsupportedCartridgeAccess {
-                        address,
-                        operation: "Flash busy read outside polling address",
-                    });
+                if address == pending.poll {
+                    // Bounded DQ7-only data polling. Toggle/error bits are not modeled.
+                    return Ok((pending.mutation.value ^ 0x80) & 0x80);
                 }
-                // Bounded DQ7-only data polling. Toggle/error bits are not modeled.
-                return Ok((pending.mutation.value ^ 0x80) & 0x80);
+                // Elsewhere, follow mGBA 0.10.5 (`GBASavedataReadFlash`): a sector still
+                // being erased reads 0x5f; other bytes read as if the operation had finished.
+                if range.len() == SECTOR && range.contains(&index) {
+                    return Ok(0x5f);
+                }
             }
-            if (pending.mutation.start..pending.mutation.end).contains(&index) {
+            if range.contains(&index) {
                 return Ok(pending.mutation.value);
             }
         }
         if self.identify {
-            return match offset {
-                0 => Ok(0xc2),
-                1 => Ok(if self.device == SaveDevice::Flash64 {
-                    0x1c
-                } else {
-                    9
-                }),
-                _ => Err(MemoryError::UnsupportedCartridgeAccess {
-                    address,
-                    operation: "Flash ID read outside manufacturer/device bytes",
-                }),
-            };
+            match offset {
+                0 => return Ok(0xc2),
+                1 => {
+                    return Ok(if self.device == SaveDevice::Flash64 {
+                        0x1c
+                    } else {
+                        9
+                    })
+                }
+                // mGBA reads the array beyond the two ID bytes.
+                _ => {}
+            }
         }
         Ok(image[index])
     }
@@ -188,12 +192,7 @@ impl Flash {
         }
     }
 
-    pub(super) fn write(
-        &mut self,
-        address: u32,
-        value: u8,
-        image: &[u8],
-    ) -> Result<(), MemoryError> {
+    pub(super) fn write(&mut self, address: u32, value: u8) -> Result<(), MemoryError> {
         let offset = address - SAVE_START;
         let error = |operation| MemoryError::UnsupportedIo {
             address,
@@ -201,17 +200,24 @@ impl Flash {
             operation,
         };
         let mut next = *self;
-        if self.pending.is_some_and(|p| p.remaining != 0) {
-            if self.device == SaveDevice::Flash64 && offset == 0x5555 && value == 0xf0 {
-                next.pending = None;
-                next.phase = Phase::Ready;
-                *self = next;
-                return Ok(());
-            }
-            return Err(error("Flash write during busy operation"));
+        if self.pending.is_some_and(|p| p.remaining != 0)
+            && self.device == SaveDevice::Flash64
+            && self.phase != Phase::Program
+            && offset == 0x5555
+            && value == 0xf0
+        {
+            next.pending = None;
+            next.phase = Phase::Ready;
+            *self = next;
+            return Ok(());
         }
+        // A new program or erase needs the previous one committed first; the
+        // deferred mutation has a single slot. mGBA applies both immediately.
+        let busy = || error("Flash program/erase before the previous one committed");
         // GBATEK documents direct reset for the 64 KiB chip. For 128 KiB, accept
         // only a redundant reset while already idle in array mode. No busy/ID exit is inferred.
+        // Other malformed writes follow mGBA 0.10.5 (`GBASavedataWriteFlash`): they are
+        // ignored, and an armed erase stays armed until its confirmation.
         if self.phase != Phase::Program
             && offset == 0x5555
             && value == 0xf0
@@ -224,41 +230,39 @@ impl Flash {
             next.phase = match self.phase {
                 Phase::Ready if offset == 0x5555 && value == 0xaa => Phase::Unlock,
                 Phase::Unlock if offset == 0x2aaa && value == 0x55 => Phase::Command,
-                Phase::Command if offset == 0x5555 => {
-                    if self.identify && value != 0xf0 {
-                        return Err(error("Flash command while in ID mode"));
-                    }
-                    match value {
-                        0x90 => {
-                            next.identify = true;
-                            Phase::Ready
-                        }
-                        0xf0 => {
-                            next.identify = false;
-                            Phase::Ready
-                        }
-                        0xb0 if self.device == SaveDevice::Flash128 => Phase::Bank,
-                        0xb0 => return Err(error("Flash bank selection on 64 KiB device")),
-                        0xa0 => Phase::Program,
-                        0x80 => Phase::EraseUnlock,
-                        _ => return Err(error("Flash command")),
-                    }
-                }
-                Phase::Bank if offset == 0 && value < 2 => {
-                    next.bank = value;
+                // In ID mode only the exit command is accepted; mGBA ignores the rest.
+                Phase::Command if offset == 0x5555 && self.identify => {
+                    next.identify = value != 0xf0;
                     Phase::Ready
                 }
-                Phase::Bank => return Err(error("Flash bank address/value")),
+                Phase::Command if offset == 0x5555 => match value {
+                    0x90 => {
+                        next.identify = true;
+                        Phase::Ready
+                    }
+                    0xb0 => Phase::Bank,
+                    0xa0 => Phase::Program,
+                    0x80 => Phase::EraseUnlock,
+                    _ => Phase::Ready, // Includes a redundant 0xf0 exit.
+                },
+                // mGBA grows a 64 KiB chip to 128 KiB on a switch to bank 1. The image
+                // size is fixed by the selected device here, so that stays diagnostic.
+                Phase::Bank if offset == 0 && value == 1 && self.device == SaveDevice::Flash64 => {
+                    return Err(error("Flash bank 1 on 64 KiB device"))
+                }
+                Phase::Bank => {
+                    if offset == 0 && value < 2 {
+                        next.bank = value;
+                    }
+                    Phase::Ready
+                }
                 Phase::Program => {
                     if self.pending.is_some() {
-                        return Err(error("Flash completion awaiting commit"));
+                        return Err(busy());
                     }
+                    // mGBA stores the byte as written. Hardware can only clear bits; the
+                    // two agree whenever a game erases first.
                     let index = usize::from(self.bank) * 0x10000 + offset as usize;
-                    if value & !image[index] != 0 {
-                        return Err(error(
-                            "Flash programming requires erase for zero-to-one bits",
-                        ));
-                    }
                     next.pending = Some(Pending {
                         mutation: SaveMutation {
                             start: index,
@@ -273,29 +277,41 @@ impl Flash {
                 Phase::EraseUnlock if offset == 0x5555 && value == 0xaa => Phase::EraseCommand,
                 Phase::EraseCommand if offset == 0x2aaa && value == 0x55 => Phase::EraseConfirm,
                 Phase::EraseConfirm => {
-                    if self.pending.is_some() {
-                        return Err(error("Flash completion awaiting commit"));
-                    }
-                    let (start, end, poll) = match value {
-                        0x10 if offset == 0x5555 => (0, self.device.capacity(), SAVE_START),
-                        0x30 if offset & 0xfff == 0 => {
-                            let start = usize::from(self.bank) * 0x10000 + offset as usize;
-                            (start, start + 0x1000, address)
+                    let erase = match value {
+                        0x10 if offset == 0x5555 => Some((0, self.device.capacity(), SAVE_START)),
+                        // mGBA erases the sector that holds any non-unlock address.
+                        0x30 if offset != 0x5555 => {
+                            let sector = offset & !(SECTOR as u32 - 1);
+                            let start = usize::from(self.bank) * 0x10000 + sector as usize;
+                            Some((start, start + SECTOR, SAVE_START + sector))
                         }
-                        _ => return Err(error("Flash erase confirmation/address")),
+                        _ => None,
                     };
-                    next.pending = Some(Pending {
-                        mutation: SaveMutation {
-                            start,
-                            end,
-                            value: 0xff,
-                        },
-                        remaining: FLASH_ERASE_CYCLES,
-                        poll,
-                    });
-                    Phase::Ready
+                    match erase {
+                        // mGBA drops the erase after a bad value at the unlock address
+                        // and keeps it armed after a bad value elsewhere.
+                        None if offset == 0x5555 => Phase::Ready,
+                        None => Phase::EraseUnlock,
+                        Some((start, end, poll)) => {
+                            if self.pending.is_some() {
+                                return Err(busy());
+                            }
+                            next.pending = Some(Pending {
+                                mutation: SaveMutation {
+                                    start,
+                                    end,
+                                    value: 0xff,
+                                },
+                                remaining: FLASH_ERASE_CYCLES,
+                                poll,
+                            });
+                            Phase::Ready
+                        }
+                    }
                 }
-                _ => return Err(error("Flash unlock/reset sequence")),
+                // A broken unlock prefix starts over; an armed erase stays armed.
+                Phase::EraseUnlock | Phase::EraseCommand => Phase::EraseUnlock,
+                Phase::Ready | Phase::Unlock | Phase::Command => Phase::Ready,
             };
         }
         *self = next;

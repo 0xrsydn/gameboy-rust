@@ -85,7 +85,7 @@ fn sector_and_chip_erases_have_exact_scope_and_wait_for_completion() {
     }
 }
 #[test]
-fn data_at_unlock_address_is_not_mistaken_for_reset_and_zero_to_one_requires_erase() {
+fn data_at_unlock_address_is_not_mistaken_for_reset_and_programs_as_written() {
     let mut m = bus(SaveDevice::Flash64);
     program(&mut m, HI, 0xf0);
     m.advance_cycles(PROGRAM);
@@ -93,50 +93,90 @@ fn data_at_unlock_address_is_not_mistaken_for_reset_and_zero_to_one_requires_era
     program(&mut m, HI, 0x80);
     m.advance_cycles(PROGRAM);
     assert_eq!(m.read8(HI).unwrap(), 0x80);
-    command(&mut m, 0xa0);
-    let error = m.write8(HI, 0xff).unwrap_err();
-    assert!(error.to_string().contains("requires erase"));
-    assert_eq!(m.write8(HI, 0xff), Err(error));
-    m.write8(HI, 0).unwrap();
+    // mGBA stores the byte as written, even where hardware would need an erase first.
+    program(&mut m, HI, 0x7f);
+    assert_eq!(m.read8(HI).unwrap(), 0x80); // DQ7 polling still reports busy.
     m.advance_cycles(PROGRAM);
-    assert_eq!(m.read8(HI).unwrap(), 0);
+    assert_eq!(m.read8(HI).unwrap(), 0x7f);
+    assert_eq!(m.save_image().unwrap()[0x5555], 0x7f);
 }
 #[test]
-fn busy_access_limits_and_64_reset_are_atomic_without_fabricated_completion() {
+fn busy_reads_and_commands_follow_mgba_and_64_reset_cancels() {
     for device in [SaveDevice::Flash64, SaveDevice::Flash128] {
         let mut m = bus(device);
         program(&mut m, BASE + 123, 0x12);
-        assert!(m.read8(BASE + 124).is_err());
-        let error = m.write8(HI, 0xaa).unwrap_err();
-        assert_eq!(m.write8(HI, 0xaa), Err(error));
+        // Away from the polling address, reads see the array (the target reads its new value).
+        assert_eq!(m.read8(BASE + 124).unwrap(), 255);
         if device == SaveDevice::Flash64 {
+            // GBATEK's direct reset cancels the busy program.
             m.write8(HI, 0xf0).unwrap();
             m.advance_cycles(PROGRAM);
             assert_eq!(m.read8(BASE + 123).unwrap(), 255);
             assert!(!m.save_modified());
         } else {
-            assert!(m.write8(HI, 0xf0).is_err());
+            // Writes run the command state machine; a second program waits for the commit.
+            command(&mut m, 0xa0);
+            let error = m.write8(BASE + 7, 0).unwrap_err();
+            assert!(error
+                .to_string()
+                .contains("before the previous one committed"));
+            assert_eq!(m.write8(BASE + 7, 0), Err(error));
             m.advance_cycles(PROGRAM);
             assert_eq!(m.read8(BASE + 123).unwrap(), 0x12);
+            m.write8(BASE + 7, 0).unwrap(); // The armed program now proceeds.
+            m.advance_cycles(PROGRAM);
+            assert_eq!(m.read8(BASE + 7).unwrap(), 0);
         }
     }
 }
 #[test]
-fn invalid_erase_sequences_preserve_data_and_can_be_retried() {
+fn busy_sector_erase_reads_0x5f_inside_the_sector_as_mgba_does() {
+    let mut m = bus(SaveDevice::Flash128);
+    m.load_save_image(&vec![0x11; 131072]).unwrap();
+    erase(&mut m, BASE + 0x3000, 0x30);
+    assert_eq!(m.read8(BASE + 0x3000).unwrap(), 0); // DQ7 polling address.
+    assert_eq!(m.read8(BASE + 0x3001).unwrap(), 0x5f);
+    assert_eq!(m.read8(BASE + 0x3fff).unwrap(), 0x5f);
+    assert_eq!(m.read8(BASE + 0x2fff).unwrap(), 0x11);
+    assert_eq!(m.read8(BASE + 0x4000).unwrap(), 0x11);
+    m.advance_cycles(ERASE);
+    assert_eq!(m.read8(BASE + 0x3001).unwrap(), 0xff);
+}
+#[test]
+fn invalid_erase_confirmations_are_ignored_or_stay_armed_as_mgba_does() {
     let mut m = bus(SaveDevice::Flash128);
     m.load_save_image(&vec![0; 131072]).unwrap();
     command(&mut m, 0x80);
-    assert!(m.write8(LO, 0x55).is_err());
+    m.write8(LO, 0x55).unwrap(); // Broken prefix: the erase stays armed.
     m.write8(HI, 0xaa).unwrap();
     m.write8(LO, 0x55).unwrap();
-    for (at, val) in [(BASE + 1, 0x30), (BASE, 0x10), (HI, 0x90)] {
-        let err = m.write8(at, val).unwrap_err();
-        assert_eq!(m.write8(at, val), Err(err));
+    // A bad value away from the unlock address keeps the erase armed.
+    for (at, val) in [(BASE, 0x10), (BASE + 1, 0x90)] {
+        m.write8(at, val).unwrap();
         assert!(m.save_image().unwrap().iter().all(|&b| b == 0));
+        m.write8(HI, 0xaa).unwrap();
+        m.write8(LO, 0x55).unwrap();
     }
-    m.write8(BASE, 0x30).unwrap();
+    // A sector erase at an unaligned address erases the sector holding it.
+    m.write8(BASE + 0x1234, 0x30).unwrap();
+    assert_eq!(m.read8(BASE + 0x1000).unwrap(), 0); // DQ7 polls the sector base.
     m.advance_cycles(ERASE);
-    assert!(m.save_image().unwrap()[..4096].iter().all(|&b| b == 255));
+    let image = m.save_image().unwrap();
+    assert!(image[0x1000..0x2000].iter().all(|&b| b == 255));
+    assert!(image[..0x1000]
+        .iter()
+        .chain(&image[0x2000..])
+        .all(|&b| b == 0));
+    // A bad value at the unlock address drops the erase.
+    command(&mut m, 0x80);
+    m.write8(HI, 0xaa).unwrap();
+    m.write8(LO, 0x55).unwrap();
+    m.write8(HI, 0x90).unwrap();
+    m.write8(HI, 0xaa).unwrap();
+    m.write8(LO, 0x55).unwrap();
+    m.write8(BASE, 0x30).unwrap(); // Ignored: no erase is armed.
+    assert!(!m.save_write_pending());
+    assert_eq!(m.read8(BASE).unwrap(), 0);
 }
 #[test]
 fn halt_clocks_nominal_operations_stop_freezes_them_and_setup_resets_dirty_state() {

@@ -106,8 +106,8 @@ An unfinished request, read-out, or write sets `save_write_pending()`, which blo
 
 Only `0x0e000000` through `0x0e00ffff` are mapped. Accesses are byte-only.
 Halfword/word transfers, DMA, instruction fetches, and unverified aliases remain diagnostic.
-CPU Flash reads must execute from external or internal work RAM, following GBATEK's access description.
-Reads from ROM/BIOS code remain diagnostic. Host inspection has no execution restriction; CPU writes can execute from ROM.
+GBATEK says Flash reads must execute from work RAM. mGBA 0.10.5 has no such restriction, and neither does this core:
+CPU code in any region can read and write Flash.
 Ordinary ROM bytes remain read-only.
 
 WAITCNT bits 0–1 select save wait states 4, 3, 2, or 8.
@@ -129,25 +129,31 @@ The unlock prefix consists of these byte writes:
 | `0xa0` | Next byte write supplies the target address and program data |
 | `0x80` | Accept another `0xaa`/`0x55` unlock pair, then an erase confirmation |
 
-Erase confirmation is `0x10` at `0x0e005555` for the entire chip, or `0x30` at a 4 KiB sector base.
-Sector erase affects only the selected bank's sector. Chip erase affects both banks on Flash128.
-Byte programming can clear bits or retain their value. Requests that set a stored zero bit are diagnostic; erase first.
-Invalid commands, prefixes, bank values, and sector addresses retain the preceding state for diagnostic retry.
-This policy does not reproduce hardware behavior for every malformed sequence.
+Erase confirmation is `0x10` at `0x0e005555` for the entire chip, or `0x30` at any other address for the 4 KiB
+sector that holds it. Sector erase affects only the selected bank's sector. Chip erase affects both banks on Flash128.
+
+Malformed sequences follow mGBA 0.10.5 (`GBASavedataWriteFlash` in `src/gba/savedata.c`); none of this is
+hardware-verified:
+
+- Byte programming stores the byte as written. Hardware can only clear bits, so the two agree whenever a game erases first.
+- A write that breaks an unlock prefix is ignored and the prefix starts over. An armed erase stays armed.
+- Unknown commands, bad bank addresses or values, and any command but `0xf0` in ID mode are ignored.
+- A bad erase confirmation at `0x0e005555` drops the erase; a bad value elsewhere keeps it armed.
+- Bank 1 on Flash64 stays diagnostic: mGBA grows the chip to 128 KiB, but the selected device fixes the image size here.
 
 | Device | Capacity | Manufacturer byte | Device byte |
 | --- | --- | --- | --- |
 | Flash64 | 64 KiB | `0xc2` | `0x1c` |
 | Flash128 | 128 KiB | `0xc2` | `0x09` |
 
-Identification exposes these bytes at offsets zero and one. Other ID addresses remain diagnostic.
+Identification exposes these bytes at offsets zero and one. Other addresses read the array, as in mGBA.
 Bank selection survives ID entry/exit; incomplete unlock reads retain the previous mode and bank.
 
 For Flash64, direct `0xf0` at `0x0e005555` resets commands/ID state or cancels a busy operation.
 Cancellation preserves the old array. Partial physical programming on cancellation is not modeled.
 After `0xa0`, `0xf0` at that address is program data, not reset.
-For Flash128, direct reset is accepted only as a redundant no-op while idle in array mode.
-Flash128 requires an unlocked ID exit; direct busy/partial-command cancellation remains diagnostic.
+For Flash128, direct reset is a no-op. It does not exit ID mode or cancel a busy operation, and it breaks a partial
+unlock prefix like any other malformed write. Flash128 needs the unlocked ID exit.
 
 ## Nominal completion and transactions
 
@@ -156,7 +162,7 @@ These are simulation constants, not measured Macronix timings. Chip erase durati
 GBATEK leaves average Macronix operation times unknown. The constants match the pinned mGBA timing approximation below.
 No matching manufacturer datasheet or physical timing measurement establishes these values.
 
-While busy, reads are accepted only at the operation's polling address:
+While busy, each operation has a polling address:
 
 - Program: the target byte.
 - Sector erase: the selected sector base.
@@ -164,7 +170,9 @@ While busy, reads are accepted only at the operation's polling address:
 
 Busy reads return the complement of the final data's bit 7 (DQ7), with other bits zero.
 Toggle/error bits, protection, wear, queued sector erase, and suspend/resume are not modeled.
-Other busy reads and writes remain diagnostic, except the documented Flash64 cancellation subset.
+Other busy reads follow mGBA: bytes in a sector still being erased read `0x5f`, and other bytes read as if the
+operation had finished. Busy writes run the command sequence. Starting another program or erase before the previous
+one commits remains diagnostic: the core defers one array change at a time, while mGBA applies each immediately.
 After completion, ordinary array reads resume. No completion interrupt is generated.
 
 A program starts at the successful byte-store bus phase, after preceding fetch/data clocks.
@@ -252,4 +260,5 @@ Validate detection and automatic EEPROM sizing against a game that uses EEPROM.
 - [GBATEK backup Flash](https://problemkaputt.de/gbatek-gba-cart-backup-flash-rom.htm): capacities, IDs, command sequences, banking, program/erase polling, Macronix reset, byte-only access, and RAM execution.
 - [GBATEK](https://mgba-emu.github.io/gbatek/), WAITCNT section: save waits and one-cycle-plus-wait timing.
 - [mGBA savedata at 3a5e34be](https://github.com/mgba-emu/mgba/blob/3a5e34be33dc7f8f707e5bc9db69e8a430046f21/src/gba/savedata.c): comparison for controller phases, bank addressing, ID overlays, idle reset, and nominal 650/30,000-cycle delays. Its DQ7 approximation is not hardware evidence. Our array mutation is deferred to transactional completion rather than applied immediately.
+- [mGBA savedata at 0.10.5](https://github.com/mgba-emu/mgba/blob/0.10.5/src/gba/savedata.c) `GBASavedataReadFlash`/`GBASavedataWriteFlash` and [`src/gba/memory.c`](https://github.com/mgba-emu/mgba/blob/0.10.5/src/gba/memory.c) `GBALoad8`: the malformed-sequence, ID, busy-read (`0x5f` while a sector settles), and any-region read behavior followed above.
 - [ares Flash at 9408cb43](https://github.com/ares-emulator/ares/blob/9408cb43d4948fc3ea6e152a307a34348df3fe04/ares/gba/cartridge/flash.cpp): comparison for IDs, banking, unlocked ID exit, and idle reset. Immediate program/erase and permissive unlock handling are not adopted.

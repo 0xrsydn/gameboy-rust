@@ -1198,17 +1198,6 @@ impl Memory {
                 operation: "EEPROM non-halfword read",
             });
         }
-        if cartridge_region
-            && self.with_cartridge(|cartridge| cartridge.flash_mapped(address))
-            && self
-                .cpu_access
-                .is_some_and(|access| !matches!(access.pc >> 24, 0x02 | 0x03))
-        {
-            return Err(MemoryError::UnsupportedCartridgeAccess {
-                address,
-                operation: "Flash CPU read outside work RAM",
-            });
-        }
         if address >> 24 == 0x04 && address & 0x00ff_fc00 == 0 && self.cpu_access.is_some() {
             match Io::read_policy(address) {
                 crate::io::IoRead::Register => {}

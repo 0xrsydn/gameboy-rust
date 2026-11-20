@@ -73,7 +73,7 @@ fn work_ram_byte_loads_observe_selected_id_with_save_bus_costs() {
 }
 
 #[test]
-fn rejected_commands_and_rom_execution_reads_roll_back_cpu_and_command_state() {
+fn rom_code_reads_flash_and_unknown_commands_are_ignored_as_mgba_does() {
     for thumb in [false, true] {
         for read in [false, true] {
             let (cpu, mut memory) = prepared(
@@ -84,25 +84,56 @@ fn rejected_commands_and_rom_execution_reads_roll_back_cpu_and_command_state() {
                     (false, true) => 0xe5d10000,
                     (true, true) => 0x7808,
                 }],
-                &[(0, 0x42), (1, if read { SAVE_START } else { HI })],
+                &[(0, 0x42), (1, if read { SAVE_START + 1 } else { HI })],
             );
             unlocked(&mut memory);
-            let before = memory.cartridge;
+            memory.write8(HI, 0x90).unwrap();
+            if !read {
+                memory.write8(HI, 0xaa).unwrap();
+                memory.write8(LO, 0x55).unwrap();
+            }
             let mut machine = Machine::new(cpu, memory);
-            let cpu = machine.cpu().clone();
-            let error = machine.step().unwrap_err();
-            assert!(error.to_string().contains(if read {
-                "outside work RAM"
-            } else {
-                "Flash command"
-            }));
-            assert_eq!(machine.step(), Err(error));
-            assert_eq!(machine.cpu(), &cpu);
-            assert_eq!(machine.memory().cartridge, before);
-            assert_eq!(machine.cycles(), 0);
-            machine.memory_mut().write8(HI, 0x90).unwrap(); // Failure retained the accepted unlock prefix.
+            machine.step().unwrap();
+            assert_eq!(machine.last_timing().data_cycles, 5);
+            if read {
+                // ROM code reads the device byte; the rest of the ID mode is unchanged.
+                assert_eq!(machine.cpu().registers()[0], 9);
+            }
+            // 0x42 in ID mode is ignored: ID mode continues, with no unlock prefix kept.
             assert_eq!(machine.memory().read8(SAVE_START).unwrap(), 0xc2);
+            machine.memory_mut().write8(HI, 0xf0).unwrap(); // Redundant 128 KiB reset.
+            assert_eq!(machine.memory().read8(SAVE_START).unwrap(), 0xc2);
+            assert_eq!(machine.memory().read16(IF).unwrap(), 0);
         }
+    }
+}
+
+#[test]
+fn rejected_64_kib_bank_switch_rolls_back_cpu_and_command_state() {
+    for thumb in [false, true] {
+        let (cpu, mut memory) = prepared(
+            thumb,
+            &[if thumb { 0x7008 } else { 0xe5c10000 }],
+            &[(0, 1), (1, SAVE_START)],
+        );
+        memory.set_save_device(SaveDevice::Flash64);
+        for (address, value) in [(HI, 0xaa), (LO, 0x55), (HI, 0xb0)] {
+            memory.write8(address, value).unwrap();
+        }
+        let before = memory.cartridge;
+        let mut machine = Machine::new(cpu, memory);
+        let cpu = machine.cpu().clone();
+        let error = machine.step().unwrap_err();
+        assert!(error.to_string().contains("bank 1 on 64 KiB"));
+        assert_eq!(machine.step(), Err(error));
+        assert_eq!(machine.cpu(), &cpu);
+        assert_eq!(machine.memory().cartridge, before);
+        assert_eq!(machine.cycles(), 0);
+        machine.memory_mut().write8(SAVE_START, 0).unwrap(); // Bank 0 is accepted.
+        machine.memory_mut().write8(HI, 0xaa).unwrap();
+        machine.memory_mut().write8(LO, 0x55).unwrap();
+        machine.memory_mut().write8(HI, 0x90).unwrap();
+        assert_eq!(machine.memory().read8(SAVE_START + 1).unwrap(), 0x1c);
     }
 }
 

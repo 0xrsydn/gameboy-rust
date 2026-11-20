@@ -114,7 +114,7 @@ impl Cartridge {
         self.sram.is_some() && self.save_mapped(address)
     }
 
-    /// Flash reads are restricted to work-RAM code; SRAM has no such limit.
+    /// The Flash window, which accepts byte accesses only.
     pub(crate) fn flash_mapped(&self, address: u32) -> bool {
         self.flash.is_some() && self.save_mapped(address)
     }
@@ -236,7 +236,7 @@ impl Cartridge {
             if let Some(sram) = self.sram.as_mut() {
                 return sram.write(address, bytes[0]);
             }
-            return self.flash.as_mut().unwrap().write(address, bytes[0], image);
+            return self.flash.as_mut().unwrap().write(address, bytes[0]);
         }
         let fail = |at, value, operation| MemoryError::UnsupportedIo {
             address: at,

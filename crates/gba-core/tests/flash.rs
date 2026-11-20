@@ -74,11 +74,9 @@ fn manufacturer_and_device_id_are_separate_bytes_and_exit_preserves_data() {
         command(&mut bus, 0x90).unwrap();
         assert_eq!(bus.read8(SAVE_START).unwrap(), 0xc2);
         assert_eq!(bus.read8(SAVE_START + 1).unwrap(), id);
-        assert!(bus
-            .read8(SAVE_START + 2)
-            .unwrap_err()
-            .to_string()
-            .contains("ID read outside"));
+        // mGBA reads the array beyond the two ID bytes.
+        assert_eq!(bus.read8(SAVE_START + 2).unwrap(), data[2]);
+        assert_eq!(bus.read8(SAVE_END).unwrap(), data[0xffff]);
         command(&mut bus, 0xf0).unwrap();
         assert_eq!(bus.read8(SAVE_START).unwrap(), data[0]);
         assert_eq!(bus.read8(SAVE_START + 1).unwrap(), data[1]);
@@ -109,50 +107,67 @@ fn bank_selection_covers_every_byte_and_survives_id_mode() {
             data[selected as usize * 0x10000]
         );
     }
+    // A 64 KiB chip accepts the bank command and bank 0. mGBA grows the chip on bank 1;
+    // the selected image size is fixed here, so that stays diagnostic and retryable.
     let mut small = memory(SaveDevice::Flash64);
-    assert!(command(&mut small, 0xb0)
-        .unwrap_err()
-        .to_string()
-        .contains("64 KiB"));
-    small.write8(HI, 0xf0).unwrap();
+    command(&mut small, 0xb0).unwrap();
+    let error = small.write8(SAVE_START, 1).unwrap_err();
+    assert!(error.to_string().contains("bank 1 on 64 KiB"));
+    assert_eq!(small.write8(SAVE_START, 1), Err(error));
+    small.write8(SAVE_START, 0).unwrap();
+    assert_eq!(small.read8(SAVE_START).unwrap(), 0xff);
     assert_eq!(small.save_image().unwrap().len(), 0x10000);
 }
 
 #[test]
-fn unsupported_commands_and_bad_bank_values_are_retryable_without_data_changes() {
+fn unknown_commands_and_bad_bank_values_are_ignored_as_mgba_does() {
     for device in [SaveDevice::Flash64, SaveDevice::Flash128] {
-        for (byte, message) in [
-            (0x42, "Flash command"),
-            (0x30, "Flash command"),
-            (0x10, "Flash command"),
-        ] {
+        for byte in [0x42, 0x30, 0x10, 0xf0] {
             let mut bus = memory(device);
             let data = image(device);
             bus.load_save_image(&data).unwrap();
-            let error = command(&mut bus, byte).unwrap_err();
-            assert!(error.to_string().contains(message));
-            assert_eq!(bus.write8(HI, byte), Err(error));
+            command(&mut bus, byte).unwrap();
             assert_eq!(bus.save_image().unwrap(), data);
-            bus.write8(HI, 0xf0).unwrap(); // Finish the already accepted unlock sequence.
             assert_eq!(bus.read8(SAVE_START).unwrap(), data[0]);
+            command(&mut bus, 0x90).unwrap(); // No unlock prefix was kept.
+            assert_eq!(bus.read8(SAVE_START).unwrap(), 0xc2);
             assert_eq!(bus.read16(IF).unwrap(), 0);
         }
     }
     let mut bus = memory(SaveDevice::Flash128);
     let data = image(SaveDevice::Flash128);
     bus.load_save_image(&data).unwrap();
-    command(&mut bus, 0xb0).unwrap();
     for (address, value) in [(SAVE_START, 2), (SAVE_START, 255), (SAVE_START + 1, 1)] {
-        let error = bus.write8(address, value).unwrap_err();
-        assert_eq!(bus.write8(address, value), Err(error));
+        command(&mut bus, 0xb0).unwrap();
+        bus.write8(address, value).unwrap(); // Ignored; the bank command ends.
         assert_eq!(bus.read8(SAVE_START).unwrap(), data[0]);
     }
-    bus.write8(SAVE_START, 1).unwrap();
+    bus.write8(SAVE_START, 1).unwrap(); // Plain array write without a command.
+    assert_eq!(bus.read8(SAVE_START).unwrap(), data[0]);
+    bank(&mut bus, 1);
     assert_eq!(bus.read8(SAVE_START).unwrap(), data[0x10000]);
+    assert_eq!(bus.save_image().unwrap(), data);
 }
 
 #[test]
-fn widths_aliases_and_invalid_unlocks_remain_diagnostic() {
+fn id_mode_ignores_commands_other_than_exit() {
+    let mut bus = memory(SaveDevice::Flash128);
+    let data = image(SaveDevice::Flash128);
+    bus.load_save_image(&data).unwrap();
+    command(&mut bus, 0x90).unwrap();
+    for byte in [0xa0, 0x80, 0xb0, 0x90, 0x42] {
+        command(&mut bus, byte).unwrap();
+        bus.write8(SAVE_START, 1).unwrap(); // Neither program data nor a bank number.
+        assert_eq!(bus.read8(SAVE_START).unwrap(), 0xc2);
+    }
+    command(&mut bus, 0xf0).unwrap();
+    assert_eq!(bus.read8(SAVE_START).unwrap(), data[0]);
+    assert!(!bus.save_write_pending());
+    assert_eq!(bus.save_image().unwrap(), data);
+}
+
+#[test]
+fn widths_and_aliases_remain_diagnostic() {
     let mut bus = memory(SaveDevice::Flash128);
     for address in [SAVE_START - 1, SAVE_END + 1, 0x0f000000, 0x0eff5555] {
         assert_eq!(bus.read8(address), Err(MemoryError::Unmapped(address)));
@@ -177,16 +192,27 @@ fn widths_aliases_and_invalid_unlocks_remain_diagnostic() {
         .unwrap_err()
         .to_string()
         .contains("non-byte write"));
+}
+
+#[test]
+fn broken_unlock_prefixes_are_ignored_and_start_over_as_mgba_does() {
+    let mut bus = memory(SaveDevice::Flash128);
     for (address, value) in [(HI, 0x55), (LO, 0xaa)] {
-        let error = bus.write8(address, value).unwrap_err();
-        assert_eq!(bus.write8(address, value), Err(error));
+        bus.write8(address, value).unwrap();
     }
     bus.write8(HI, 0xaa).unwrap();
-    assert!(bus.write8(LO + 1, 0x55).is_err());
+    bus.write8(LO + 1, 0x55).unwrap(); // Breaks the prefix.
     bus.write8(LO, 0x55).unwrap();
-    assert!(bus.write8(HI + 1, 0x90).is_err());
     bus.write8(HI, 0x90).unwrap();
+    assert_eq!(bus.read8(SAVE_START).unwrap(), 0xff);
+    bus.write8(HI, 0xaa).unwrap();
+    bus.write8(LO, 0x55).unwrap();
+    bus.write8(HI + 1, 0x90).unwrap(); // Wrong command address.
+    bus.write8(HI, 0x90).unwrap();
+    assert_eq!(bus.read8(SAVE_START).unwrap(), 0xff);
+    command(&mut bus, 0x90).unwrap();
     assert_eq!(bus.read8(SAVE_START).unwrap(), 0xc2);
+    assert!(bus.save_image().unwrap().iter().all(|&b| b == 0xff));
 }
 
 #[test]
@@ -198,15 +224,16 @@ fn redundant_128_reset_preserves_array_bank_but_does_not_exit_id_or_partial_unlo
     bus.write8(HI, 0xf0).unwrap(); // Already idle in array mode.
     assert_eq!(bus.read8(SAVE_START).unwrap(), bytes[0x10000]);
     command(&mut bus, 0x90).unwrap();
-    assert!(bus.write8(HI, 0xf0).is_err()); // Direct ID exit for this device is not established.
+    bus.write8(HI, 0xf0).unwrap(); // Ignored, as in mGBA: no direct ID exit on this device.
     assert_eq!(bus.read8(SAVE_START).unwrap(), 0xc2);
     command(&mut bus, 0xf0).unwrap();
     bus.write8(HI, 0xf0).unwrap(); // Redundant reset after documented unlocked ID exit.
     assert_eq!(bus.read8(SAVE_START).unwrap(), bytes[0x10000]);
     bus.write8(HI, 0xaa).unwrap();
-    assert!(bus.write8(HI, 0xf0).is_err());
+    bus.write8(HI, 0xf0).unwrap(); // Breaks the partial unlock instead of resetting it.
     bus.write8(LO, 0x55).unwrap();
     bus.write8(HI, 0x90).unwrap();
+    assert_eq!(bus.read8(SAVE_START).unwrap(), bytes[0x10000]);
     assert_eq!(bus.save_image().unwrap(), bytes);
 }
 

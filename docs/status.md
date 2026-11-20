@@ -165,7 +165,8 @@ Sprite rows prepare one line ahead with a whole-row cycle40 sample and nominal p
 Individual fetch timing, hardware-accurate work cutoffs, video-bus contention, and per-pixel color composition remain unimplemented.
 ROM windows offer opt-in Darwin audio output with `--audio` and explicit save persistence with `--save-file`.
 The [Flash subset](hardware/saves.md) supports programming and erase with nominal delays and bounded DQ7 polling.
-Flash timing, STOP clocking, and cancellation are not hardware-verified. Wider accesses and unverified busy addresses remain diagnostic.
+Flash timing, STOP clocking, and cancellation are not hardware-verified. Malformed commands, ID reads, busy reads, and reads from ROM code follow mGBA 0.10.5.
+Wider accesses, DMA, Flash64 bank 1, and a program or erase started before the previous one commits remain diagnostic.
 Other Flash manufacturers, SRAM halfword/word access, CPU-driven EEPROM bitstreams, autosave, crash recovery, and game-level save transactions remain unsupported.
 Persistence is tested on Darwin arm64 with original programs, not yet with external-game saves.
 The optional [cartridge GPIO/RTC subset](hardware/cartridge-gpio.md) supports calendar/control transfers and explicit clock updates, selected with `--rtc` in ROM modes.
