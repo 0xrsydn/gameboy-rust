@@ -68,6 +68,7 @@ constexpr int WIDTH = 240;
 constexpr int HEIGHT = 160;
 constexpr uint32_t BIOS_SIZE = 0x4000;
 constexpr uint32_t BIOS_END = 0x4000;
+constexpr uint64_t CYCLES_PER_LINE = 1232;
 constexpr unsigned long GUARD = 100000000UL;
 
 FILE* reply = nullptr;
@@ -197,6 +198,19 @@ void load(const char* rom, const char* bios) {
 		reply_err("Mesen did not load the BIOS image");
 		return;
 	}
+	// Mesen powers its display on at line 225, cycle 0 (upstream d473d0e, fitted to timing
+	// tests run through the official BIOS); this emulator starts at line 0, cycle 0. Neither
+	// is anchored to hardware with this firmware, so start Mesen where this emulator starts,
+	// as gba-diff moves mGBA's display clock to its own.
+	uint64_t clock = console()->GetMasterClock();
+	if(clock >= CYCLES_PER_LINE) {
+		unload();
+		reply_err("Mesen ran past the first line during power-on");
+		return;
+	}
+	GbaPpuState& ppu = console()->GetPpu()->GetState();
+	ppu.Scanline = 0;
+	ppu.Cycle = (uint16_t)clock;
 	emulator->GetConsole()->GetControlManager()->RegisterInputProvider(&keys_provider);
 	held = 0;
 	reply_ok();

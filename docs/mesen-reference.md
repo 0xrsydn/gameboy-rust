@@ -85,6 +85,10 @@ To match `mgba-ref` and this emulator, the shim:
 - disables Mesen's frame skipping, which drops rendering of frames that finish within 15 ms of the previous one;
 - powers on with zeroed RAM and without Mesen's boot skip, in a fresh temporary home folder per load, so that no
   battery save carries over between runs;
+- starts Mesen's display at this emulator's power-on position (line 0, at the cycle Mesen's clock has reached, below
+  one line). Mesen powers its display on at line 225 (upstream commit `d473d0e`, "Improved PPU timings", which fixed
+  timing tests run through the official BIOS). With this firmware neither start is anchored to hardware, and the
+  three-line offset otherwise shows up as a `VCOUNT` difference in every game that polls it;
 - reports the PPU's finished RGB555 frame directly, without Mesen's color filters;
 - sends Mesen's log output to stderr, so it cannot corrupt the reply stream.
 
@@ -105,10 +109,21 @@ Measured 2026-11-21, with this emulator at `5d059b3`:
   transfer (`0x04000000`). Frame comparison first differs at frame 4, in `IF`.
 
 On 2026-11-22 this emulator adopted Mesen's immediate-DMA start rule (see [DMA](hardware/dma.md)), with no change in
-the mGBA suite. FireRed and Emerald lockstep now passes the readback and stops at instruction 1128, +2 cycles: a
-`VCOUNT` read returns line 89 here and line 86 in Mesen. The cycle totals agree, so the display position relative to
-the CPU clock differs by about three lines by then; the cause is not yet known. Frame comparison still first differs
-at frame 4.
+the mGBA suite. FireRed and Emerald lockstep then passed the readback and stopped at instruction 1128, where a `VCOUNT`
+read returned line 89 here and line 86 in Mesen. That was the power-on display position: at the first cartridge
+instruction Mesen was on line 225 and this emulator on line 0, and the offset stayed constant. With the shim's start
+alignment (above):
+
+- FireRed and Emerald lockstep runs 2,438 instructions. From instruction 1,771 on, a taken short forward Thumb branch
+  in a ROM shift-and-subtract division loop (`bcc` over one instruction, WAITCNT `0x4014` with prefetch on) costs 2
+  cycles less here than in Mesen. Each pass adds 2 cycles until a `VCOUNT` polling loop reads line 104 here and 105 in
+  Mesen. Both prefetch models deliver only from the queue head; the difference lies in when a halfword is ready around
+  the branch, and the two emulators charge fetches to different instructions (Mesen after each instruction, this
+  emulator before), so per-instruction counts cannot settle it. Neither model is hardware-verified here.
+- Frame comparison of both games first differs at frame 4 in `IF` only: Mesen raises the VBlank request one cycle
+  after line 160 begins (`SetDelayedIrqSource`), after its frame has ended, so `gba-diff` samples it before the bit is
+  set. Later frames differ in two IWRAM bytes.
+- The mGBA test suite ROM matches through frame 8 (previously 6); lockstep is unchanged at 260,806 instructions.
 
 Measured 2026-11-22, with this emulator at `f077b46`:
 
