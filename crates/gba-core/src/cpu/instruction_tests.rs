@@ -520,14 +520,8 @@ fn long_multiply_zero_flag_uses_both_halves() {
 #[test]
 fn invalid_or_unimplemented_encodings_do_not_change_state_or_memory() {
     for instruction in [
-        0xe1a0_0f11, // Rs=pc (register shift)
-        0xe3b0_f001, // status restore via MOVS pc
-        0xe5bf_1000, // LDR with PC writeback
-        0xe5d0_f000, // LDRB pc
         0xe790_1012, // illegal register-specified memory shift
-        0xe790_100f, // memory offset register PC
         0xe1c0_10d0, // ARMv5 doubleword load, not an ARM7 signed store
-        0xe082_2190, // UMULL RdHi=RdLo
         0xe8f0_0001, // LDM user-bank transfer with writeback
         0xe100_f090, // SWP with PC destination
         0xe12f_ff30, // BLX, ARMv5 only
@@ -550,6 +544,52 @@ fn invalid_or_unimplemented_encodings_do_not_change_state_or_memory() {
         assert_eq!(cpu.flags, flags);
         assert_eq!(memory.read32(RAM).unwrap(), 0xdead_beef);
     }
+}
+
+// Unpredictable ARMv4 register forms, with the results mGBA 0.10.5 gives for them
+// (measured with original probe programs through `mgba-ref`).
+#[test]
+fn unpredictable_pc_and_register_forms_follow_mgba() {
+    let pc8 = ROM_START + 8;
+    let run = |instruction: u32, setup: &dyn Fn(&mut Cpu)| {
+        let mut memory = program(&[instruction, 0x1234_5678, 0x9abc_def0]);
+        memory.write32(RAM, 0xdead_beef).unwrap();
+        let mut cpu = Cpu::new(ROM_START);
+        cpu.registers[0] = RAM;
+        cpu.registers[1] = 123;
+        setup(&mut cpu);
+        cpu.step(&mut memory).unwrap();
+        (cpu, memory)
+    };
+    // MOV r0,r1,LSL pc: the shift amount is the low byte of PC+8.
+    let (cpu, _) = run(0xe1a0_0f11, &|_| {});
+    assert_eq!(cpu.registers[0], 123 << (pc8 & 0xff));
+    // MOVS pc,#0x80000000 without an SPSR sets N from the result.
+    let (cpu, _) = run(0xe3b0_f102, &|_| {});
+    assert_eq!((cpu.pc(), cpu.flags.negative), (0x8000_0000, true));
+    // LDR r1,[pc,#0]!: loads PC+8 and branches to the written-back address.
+    let (cpu, _) = run(0xe5bf_1000, &|_| {});
+    assert_eq!((cpu.registers[1], cpu.pc()), (0x9abc_def0, pc8));
+    // LDRB pc,[r0]: branches to the loaded byte.
+    let (cpu, _) = run(0xe5d0_f000, &|_| {});
+    assert_eq!(cpu.pc(), 0xec);
+    // LDR r1,[r0,pc] with r0=0: the offset register reads PC+8.
+    let (cpu, _) = run(0xe790_100f, &|cpu| cpu.registers[0] = 0);
+    assert_eq!(cpu.registers[1], 0x9abc_def0);
+    // UMULL r2,r2,r0,r1: the high word, written last, wins.
+    let (cpu, _) = run(0xe082_2190, &|_| {});
+    assert_eq!(cpu.registers[2], ((u64::from(RAM) * 123) >> 32) as u32);
+    // MUL pc,r0,r1 and MLA r1,r0,r1,pc are skipped.
+    for instruction in [0xe00f_0190, 0xe021_f190] {
+        let (cpu, _) = run(instruction, &|_| {});
+        assert_eq!((cpu.registers[1], cpu.pc()), (123, ROM_START + 4));
+    }
+    // SWP r1,pc,[r0]: stores PC+8.
+    let (cpu, memory) = run(0xe100_109f, &|_| {});
+    assert_eq!(
+        (cpu.registers[1], memory.read32(RAM).unwrap()),
+        (0xdead_beef, pc8)
+    );
 }
 
 #[test]

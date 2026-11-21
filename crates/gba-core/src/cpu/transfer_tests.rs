@@ -455,20 +455,51 @@ fn skipped_block_transfers_and_swaps_do_not_touch_unmapped_memory() {
     }
 }
 
+// Results mGBA 0.10.5 gives for these forms (original probes through `mgba-ref`).
+#[test]
+fn pc_base_user_bank_and_swap_forms_follow_mgba() {
+    let run = |instruction: u32| {
+        let mut memory = program(&[instruction, 0x1111_1111, 0x2222_2222]);
+        memory.write32(BASE, 0xdead_beef).unwrap();
+        let mut cpu = Cpu::new(ROM_START);
+        cpu.registers[0] = BASE;
+        cpu.registers[1] = 7;
+        cpu.registers[13] = BASE;
+        cpu.step(&mut memory).unwrap();
+        (cpu, memory)
+    };
+    // LDMIA pc,{r0}: the base is PC+8.
+    assert_eq!(run(0xe89f_0001).0.registers[0], 0x2222_2222);
+    // STMIA r0!,{r1}^ in System: stores and writes back.
+    let (cpu, memory) = run(0xe8e0_0002);
+    assert_eq!(
+        (cpu.registers[0], memory.read32(BASE).unwrap()),
+        (BASE + 4, 7)
+    );
+    // LDMIA sp!,{pc}^ in System: no SPSR to restore, so a plain load.
+    let (cpu, _) = run(0xe8fd_8000);
+    assert_eq!(
+        (cpu.pc(), cpu.registers[13], cpu.mode()),
+        (0xdead_beec, BASE + 4, Mode::System)
+    );
+    // SWP r1,r2,[pc]: the base is PC+8; ROM ignores the store.
+    assert_eq!(run(0xe10f_1092).0.registers[1], 0x2222_2222);
+    // SWP with should-be-zero bits 11-8 set is still SWP.
+    let (cpu, memory) = run(0xe100_1f91);
+    assert_eq!(
+        (cpu.registers[1], memory.read32(BASE).unwrap()),
+        (0xdead_beef, 7)
+    );
+}
+
 #[test]
 fn unsupported_transfer_variants_preserve_registers_and_memory() {
     for instruction in [
-        0xe8ef_0001, // PC base plus S bit
-        0xe89f_0001, // PC base without S bit
-        0xe8e0_0001, // STM user-bank transfer with writeback
+        0xe8ef_0001, // PC base writeback
         0xe8f0_0001, // LDM user-bank transfer with writeback
-        0xe8fd_8000, // LDM with status restore
         0xe8c0_0000, // Empty-list STM with S bit
-        0xe10f_1092, // SWP PC base
         0xe100_f092, // SWP PC destination
-        0xe100_109f, // SWP PC source
         0xe110_1092, // Reserved SWP bit 20
-        0xe100_1192, // Reserved SWP bits 11..8
     ] {
         let mut memory = program(&[instruction]);
         memory.write32(BASE, 0xdead_beef).unwrap();

@@ -140,9 +140,9 @@ It models CPU reset state and an optional minimal firmware subset, not the compl
 Status handling covers ARM7 flags, modes, interrupt masks, and instruction state; reserved bits read as zero.
 ARM condition `0xF` (NV) never executes; Thumb condition code `0xE` returns an error.
 ARMv5+ extensions such as `BLX`, `BKPT`, and Thumb-2 instructions are not supported.
-Following mGBA 0.10.5, Thumb high-register ADD/CMP/MOV with two low registers execute normally, `LDRT`/`STRT`
-(and halfword transfers with post-indexed W=1) are plain post-indexed transfers, and `MUL` ignores its Rn field.
-Other invalid register combinations, such as PC writeback, return errors.
+Unpredictable ARMv4T forms, coprocessor instructions, and ignored should-be fields follow mGBA 0.10.5, measured with
+original probes ([CPU notes](hardware/cpu.md)). Undefined encodings, `MRS`/`SWP` into PC, SPSR access in User/System,
+invalid modes, and Thumb-bit changes through `MSR` return errors.
 CPU BIOS reads are protected by the executing address using bounded ARM and Thumb prefetch snapshots.
 Thumb BIOS execution retains the full word at `(PC+4) & ~3`, not a repeated halfword.
 Missing lookahead invalidates that history; protected reads with unknown history remain diagnostics.

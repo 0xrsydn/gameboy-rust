@@ -93,17 +93,20 @@ impl Cpu {
         if !self.flags.condition_passed(instruction >> 28) {
             return Summary::default();
         }
+        // These masks follow the decoder in arm.rs.
         if instruction & 0x0f00_0000 == 0x0f00_0000
-            || instruction & 0x0fff_fff0 == 0x012f_ff10
+            || instruction & 0x0ff0_00f0 == 0x0120_0010
             || instruction & 0x0e00_0000 == 0x0a00_0000
         {
             return Summary::branch();
         }
-        if instruction & 0x0fbf_0fff == 0x010f_0000
-            || instruction & 0x0fb0_fff0 == 0x0120_f000
-            || instruction & 0x0fb0_f000 == 0x0320_f000
+        if instruction & 0x0fb0_00f0 == 0x0100_0000
+            || instruction & 0x0fb0_00f0 == 0x0120_0000
+            || instruction & 0x0fb0_0000 == 0x0320_0000
+            || instruction & 0x0c00_0000 == 0x0c00_0000
         {
-            return Summary::default(); // MRS/MSR overlap the data-processing space.
+            // MRS/MSR overlap the data-processing space; coprocessor stubs do nothing.
+            return Summary::default();
         }
         if instruction & 0x0e00_0000 == 0x0800_0000 {
             let list = instruction & 0xffff;
@@ -112,7 +115,7 @@ impl Cpu {
                 list == 0 || list & 0x8000 != 0,
             );
         }
-        if instruction & 0x0fb0_0ff0 == 0x0100_0090 {
+        if instruction & 0x0fb0_00f0 == 0x0100_0090 {
             return Summary {
                 data: true,
                 internal: 1,
@@ -137,11 +140,16 @@ impl Cpu {
                 ..Summary::default()
             };
         }
-        if instruction & 0x0e00_0090 == 0x0000_0090 {
-            return Summary::transfer(instruction & (1 << 20) != 0, false);
-        }
-        if instruction & 0x0c00_0000 == 0x0400_0000 {
-            return Summary::transfer(instruction & (1 << 20) != 0, (instruction >> 12) & 15 == 15);
+        // A load into PC, or writeback to a PC base, refills the pipeline.
+        let load = instruction & (1 << 20) != 0;
+        let pc_writeback = (instruction & (1 << 24) == 0 || instruction & (1 << 21) != 0)
+            && (instruction >> 16) & 15 == 15;
+        let pc_load = load && (instruction >> 12) & 15 == 15;
+        if instruction & 0x0e00_0090 == 0x0000_0090 || instruction & 0x0c00_0000 == 0x0400_0000 {
+            return Summary {
+                refill: pc_load || pc_writeback,
+                ..Summary::transfer(load, false)
+            };
         }
         let test = (8..=11).contains(&((instruction >> 21) & 15));
         Summary {

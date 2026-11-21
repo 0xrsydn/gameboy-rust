@@ -41,6 +41,39 @@ operation. This emulator does the same; none of these is hardware-verified:
   GBA, which has no memory protection.
 - Halfword and signed transfers with post-indexing and W=1 are the same transfer as with W=0.
 - `MUL` ignores its should-be-zero Rn field.
+- `MRS`, `MSR`, `BX`, and `SWP` decode from bits 27–20 and 7–4 alone, as mGBA's `_armTable` does; their
+  should-be-one and should-be-zero fields are ignored. Halfword register offsets ignore bits 11–8.
+- Coprocessor instructions (`CDP`, `LDC`/`STC`, `MCR`/`MRC`) change nothing: the GBA has no coprocessor, and
+  mGBA runs them as stubs (`ARM_STUB`) rather than raising the undefined-instruction exception.
+- `MSR` forces mode bit 4 (`| 0x10` in mGBA's handlers), so mode numbers `0x00`–`0x0f` select `0x10`–`0x1f`;
+  SPSR writes always set it. The replacement BIOS's cleared SPSRs therefore read `0x10`.
+- PC used where ARMv4 calls the result unpredictable reads PC+8: a register shift amount, a load/store offset
+  register, an `LDM`/`STM`/`SWP` base, a `SWP` source, an `MSR` operand, and a multiply operand. Register-shifted PC
+  operands read PC+12 and stored PCs PC+12, as before.
+- Writeback to a PC base branches to the written address; a load into PC wins over it. `LDRB`, `LDRH`, `LDRSB`, and
+  `LDRSH` into PC branch to the loaded value, aligned down to a word.
+- A multiply that would write PC (`Rd`, `MLA`'s Rn, `RdLo`, or `RdHi`) is skipped, as mGBA's multiply macros do.
+  With `RdHi` = `RdLo` the high word, written last, wins.
+- Data-processing S-bit writes to PC, and `LDM` with S and PC, restore CPSR only where an SPSR exists (mGBA's
+  `_ARMModeHasSPSR`). In User and System they set ordinary flags or act as a plain load.
+- In User mode, S-bit block transfers name the registers already in use; a user-bank `STM` with writeback writes
+  back to the current mode's base register.
+- Thumb `0xe800`–`0xe83f` are no-ops, as in mGBA (`GBAIllegal`), and `BX` ignores its low destination bits.
+
+The results above were measured on mGBA 0.10.5 with original probe programs through `mgba-ref`, then checked
+instruction by instruction with `gba-diff --trace`.
+
+These stay diagnostics. True undefined encodings would enter the undefined-instruction vector, which ends in an
+intentional trap in the replacement BIOS (mGBA's own handler returns to the same instruction and hangs), so the
+diagnostic at the faulting address is kept:
+
+- undefined ARM encodings (`TST`-space forms other than `MRS`/`MSR`/`BX`/`SWP`, ARMv5 `BLX`/`CLZ`/`BKPT`,
+  doubleword-style halfword stores, register-shifted load/store offsets) and Thumb condition 14, `0xe840`–`0xefff`,
+  and `BLX` (bit 7 of a hi-register `BX`);
+- `MRS` and `SWP` into PC, which mGBA executes without a pipeline refill;
+- SPSR access in User/System mode: mGBA keeps one shared slot there, which this core's save states do not hold;
+- CPSR writes that select an invalid mode or change the Thumb bit, and returns to an invalid saved mode;
+- `LDM`/`STM` with a written-back PC base, S-bit empty lists, and user-bank `LDM` with writeback.
 For subtraction, carry means no unsigned borrow occurred.
 Logical flag-setting operations preserve overflow and take carry from the shifter.
 Unshifted operands preserve the previous carry flag.
@@ -70,7 +103,7 @@ Normal alignment, word rotation, odd-halfword behavior, and sign extension still
 Loads preserve CPSR and use normal load timing. Machine timer reads sample at data-access completion; IRQ delivery waits until the next step.
 Read diagnostics leave CPU state and device clocks unchanged under the existing atomic-error policy.
 Stores with matching base/source still store the original base value before writeback.
-PC writeback, byte/halfword PC destinations, and unimplemented user-transfer encodings remain diagnostics.
+PC writeback and byte/halfword PC destinations follow mGBA, as listed above.
 These alias rules implement ARM7 compatibility behavior, not a recommendation for portable ARM assembly.
 
 Block transfers assign the lowest-numbered register to the lowest memory address.
@@ -293,7 +326,7 @@ User and System share registers. Each exception mode has its own stack pointer, 
 Fast interrupt mode (`FIQ`) also banks r8–r12. Other modes share those registers.
 `MRS` reads status. `MSR` writes selected fields; User mode can only change CPSR arithmetic flags.
 Reserved status bits read as zero. Unsupported status fields have no effect.
-Invalid CPSR modes and attempts to change its Thumb bit through `MSR` return diagnostics.
+Invalid CPSR modes (after mode bit 4 is forced) and attempts to change its Thumb bit through `MSR` return diagnostics.
 Use `BX` or an exception return to change instruction state.
 
 An exception saves CPSR in the destination mode's SPSR and writes that mode's link register.
@@ -301,7 +334,7 @@ Entry selects ARM state, masks interrupt requests (`IRQ`), and branches to the e
 FIQ entry also masks FIQ. Ordinary IRQ entry preserves the FIQ mask.
 `MOVS pc, lr`, `SUBS pc, lr, #offset`, and `LDM` with S and PC restore CPSR from SPSR.
 Return alignment follows the saved instruction state, not target bit zero.
-Result-writing PC status returns fail in User/System modes because those modes have no SPSR.
+In User/System modes, which have no SPSR here, result-writing S-bit PC writes set ordinary flags instead, as in mGBA.
 An SPSR can contain invalid mode bits, but a return using those bits fails without changing CPU state.
 
 ARM `TST`, `TEQ`, `CMP`, and `CMN` encodings with unused destination bits set to R15 restore CPSR when an SPSR exists.
@@ -314,11 +347,11 @@ Instruction buffering is discarded on a state change without an ordinary refill.
 Instruction-state-changing compare forms and exact pipeline behavior remain hardware-unverified.
 
 Other S-bit block transfers access User registers while using the current mode's base register.
-User-bank writeback, S-bit empty lists, and User-mode S-bit transfers return diagnostics.
-These restrictions avoid unpredictable or unverified forms.
+User-bank `STM` writeback and User-mode S-bit transfers follow mGBA (see above).
+User-bank `LDM` writeback and S-bit empty lists return diagnostics.
 
 ARM multiplies accept a destination equal to the first operand: `MUL`/`MLA` with Rd=Rm and long multiplies with RdHi or RdLo equal to Rm.
-Every operand is read before the result is written. R15 operands and RdHi=RdLo remain diagnostics.
+Every operand is read before the result is written. R15 operands and RdHi=RdLo follow mGBA (see above).
 
 `Cpu::enter_exception` explicitly supports software interrupt, undefined instruction, prefetch abort, data abort, IRQ, and FIQ entry.
 For synchronous exceptions, call it with PC at the faulting instruction.

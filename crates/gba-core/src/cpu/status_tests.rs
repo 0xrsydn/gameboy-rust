@@ -168,8 +168,8 @@ fn invalid_status_transfers_preserve_all_banks() {
         0xe10f_f000, // MRS pc, CPSR
         0xe14f_0000, // MRS r0, SPSR without an SPSR
         0xe161_f000, // MSR SPSR_c, r0 without an SPSR
-        0xe121_f00f, // MSR CPSR_c, pc
-        0xe321_f000, // Invalid mode
+        0xe121_f00f, // MSR CPSR_c, pc: PC+8 selects invalid mode 0x18
+        0xe321_f014, // Invalid mode 0x14
         0xe321_f03f, // Attempt to change T
     ] {
         let mut cpu = Cpu::new(ROM_START);
@@ -180,6 +180,23 @@ fn invalid_status_transfers_preserve_all_banks() {
         );
         assert_eq!(cpu, before);
     }
+}
+
+// mGBA 0.10.5 forces mode bit 4 on MSR (`| 0x10`): mode 0x02 selects IRQ, and SPSR
+// writes always set it.
+#[test]
+fn msr_forces_mode_bit_4() {
+    let mut cpu = Cpu::new(ROM_START);
+    cpu.step(&mut program(0xe321_f002)).unwrap(); // MSR CPSR_c, #0x02
+    assert_eq!((cpu.mode(), cpu.cpsr()), (Mode::Irq, 0x12));
+    cpu.registers[15] = ROM_START;
+    cpu.registers[3] = 3;
+    cpu.step(&mut program(0xe169_f003)).unwrap(); // MSR SPSR_fc, r3
+    assert_eq!(cpu.spsr(), Some(0x13));
+    // Should-be-one/zero fields are ignored: MRS r0, SPSR with Rn=0 and bit 0 set.
+    cpu.registers[15] = ROM_START;
+    cpu.step(&mut program(0xe140_0001)).unwrap();
+    assert_eq!(cpu.registers[0], 0x13);
 }
 
 #[test]

@@ -171,7 +171,8 @@ fn reinitializes_supervisor_irq_stacks_links_and_saved_status() {
             assert_eq!(m.cpu().mode(), mode);
             assert_eq!(m.cpu().registers()[13], stack);
             assert_eq!(m.cpu().registers()[14], 0);
-            assert_eq!(m.cpu().spsr(), Some(0));
+            // MSR forces mode bit 4, as in mGBA 0.10.5: the cleared SPSR reads 0x10.
+            assert_eq!(m.cpu().spsr(), Some(0x10));
         }
         m.step().unwrap();
         assert_eq!(m.cpu().mode(), Mode::System);

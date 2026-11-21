@@ -275,18 +275,21 @@ fn skipped_alias_loads_do_not_access_memory_or_apply_writeback() {
     }
 }
 
+// With PC as both base and destination the load wins and branches, as in mGBA 0.10.5.
 #[test]
-fn pc_writeback_encodings_remain_diagnostics() {
+fn pc_base_writeback_loads_branch_to_the_loaded_value() {
     for kind in KINDS {
         let instruction = load(kind, Index::Pre, true, false, 15);
+        let words = [instruction, 0, 0, 0x0800_0040]; // PC+8+4 holds the target.
+        let mut bus = Memory::new(words.iter().flat_map(|w| w.to_le_bytes()).collect()).unwrap();
         let mut cpu = Cpu::new(ROM_START);
-        cpu.registers[0] = RAM;
-        let before = cpu.clone();
-        assert!(matches!(
-            cpu.step(&mut memory(instruction)),
-            Err(CpuError::UnsupportedInstruction { .. })
-        ));
-        assert_eq!(cpu, before);
+        cpu.step(&mut bus).unwrap();
+        let target = if matches!(kind, Kind::Word) {
+            0x0800_0040
+        } else {
+            0x40
+        };
+        assert_eq!(cpu.pc(), target, "{kind:?}");
     }
 }
 

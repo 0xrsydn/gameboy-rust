@@ -140,7 +140,6 @@ fn branches_use_signed_displacement_and_pipeline_offset() {
 fn unsupported_instructions_do_not_change_cpu() {
     for instruction in [
         0xe340_0001, // CMP encoding with S=0
-        0xe3b0_f001, // MOVS pc, #1 (status restore unsupported)
         0xe10f_f000, // MRS pc, CPSR
         0xe8f0_0001, // LDM user-bank transfer with writeback
         0xe100_f090, // SWP with PC destination

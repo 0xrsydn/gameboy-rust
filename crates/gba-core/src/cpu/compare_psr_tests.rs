@@ -102,20 +102,15 @@ fn compare_psr_has_sequential_timing_for_each_operand_form() {
 }
 
 #[test]
-fn compare_psr_invalid_saved_mode_and_bad_shift_preserve_all_cpu_state() {
+fn compare_psr_invalid_saved_mode_preserves_all_cpu_state() {
     for opcode in 8..=11 {
         for source in EXCEPTIONS {
-            for (saved, operand) in [(0, 1), (0x1f, 0x0f11)] {
-                // invalid SPSR; forbidden Rs=pc
-                let mut cpu = Cpu::new(ROM_START);
-                cpu.switch_mode(source);
-                cpu.set_spsr(saved);
-                let before = cpu.clone();
-                assert!(cpu
-                    .step_timed(&mut memory(instruction(opcode, operand)))
-                    .is_err());
-                assert_eq!(cpu, before);
-            }
+            let mut cpu = Cpu::new(ROM_START);
+            cpu.switch_mode(source);
+            cpu.set_spsr(0); // Invalid SPSR mode.
+            let before = cpu.clone();
+            assert!(cpu.step_timed(&mut memory(instruction(opcode, 1))).is_err());
+            assert_eq!(cpu, before);
         }
     }
 }
@@ -133,13 +128,17 @@ fn failed_conditions_do_not_restore_status_or_validate_spsr() {
     }
 }
 
+// mGBA 0.10.5 restores SPSR only in modes that have one (`_ARMModeHasSPSR`); in User and
+// System an S-bit PC write sets ordinary flags.
 #[test]
-fn ordinary_pc_result_returns_still_require_an_spsr() {
+fn ordinary_pc_results_without_an_spsr_set_alu_flags() {
     for mode in [Mode::User, Mode::System] {
         let mut cpu = Cpu::new(ROM_START);
         cpu.switch_mode(mode);
-        let before = cpu.clone();
-        assert!(cpu.step(&mut memory(0xe1b0_f00e)).is_err()); // MOVS pc,lr
-        assert_eq!(cpu, before);
+        cpu.registers[14] = 0x8800_0102;
+        cpu.step(&mut memory(0xe1b0_f00e)).unwrap(); // MOVS pc,lr
+        assert_eq!(cpu.pc(), 0x8800_0100);
+        assert_eq!(cpu.mode(), mode);
+        assert_eq!(cpu.cpsr() >> 28, 0b1000); // N from the result; Z clear.
     }
 }

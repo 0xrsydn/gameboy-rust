@@ -690,7 +690,7 @@ fn arm_thumb_arm_round_trip_fetches_the_correct_instruction_width() {
 #[test]
 fn unsupported_thumb_instructions_preserve_registers_flags_and_state() {
     for instruction in [
-        0xde00, 0xdeff, 0xbe00, 0xe800, 0x4780, 0x4701, 0xb100, 0xb200, 0xb600, 0xbf00,
+        0xde00, 0xdeff, 0xbe00, 0xe840, 0x4780, 0xb100, 0xb200, 0xb600, 0xbf00,
     ] {
         let mut memory = program(&[instruction]);
         let mut cpu = thumb_cpu();
@@ -707,6 +707,22 @@ fn unsupported_thumb_instructions_preserve_registers_flags_and_state() {
         assert_eq!(cpu.flags, flags());
         assert_eq!(cpu.instruction_set(), InstructionSet::Thumb);
     }
+}
+
+// mGBA 0.10.5 runs 0xe800-0xe83f as no-ops (`GBAIllegal`) and ignores BX's low bits.
+#[test]
+fn thumb_forms_mgba_accepts() {
+    let mut memory = program(&[0xe800, 0xe83f, 0x4701]); // two no-ops; BX r0
+    let mut cpu = thumb_cpu();
+    cpu.registers[0] = ROM_START + 0x41;
+    cpu.step(&mut memory).unwrap();
+    cpu.step(&mut memory).unwrap();
+    assert_eq!(cpu.pc(), ROM_START + 4);
+    cpu.step(&mut memory).unwrap();
+    assert_eq!(
+        (cpu.pc(), cpu.instruction_set()),
+        (ROM_START + 0x40, InstructionSet::Thumb)
+    );
 }
 
 #[test]

@@ -147,11 +147,8 @@ impl Cpu {
         let value = if instruction & (1 << 25) != 0 {
             (instruction & 255).rotate_right(((instruction >> 8) & 15) * 2)
         } else {
-            let source = (instruction & 15) as usize;
-            if source == 15 {
-                return Err(self.unsupported(instruction));
-            }
-            self.registers[source]
+            // A PC operand reads PC+8, as in mGBA 0.10.5.
+            self.operand_register((instruction & 15) as usize, 8)
         };
         let saved = instruction & (1 << 22) != 0;
         let previous = if saved {
@@ -166,7 +163,14 @@ impl Cpu {
         if instruction & (1 << 16) != 0 && (saved || self.mode != Mode::User) {
             mask |= 0xff;
         }
+        // mGBA 0.10.5 forces mode bit 4 on (`| 0x10` in its MSR handlers), so the
+        // 26-bit mode numbers 0x00-0x0f select 0x10-0x1f; SPSR writes always set it.
         let next = (previous & !mask) | (value & mask);
+        let next = if saved || mask & 0xff != 0 {
+            next | 0x10
+        } else {
+            next
+        };
         if saved {
             // Invalid mode bits can be stored, but cannot be used for a return.
             self.set_spsr(next);

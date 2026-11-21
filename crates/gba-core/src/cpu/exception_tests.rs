@@ -304,15 +304,28 @@ fn user_bank_store_pc_uses_pipeline_offset() {
     assert_eq!(memory.read32(0x0200_0000).unwrap(), ROM_START + 12);
 }
 
+// In User mode `^` names the registers already in use and there is no SPSR to restore,
+// so these act as plain transfers, as in mGBA 0.10.5.
 #[test]
-fn user_mode_cannot_request_user_bank_transfers_or_status_return() {
-    for instruction in [0xe8c0_0002, 0xe8d0_0002, 0xe8d0_8000, 0xe1b0_f00e] {
+fn user_mode_caret_transfers_act_as_plain_transfers() {
+    for (instruction, register) in [
+        (0xe8c0_0002, None),
+        (0xe8d0_0004, Some(2)),
+        (0xe8d0_8000, Some(15)),
+    ] {
         let mut cpu = Cpu::new(ROM_START);
         cpu.switch_mode(Mode::User);
         cpu.registers[0] = 0x0200_0000;
-        let before = cpu.clone();
-        assert!(cpu.step(&mut program(instruction)).is_err());
-        assert_eq!(cpu, before);
+        cpu.registers[1] = 0x0800_0040;
+        let mut memory = program(instruction);
+        memory.write32(0x0200_0000, 0x0800_0080).unwrap();
+        cpu.step(&mut memory).unwrap();
+        assert_eq!(cpu.mode(), Mode::User);
+        match register {
+            None => assert_eq!(memory.read32(0x0200_0000).unwrap(), 0x0800_0040),
+            Some(15) => assert_eq!(cpu.pc(), 0x0800_0080),
+            Some(r) => assert_eq!(cpu.registers[r], 0x0800_0080),
+        }
     }
 }
 

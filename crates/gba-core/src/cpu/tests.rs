@@ -169,7 +169,7 @@ fn failed_condition_skips_flag_updates_and_unsupported_opcodes() {
 
 #[test]
 fn errors_preserve_nonzero_flags_and_registers() {
-    for instruction in [0xe3b0_f001, 0xe10f_f000, 0xe7f0_00f0, 0xe340_0001] {
+    for instruction in [0xe10f_f000, 0xe7f0_00f0, 0xe340_0001] {
         let mut memory = program(&[instruction]);
         let mut cpu = Cpu::new(ROM_START);
         cpu.flags = flags_from_bits(15);

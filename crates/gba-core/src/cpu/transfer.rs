@@ -11,7 +11,9 @@ impl Cpu {
         memory: &mut Memory,
     ) -> Result<(), CpuError> {
         let base_register = ((instruction >> 16) & 15) as usize;
-        if base_register == 15 {
+        let write_back = instruction & (1 << 21) != 0;
+        // A PC base reads PC+8, as in mGBA 0.10.5; writing it back stays diagnostic.
+        if base_register == 15 && write_back {
             return Err(self.unsupported(instruction));
         }
 
@@ -25,22 +27,22 @@ impl Cpu {
         };
         let pre = instruction & (1 << 24) != 0;
         let up = instruction & (1 << 23) != 0;
-        let write_back = instruction & (1 << 21) != 0;
         let load = instruction & (1 << 20) != 0;
         let special = instruction & (1 << 22) != 0;
         let user_bank = special && !(load && list & (1 << 15) != 0);
-        // Diagnose unpredictable user-bank forms and the unverified S+empty case.
-        if special && (self.mode == super::Mode::User || encoded_list == 0)
-            || user_bank && write_back
-        {
+        // As in mGBA 0.10.5, `^` in User mode names the registers already in use, an LDM
+        // with PC restores SPSR only where one exists, and a user-bank STM writes back to
+        // the current bank. An empty list with `^` and a user-bank LDM with writeback
+        // stay diagnostic.
+        if special && encoded_list == 0 || user_bank && load && write_back {
             return Err(self.unsupported(instruction));
         }
-        let restore = if special && !user_bank {
+        let restore = if special && !user_bank && self.spsr().is_some() {
             Some(self.return_status(instruction)?)
         } else {
             None
         };
-        let base = self.registers[base_register];
+        let base = self.operand_register(base_register, 8);
         let adjusted = if up {
             base.wrapping_add(span)
         } else {
@@ -127,12 +129,14 @@ impl Cpu {
         let base_register = ((instruction >> 16) & 15) as usize;
         let destination = ((instruction >> 12) & 15) as usize;
         let source = (instruction & 15) as usize;
-        if [base_register, destination, source].contains(&15) {
+        // A PC base or source reads PC+8, as in mGBA 0.10.5. mGBA writes a swapped value
+        // to PC without refilling its pipeline, so a PC destination stays diagnostic.
+        if destination == 15 {
             return Err(self.unsupported(instruction));
         }
         // Snapshot operands so source/destination/base aliases use old values.
-        let address = self.registers[base_register];
-        let value = self.registers[source];
+        let address = self.operand_register(base_register, 8);
+        let value = self.operand_register(source, 8);
         let previous = if instruction & (1 << 22) != 0 {
             let previous = u32::from(memory.read8(address)?);
             memory.write8(address, value as u8)?;

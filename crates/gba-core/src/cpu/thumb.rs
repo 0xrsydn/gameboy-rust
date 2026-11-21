@@ -201,6 +201,9 @@ impl Cpu {
                 self.registers[15] = target & !1;
                 return Ok(());
             }
+            // mGBA 0.10.5 (`GBAIllegal`) treats these as no-ops left by the Wii U Virtual
+            // Console; on ARMv5 they would be BLX suffixes.
+            0xe800..=0xe83f => {}
             // Includes undefined condition 0xE and ARMv5+ extensions.
             _ => return Err(self.unsupported(instruction)),
         }
@@ -251,8 +254,9 @@ impl Cpu {
         let source = ((instruction >> 3) & 15) as usize;
         let destination = ((instruction & 7) | ((instruction >> 4) & 8)) as usize;
         if opcode == 3 {
-            // Bit 7 selects BLX on ARMv5; low destination bits must be zero.
-            if instruction & 0x87 != 0 {
+            // Bit 7 selects BLX on ARMv5 (undefined, as in mGBA). The low destination bits
+            // should be zero; mGBA 0.10.5 ignores them.
+            if instruction & 0x80 != 0 {
                 return Err(self.unsupported(instruction));
             }
             self.branch_exchange(self.operand_register(source, 4));
