@@ -2,6 +2,12 @@
 
 External sources consulted while implementing the emulator. Add new sources here, or in a "References" section of the matching `docs/hardware/` file when a link explains one specific behavior.
 
+Reference emulators and evaluation:
+
+- [Mesen 2](https://github.com/SourMesen/Mesen2) (GPL-3.0-only), archived 2026-06-04; successor [MesenCE](https://github.com/nesdev-org/MesenCE). Its GBA core is the second `gba-diff` reference; see [Mesen reference](mesen-reference.md).
+- [Mesen2-gba-headless](https://github.com/mechanize-work/Mesen2-gba-headless), the single-threaded GBA-only trim that `mesen-ref` builds, with `MODIFICATIONS.md` listing its changes from upstream `fabc9a6`. Reviewed for `GbaConsole::LoadRom`/`RunFrame`, `GbaCpu::Exec` and its pipeline, `GbaPpu` frame end at line 160 and frame skipping, `GbaControlManager` input polling, `FirmwareHelper::LoadGbaBootRom`, and `GbaRtc`'s host clock.
+- [GBA Eval](https://github.com/mechanize-work/gba-eval) ([site](https://gba-eval.com/)), a benchmark that grades from-scratch WebAssembly GBA emulators against that fork: gameplay replays, procedural test ROMs, and audio, through a ten-function `emu_*` WebAssembly ABI.
+
 Hardware references used for the core:
 
 - [GBATEK ARM instruction cycle times](https://problemkaputt.de/gbatek-arm-cpu-instruction-cycle-times.htm).

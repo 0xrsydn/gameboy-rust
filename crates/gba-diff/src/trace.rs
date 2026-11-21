@@ -1,6 +1,7 @@
-//! Instruction lockstep against mGBA. Both sides report each executed instruction
-//! outside the BIOS (0x0000-0x3fff) with the registers and cycle count right after
-//! it. BIOS internals are skipped because the two BIOS implementations differ.
+//! Instruction lockstep against the reference (mGBA or Mesen). Both sides report each
+//! executed instruction outside the BIOS (0x0000-0x3fff) with the registers and cycle count
+//! right after it. BIOS internals are skipped because mGBA's BIOS differs from this
+//! emulator's firmware; Mesen runs the same firmware, but is compared the same way.
 
 use std::{
     collections::VecDeque,
@@ -85,7 +86,7 @@ pub fn next_local(machine: &mut Machine) -> Result<Record, String> {
     ))
 }
 
-/// Our r15 holds the next instruction address; mGBA's holds the pipelined fetch
+/// Our r15 holds the next instruction address; the shims report mGBA's pipelined fetch
 /// address (next + 4 in ARM, next + 2 in Thumb). Compare architectural next PCs.
 fn next_pc(record: &Record, mgba: bool) -> u32 {
     if mgba {
@@ -95,7 +96,7 @@ fn next_pc(record: &Record, mgba: bool) -> u32 {
     }
 }
 
-fn state_difference(ours: &Record, theirs: &Record) -> Option<String> {
+fn state_difference(ours: &Record, theirs: &Record, label: &str) -> Option<String> {
     if ours.address != theirs.address || ours.thumb != theirs.thumb {
         return Some("executed different instructions".to_owned());
     }
@@ -103,18 +104,20 @@ fn state_difference(ours: &Record, theirs: &Record) -> Option<String> {
     for register in 0..15 {
         if ours.gprs[register] != theirs.gprs[register] {
             differences.push(format!(
-                "r{register} ours {:08x} mGBA {:08x}",
+                "r{register} ours {:08x} {label} {:08x}",
                 ours.gprs[register], theirs.gprs[register]
             ));
         }
     }
     let (ours_pc, theirs_pc) = (next_pc(ours, false), next_pc(theirs, true));
     if ours_pc != theirs_pc {
-        differences.push(format!("next PC ours {ours_pc:08x} mGBA {theirs_pc:08x}"));
+        differences.push(format!(
+            "next PC ours {ours_pc:08x} {label} {theirs_pc:08x}"
+        ));
     }
     if ours.cpsr != theirs.cpsr {
         differences.push(format!(
-            "CPSR ours {:08x} mGBA {:08x}",
+            "CPSR ours {:08x} {label} {:08x}",
             ours.cpsr, theirs.cpsr
         ));
     }
@@ -154,7 +157,7 @@ fn opcode(machine: &Machine, record: &Record) -> Option<u32> {
     }
 }
 
-/// Cycle drift: how far this emulator's clock is ahead of mGBA's since the start.
+/// Cycle drift: how far this emulator's clock is ahead of the reference's since the start.
 /// Per-instruction costs often differ only in attribution (a store charged here,
 /// the following fetch there) and cancel at once. A drift is reported when the
 /// offset settles at a new value, or has moved `RUNNING` cycles since the last report.
@@ -184,11 +187,12 @@ fn dump_history(
     out: &mut impl Write,
     machine: &Machine,
     history: &VecDeque<(Record, Record, Option<u64>, Option<u64>)>,
+    label: &str,
 ) -> io::Result<()> {
     for (ours, theirs, ours_delta, theirs_delta) in history {
         let word = opcode(machine, ours);
         writeln!(out, "{}", line("ours", ours, *ours_delta, word))?;
-        writeln!(out, "{}", line("mGBA", theirs, *theirs_delta, word))?;
+        writeln!(out, "{}", line(label, theirs, *theirs_delta, word))?;
     }
     Ok(())
 }
@@ -204,6 +208,7 @@ pub fn run(
     out: &mut impl Write,
 ) -> Result<bool, String> {
     let report = |error: io::Error| error.to_string();
+    let label = reference.label();
     let mut history: VecDeque<(Record, Record, Option<u64>, Option<u64>)> = VecDeque::new();
     let mut previous: Option<(u64, u64)> = None;
     let mut drift = Drift {
@@ -221,13 +226,15 @@ pub fn run(
             let batch = BATCH.min((count - executed) as usize);
             pending.extend(reference.sync(batch).map_err(report)?);
         }
-        let theirs = pending.pop_front().ok_or("mgba-ref returned no records")?;
+        let theirs = pending
+            .pop_front()
+            .ok_or("the reference returned no records")?;
         let ours = match next_local(machine) {
             Ok(record) => record,
             Err(message) => {
                 writeln!(out, "after {executed} instructions: {message}").map_err(report)?;
-                dump_history(out, machine, &history).map_err(report)?;
-                writeln!(out, "mGBA next: {}", line("mGBA", &theirs, None, None))
+                dump_history(out, machine, &history, label).map_err(report)?;
+                writeln!(out, "{label} next: {}", line(label, &theirs, None, None))
                     .map_err(report)?;
                 return Ok(false);
             }
@@ -247,16 +254,16 @@ pub fn run(
             history.pop_front();
         }
         let offset = drift.offset(&ours, &theirs);
-        if let Some(difference) = state_difference(&ours, &theirs) {
+        if let Some(difference) = state_difference(&ours, &theirs, label) {
             writeln!(
                 out,
                 "state diverged at instruction {executed}: {difference}"
             )
             .map_err(report)?;
-            dump_history(out, machine, &history).map_err(report)?;
+            dump_history(out, machine, &history, label).map_err(report)?;
             writeln!(
                 out,
-                "{executed} instructions compared; {} cycle drifts reported; this emulator is {offset:+} cycles relative to mGBA",
+                "{executed} instructions compared; {} cycle drifts reported; this emulator is {offset:+} cycles relative to {label}",
                 drift.events
             )
             .map_err(report)?;
@@ -280,7 +287,7 @@ pub fn run(
             if drift.events as usize <= max_timing {
                 writeln!(
                     out,
-                    "drift #{} by instruction {executed}: {moved:+} cycles (now {offset:+} relative to mGBA); per-instruction differences:",
+                    "drift #{} by instruction {executed}: {moved:+} cycles (now {offset:+} relative to {label}); per-instruction differences:",
                     drift.events
                 )
                 .map_err(report)?;
@@ -296,7 +303,7 @@ pub fn run(
     }
     writeln!(
         out,
-        "{executed} instructions compared without a state divergence; {} cycle drifts reported; this emulator is {:+} cycles relative to mGBA",
+        "{executed} instructions compared without a state divergence; {} cycle drifts reported; this emulator is {:+} cycles relative to {label}",
         drift.events, drift.last
     )
     .map_err(report)?;
@@ -339,12 +346,12 @@ mod tests {
     fn pipelined_mgba_pc_is_compared_as_the_next_instruction() {
         let ours = record(0x0800_0000, false, 0x0800_00c0, 0x1f);
         let theirs = record(0x0800_0000, false, 0x0800_00c4, 0x1f);
-        assert_eq!(state_difference(&ours, &theirs), None);
+        assert_eq!(state_difference(&ours, &theirs, "mGBA"), None);
         let ours = record(0x0800_0100, true, 0x0800_0102, 0x3f);
         let theirs = record(0x0800_0100, true, 0x0800_0104, 0x3f);
-        assert_eq!(state_difference(&ours, &theirs), None);
+        assert_eq!(state_difference(&ours, &theirs, "mGBA"), None);
         let theirs = record(0x0800_0100, true, 0x0800_0106, 0x3f);
-        assert!(state_difference(&ours, &theirs)
+        assert!(state_difference(&ours, &theirs, "mGBA")
             .unwrap()
             .contains("next PC ours 08000102 mGBA 08000104"));
     }
@@ -354,12 +361,12 @@ mod tests {
         let ours = record(0x0800_0000, false, 0x0800_0004, 0x1f);
         let other = record(0x0300_0000, false, 0x0300_0008, 0x92);
         assert_eq!(
-            state_difference(&ours, &other).as_deref(),
+            state_difference(&ours, &other, "mGBA").as_deref(),
             Some("executed different instructions")
         );
         let mut theirs = record(0x0800_0000, false, 0x0800_0008, 0x1f);
         theirs.gprs[3] = 7;
-        assert!(state_difference(&ours, &theirs)
+        assert!(state_difference(&ours, &theirs, "mGBA")
             .unwrap()
             .contains("r3 ours 00000000 mGBA 00000007"));
     }

@@ -3,6 +3,8 @@
 `gba-diff` runs a ROM in this emulator and in [mGBA](https://mgba.io) with the same inputs, then reports where they disagree.
 mGBA is a widely used, accuracy-focused GBA emulator. It is a reference, not ground truth: when the two disagree,
 hardware-verified results such as the [mGBA test suite](public-mgba-suite.md) decide which side to change.
+[Mesen 2](mesen-reference.md) is a second reference that `gba-diff` drives the same way; it runs this emulator's
+firmware, so neither the start alignment nor the BIOS-cost findings below apply to it.
 
 Nothing from mGBA is committed here. A script builds mGBA's core library locally from a pinned release tarball and links it
 into `mgba-ref`, a small original C program (`tools/mgba-ref/mgba_ref.c`) that `gba-diff` drives over stdin/stdout.

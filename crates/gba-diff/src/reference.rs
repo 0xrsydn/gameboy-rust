@@ -1,5 +1,7 @@
-//! Client for the `mgba-ref` shim (tools/mgba-ref/mgba_ref.c), which drives a locally
-//! built mGBA core over a line protocol on stdin/stdout.
+//! Client for the reference shims, which drive another emulator over a line protocol on
+//! stdin/stdout: `mgba-ref` (tools/mgba-ref/mgba_ref.c, mGBA) and `mesen-ref`
+//! (tools/mesen-ref/mesen_ref.cpp, Mesen 2). Both speak the same protocol; see
+//! docs/mgba-reference.md and docs/mesen-reference.md.
 
 use std::{
     io::{self, BufRead, BufReader, Read, Write},
@@ -11,10 +13,42 @@ use gba_core::video::{HEIGHT, WIDTH};
 
 use crate::Registers;
 
+/// Which emulator a reference shim drives.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Kind {
+    /// mGBA: high-level BIOS calls and a skip-BIOS start at the cartridge entry.
+    Mgba,
+    /// Mesen 2: no high-level BIOS, so it runs this emulator's firmware from reset.
+    Mesen,
+}
+
+impl Kind {
+    /// Identify a shim from its reply to `name`. `mgba-ref` predates the command and answers
+    /// with an error (before a ROM is loaded, "err no ROM loaded").
+    fn from_reply(reply: &str) -> Option<Self> {
+        if reply == "ok mesen2" {
+            Some(Self::Mesen)
+        } else if reply.starts_with("err ") {
+            Some(Self::Mgba)
+        } else {
+            None
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Mgba => "mGBA",
+            Self::Mesen => "Mesen",
+        }
+    }
+}
+
 pub struct Reference {
     child: Child,
     input: ChildStdin,
     output: BufReader<ChildStdout>,
+    program: String,
+    kind: Kind,
 }
 
 impl Reference {
@@ -28,14 +62,37 @@ impl Reference {
             })?;
         let input = child.stdin.take().expect("piped stdin");
         let output = BufReader::new(child.stdout.take().expect("piped stdout"));
-        Ok(Self {
+        let program = binary.file_name().map_or_else(
+            || binary.display().to_string(),
+            |name| name.to_string_lossy().into_owned(),
+        );
+        let mut reference = Self {
             child,
             input,
             output,
-        })
+            program,
+            kind: Kind::Mgba,
+        };
+        let reply = reference.exchange("name")?;
+        reference.kind = Kind::from_reply(&reply).ok_or_else(|| {
+            io::Error::other(format!(
+                "{}: not a reference shim (`name` answered `{reply}`)",
+                reference.program
+            ))
+        })?;
+        Ok(reference)
     }
 
-    fn command(&mut self, line: &str) -> io::Result<String> {
+    pub fn kind(&self) -> Kind {
+        self.kind
+    }
+
+    pub fn label(&self) -> &'static str {
+        self.kind.label()
+    }
+
+    /// Send one command and return its reply line, without the line ending.
+    fn exchange(&mut self, line: &str) -> io::Result<String> {
         if line.contains('\n') {
             return Err(io::Error::other("reference commands are single lines"));
         }
@@ -43,13 +100,21 @@ impl Reference {
         self.input.flush()?;
         let mut reply = String::new();
         if self.output.read_line(&mut reply)? == 0 {
-            return Err(io::Error::other("mgba-ref exited unexpectedly"));
+            return Err(io::Error::other(format!(
+                "{} exited unexpectedly",
+                self.program
+            )));
         }
-        let reply = reply.trim_end();
+        Ok(reply.trim_end().to_owned())
+    }
+
+    fn command(&mut self, line: &str) -> io::Result<String> {
+        let reply = self.exchange(line)?;
         match reply.strip_prefix("ok") {
             Some(rest) => Ok(rest.trim_start().to_owned()),
             None => Err(io::Error::other(format!(
-                "mgba-ref: {reply} (for `{line}`)"
+                "{}: {reply} (for `{line}`)",
+                self.program
             ))),
         }
     }
@@ -59,7 +124,7 @@ impl Reference {
             let text = path.to_str().unwrap_or_default().to_owned();
             if text.is_empty() || text.contains(char::is_whitespace) {
                 Err(io::Error::other(format!(
-                    "{}: paths passed to mgba-ref must be UTF-8 without whitespace",
+                    "{}: paths passed to a reference shim must be UTF-8 without whitespace",
                     path.display()
                 )))
             } else {
@@ -82,17 +147,17 @@ impl Reference {
             .map(drop)
     }
 
-    /// Attach the cartridge RTC and run it on emulated time from `unix` seconds (UTC).
+    /// Attach the cartridge RTC and run it on emulated time from `unix` seconds (UTC; mGBA only).
     pub fn set_rtc(&mut self, unix: u64) -> io::Result<()> {
         self.command(&format!("rtc {unix}")).map(drop)
     }
 
-    /// Move mGBA's display clock to `line` at `cycle` before any frame runs.
+    /// Move mGBA's display clock to `line` at `cycle` before any frame runs (mGBA only).
     pub fn align_video(&mut self, line: u16, cycle: u16) -> io::Result<()> {
         self.command(&format!("video {line} {cycle}")).map(drop)
     }
 
-    /// The next `count` instructions mGBA executes outside the BIOS.
+    /// The next `count` instructions the reference executes outside the BIOS.
     pub fn sync(&mut self, count: usize) -> io::Result<Vec<crate::trace::Record>> {
         let reply = self.command(&format!("sync {count}"))?;
         if reply.parse::<usize>().ok() != Some(count) {
@@ -102,10 +167,14 @@ impl Reference {
         for _ in 0..count {
             let mut line = String::new();
             if self.output.read_line(&mut line)? == 0 {
-                return Err(io::Error::other("mgba-ref exited during sync"));
+                return Err(io::Error::other(format!(
+                    "{} exited during sync",
+                    self.program
+                )));
             }
-            let record = crate::trace::Record::parse(line.trim_end())
-                .ok_or_else(|| io::Error::other(format!("mgba-ref sync: {}", line.trim_end())))?;
+            let record = crate::trace::Record::parse(line.trim_end()).ok_or_else(|| {
+                io::Error::other(format!("{} sync: {}", self.program, line.trim_end()))
+            })?;
             records.push(record);
         }
         Ok(records)
@@ -154,7 +223,7 @@ impl Reference {
         }
         let mut bytes = vec![0; WIDTH * HEIGHT * 4];
         self.output.read_exact(&mut bytes)?;
-        // mGBA's 32-bit color keeps red in the low byte: each channel is value << 3.
+        // Both shims report mGBA's 32-bit layout: red in the low byte, each channel value << 3.
         Ok(bytes
             .chunks_exact(4)
             .map(|pixel| {
@@ -173,5 +242,20 @@ impl Drop for Reference {
         let _ = writeln!(self.input, "quit");
         let _ = self.input.flush();
         let _ = self.child.wait();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Kind;
+
+    #[test]
+    fn shims_are_identified_by_their_name_reply() {
+        assert_eq!(Kind::from_reply("ok mesen2"), Some(Kind::Mesen));
+        // mgba-ref has no `name` command.
+        assert_eq!(Kind::from_reply("err no ROM loaded"), Some(Kind::Mgba));
+        assert_eq!(Kind::from_reply("err unknown command"), Some(Kind::Mgba));
+        assert_eq!(Kind::from_reply("ok something-else"), None);
+        assert_eq!(Kind::Mesen.label(), "Mesen");
     }
 }

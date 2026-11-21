@@ -1,6 +1,6 @@
-//! Differential runner: execute a ROM in this emulator and in mGBA (through the
-//! `mgba-ref` shim) with the same inputs, and report where their state diverges.
-//! See docs/mgba-reference.md.
+//! Differential runner: execute a ROM in this emulator and in a reference emulator, mGBA
+//! (through the `mgba-ref` shim) or Mesen 2 (through `mesen-ref`), with the same inputs, and
+//! report where their state diverges. See docs/mgba-reference.md and docs/mesen-reference.md.
 
 mod reference;
 mod trace;
@@ -9,7 +9,7 @@ use std::{
     env, fs,
     io::{self, Write},
     path::{Path, PathBuf},
-    process::ExitCode,
+    process::{self, ExitCode},
 };
 
 use gba_core::{
@@ -20,14 +20,14 @@ use gba_core::{
     video::{Framebuffer, HEIGHT, WIDTH},
 };
 
-use reference::Reference;
+use reference::{Kind, Reference};
 
 const ROM_ENTRY: u32 = 0x0800_0000;
 const DISPCNT: u32 = 0x0400_0000;
 /// Machine steps allowed between VBlanks before the run is reported as stuck.
 const FRAME_STEP_LIMIT: usize = 2_000_000;
 
-const USAGE: &str = "usage: gba-diff --reference MGBA_REF --rom ROM [--frames N] [--save-type sram|flash64|flash128|eeprom|eeprom512|eeprom8k] [--rtc UNIX_SECONDS] [--input FRAME:BUTTON:HOLD[,...]] [--ignore START-END[,...]] [--max-report N] [--out DIR] [--images FRAME[,...]] [--detail-frame FRAME[,...]] [--no-align] [--trace INSTRUCTIONS]";
+const USAGE: &str = "usage: gba-diff --reference MGBA_REF|MESEN_REF --rom ROM [--frames N] [--save-type sram|flash64|flash128|eeprom|eeprom512|eeprom8k] [--rtc UNIX_SECONDS] [--input FRAME:BUTTON:HOLD[,...]] [--ignore START-END[,...]] [--max-report N] [--out DIR] [--images FRAME[,...]] [--detail-frame FRAME[,...]] [--no-align] [--trace INSTRUCTIONS]";
 
 /// Memory compared every frame. Video memory is compared after both frames render.
 const REGIONS: [(&str, u32, usize); 5] = [
@@ -235,7 +235,8 @@ impl RtcClock {
     }
 }
 
-/// This emulator, started at the cartridge entry like mGBA's skip-BIOS path.
+/// This emulator, run through its firmware's boot to the cartridge entry. mGBA starts there
+/// itself (skip-BIOS); Mesen boots the same firmware, and both reach the same first VBlank.
 struct Local {
     machine: Machine,
     frame: Framebuffer,
@@ -429,7 +430,7 @@ impl FrameReport {
         parts.join(", ")
     }
 
-    fn details(&self, out: &mut impl Write) -> io::Result<()> {
+    fn details(&self, out: &mut impl Write, label: &str) -> io::Result<()> {
         for region in &self.regions {
             write!(
                 out,
@@ -442,7 +443,7 @@ impl FrameReport {
             writeln!(out)?;
             for (address, ours, theirs) in &region.samples {
                 let ours = ours.map_or("--".to_owned(), |value| format!("{value:02x}"));
-                writeln!(out, "    {address:#010x}: ours {ours} mGBA {theirs:02x}")?;
+                writeln!(out, "    {address:#010x}: ours {ours} {label} {theirs:02x}")?;
             }
             let listed = region.samples.len();
             if listed < region.differing + region.unreadable {
@@ -451,7 +452,7 @@ impl FrameReport {
         }
         for (name, ours, theirs) in &self.io {
             let ours = ours.map_or("unreadable".to_owned(), |value| format!("{value:#06x}"));
-            writeln!(out, "  {name}: ours {ours} mGBA {theirs:#06x}")?;
+            writeln!(out, "  {name}: ours {ours} {label} {theirs:#06x}")?;
         }
         if self.pixels > 0 {
             writeln!(
@@ -521,10 +522,17 @@ fn write_ppm(path: &Path, pixels: &[u16]) -> io::Result<()> {
     fs::write(path, bytes)
 }
 
-fn write_images(dir: &Path, frame: u64, ours: &[u16], theirs: &[u16]) -> io::Result<()> {
+fn write_images(
+    dir: &Path,
+    frame: u64,
+    ours: &[u16],
+    theirs: &[u16],
+    label: &str,
+) -> io::Result<()> {
     fs::create_dir_all(dir)?;
     write_ppm(&dir.join(format!("frame{frame:05}-ours.ppm")), ours)?;
-    write_ppm(&dir.join(format!("frame{frame:05}-mgba.ppm")), theirs)?;
+    let name = label.to_lowercase();
+    write_ppm(&dir.join(format!("frame{frame:05}-{name}.ppm")), theirs)?;
     // Matching pixels are dimmed; differing pixels are shown in red.
     let mask: Vec<u16> = ours
         .iter()
@@ -613,24 +621,35 @@ fn align_after_ram_reset(
     .map_err(report)
 }
 
-fn run(options: Options) -> Result<bool, String> {
-    let rom =
-        fs::read(&options.rom).map_err(|error| format!("{}: {error}", options.rom.display()))?;
-    let mut local = Local::boot(rom, options.save, options.rtc)?;
-    let mut reference = Reference::spawn(&options.reference).map_err(|error| error.to_string())?;
-    reference
-        .load(&options.rom, None)
-        .map_err(|error| error.to_string())?;
-    if let Some(unix) = options.rtc {
-        reference.set_rtc(unix).map_err(|error| error.to_string())?;
-    }
+/// This emulator's firmware as a temporary file, for a reference that runs it (Mesen).
+struct BiosFile(PathBuf);
 
-    let mut out = io::stdout().lock();
-    let position = local.machine.memory().display_position();
-    let theirs_vcount = reference
-        .read(0x0400_0006, 2)
-        .map_err(|error| error.to_string())?;
+impl BiosFile {
+    fn write() -> Result<Self, String> {
+        let path = env::temp_dir().join(format!("gba-diff-bios-{}.bin", process::id()));
+        fs::write(&path, bios::image()).map_err(|error| format!("{}: {error}", path.display()))?;
+        Ok(Self(path))
+    }
+}
+
+impl Drop for BiosFile {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.0);
+    }
+}
+
+/// Start mGBA from this emulator's cartridge-entry state. Both start states are
+/// approximations of the real BIOS exit; neither is hardware-verified, so mGBA is moved to
+/// ours and later differences are behavior.
+fn align_mgba_start(
+    local: &Local,
+    reference: &mut Reference,
+    align: bool,
+    out: &mut impl Write,
+) -> Result<(), String> {
     let report = |error: io::Error| error.to_string();
+    let position = local.machine.memory().display_position();
+    let theirs_vcount = reference.read(0x0400_0006, 2).map_err(report)?;
     writeln!(
         out,
         "cartridge entry: ours VCOUNT={} cycle={}, mGBA VCOUNT={}",
@@ -639,9 +658,7 @@ fn run(options: Options) -> Result<bool, String> {
         u16::from_le_bytes([theirs_vcount[0], theirs_vcount[1]])
     )
     .map_err(report)?;
-    if options.align {
-        // Both start states are approximations of the real BIOS exit; neither is
-        // hardware-verified. Start mGBA from ours so later differences are behavior.
+    if align {
         reference
             .align_video(position.scanline, position.line_cycle)
             .map_err(report)?;
@@ -668,10 +685,46 @@ fn run(options: Options) -> Result<bool, String> {
         "{}",
         registers_line("mGBA", &reference.registers().map_err(report)?)
     )
-    .map_err(report)?;
+    .map_err(report)
+}
 
-    if options.align && options.trace.is_none() {
-        align_after_ram_reset(&mut local, &mut reference, &mut out)?;
+fn run(options: Options) -> Result<bool, String> {
+    let rom =
+        fs::read(&options.rom).map_err(|error| format!("{}: {error}", options.rom.display()))?;
+    let mut local = Local::boot(rom, options.save, options.rtc)?;
+    let mut reference = Reference::spawn(&options.reference).map_err(|error| error.to_string())?;
+    let report = |error: io::Error| error.to_string();
+    let label = reference.label();
+    let mut out = io::stdout().lock();
+    match reference.kind() {
+        Kind::Mgba => {
+            reference.load(&options.rom, None).map_err(report)?;
+            if let Some(unix) = options.rtc {
+                reference.set_rtc(unix).map_err(report)?;
+            }
+            align_mgba_start(&local, &mut reference, options.align, &mut out)?;
+            if options.align && options.trace.is_none() {
+                align_after_ram_reset(&mut local, &mut reference, &mut out)?;
+            }
+        }
+        Kind::Mesen => {
+            if options.rtc.is_some() {
+                return Err(
+                    "--rtc needs mgba-ref: Mesen's RTC follows the host clock, so mesen-ref leaves it off"
+                        .to_owned(),
+                );
+            }
+            let bios = BiosFile::write()?;
+            reference
+                .load(&options.rom, Some(&bios.0))
+                .map_err(report)?;
+            drop(bios);
+            writeln!(
+                out,
+                "Mesen runs this emulator's firmware from reset; no start alignment"
+            )
+            .map_err(report)?;
+        }
     }
 
     if let Some(count) = options.trace {
@@ -697,7 +750,7 @@ fn run(options: Options) -> Result<bool, String> {
             writeln!(
                 out,
                 "{}",
-                registers_line("mGBA", &reference.registers().map_err(report)?)
+                registers_line(label, &reference.registers().map_err(report)?)
             )
             .map_err(report)?;
             return Ok(false);
@@ -707,7 +760,7 @@ fn run(options: Options) -> Result<bool, String> {
         let (report_frame, ours, theirs) =
             compare_frame(&local, &mut reference, &options.ignore, samples).map_err(report)?;
         if let (Some(dir), true) = (&options.out, options.images.contains(&frame)) {
-            write_images(dir, frame, &ours, &theirs).map_err(report)?;
+            write_images(dir, frame, &ours, &theirs, label).map_err(report)?;
         }
         if report_frame.clean() {
             if detailed {
@@ -723,16 +776,16 @@ fn run(options: Options) -> Result<bool, String> {
             } else {
                 writeln!(out, "frame {frame}:").map_err(report)?;
             }
-            report_frame.details(&mut out).map_err(report)?;
+            report_frame.details(&mut out, label).map_err(report)?;
             writeln!(out, "{}", registers_line("ours", &local.registers())).map_err(report)?;
             writeln!(
                 out,
                 "{}",
-                registers_line("mGBA", &reference.registers().map_err(report)?)
+                registers_line(label, &reference.registers().map_err(report)?)
             )
             .map_err(report)?;
             if let (Some(dir), true) = (&options.out, first == Some(frame)) {
-                write_images(dir, frame, &ours, &theirs).map_err(report)?;
+                write_images(dir, frame, &ours, &theirs, label).map_err(report)?;
                 writeln!(out, "  images: {}", dir.display()).map_err(report)?;
             }
         } else if reported < options.max_report {

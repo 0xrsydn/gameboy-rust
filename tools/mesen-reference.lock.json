@@ -1,0 +1,9 @@
+{
+  "project": "mechanize-work/Mesen2-gba-headless",
+  "upstream": "SourMesen/Mesen2 fabc9a62174f8734a113df6d244f5539ef6b8fcf",
+  "commit": "bcfdd2543d27da60145bff01ebfbafa0a97a94fc",
+  "license": "GPL-3.0-only",
+  "url": "https://github.com/mechanize-work/Mesen2-gba-headless/archive/bcfdd2543d27da60145bff01ebfbafa0a97a94fc.tar.gz",
+  "bytes": 669455,
+  "sha256": "5e22b98acafedd222b2b0e13493fcc59f2d494f5025bae4d9cf0afc7f8f72c59"
+}
