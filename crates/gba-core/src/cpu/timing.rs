@@ -71,6 +71,24 @@ impl Cpu {
         Ok(timing)
     }
 
+    /// The cost of the next instruction's code access when the instruction has more bus or
+    /// internal work after it (data, internal cycles, or a refill). A transfer that becomes
+    /// ready within that cost precedes the work. None when the fetch is all the instruction
+    /// does, or it cannot be fetched.
+    pub(crate) fn code_cycles_before_work(&self, memory: &Memory) -> Option<u32> {
+        let fetched = self.fetch(memory).ok()?;
+        let summary = self.instruction_summary(fetched.instruction);
+        if !(summary.data || summary.internal != 0 || summary.refill) {
+            return None;
+        }
+        Some(memory.peek_code_cycles(
+            fetched.fill.is_some(),
+            fetched.lookahead.address(),
+            self.instruction_set.access_width(),
+            memory.cpu_code_kind(self.next_fetch_kind()),
+        ))
+    }
+
     /// Accept IRQ between instructions, discard the old-state fetch, then refill ARM.
     /// A missing discarded fetch cannot prevent entry or become a current-slot error.
     pub(crate) fn take_irq_timed(&mut self, memory: &mut Memory) -> Option<StepTiming> {

@@ -290,12 +290,15 @@ fn replace_byte(previous: u32, byte: u32, value: u8) -> u32 {
     (previous & !(0xff << shift)) | (u32::from(value) << shift)
 }
 
-/// An immediate transfer enabled by a CPU store starts at the first step boundary at least
-/// this many cycles after that instruction began, as mGBA schedules it. A store taking
-/// three or more cycles (from ROM, say) lets the transfer start right after it; a faster
-/// store lets the next instruction run first. VBlank and HBlank transfers wait the same
-/// number of cycles after their display edge.
+/// VBlank and HBlank transfers become ready this many cycles after their display edge, as
+/// mGBA schedules them. It also bounds every pending delay in a save state.
 pub const START_DELAY: u8 = 3;
+
+/// An immediate transfer enabled by a CPU store becomes ready this many cycles after the
+/// write ends, and starts before the first CPU access or internal cycle that begins from
+/// then on, as Mesen 2 schedules it. `Machine::step` applies this at instruction
+/// boundaries; see [`Dma::start_within`].
+pub const CPU_START_DELAY: u8 = 2;
 
 impl Dma {
     /// Count down pending start delays as cycles elapse.
@@ -304,6 +307,55 @@ impl Dma {
             channel.start_delay = channel
                 .start_delay
                 .saturating_sub(cycles.min(u32::from(u8::MAX)) as u8);
+        }
+    }
+
+    /// Channels waiting for their trigger or start delay, as a bit mask, so that a CPU store
+    /// can find the transfers it enables.
+    pub(crate) fn active_mask(&self) -> u8 {
+        self.channels
+            .iter()
+            .enumerate()
+            .filter(|(_, channel)| channel.active)
+            .fold(0, |mask, (index, _)| mask | 1 << index)
+    }
+
+    /// Date the immediate transfers that a CPU store just enabled (active now, not in
+    /// `before`): ready `CPU_START_DELAY` cycles after the write ends, `write_end` cycles
+    /// into the step. Step completion then counts the whole step down.
+    pub(crate) fn date_cpu_enables(&mut self, before: u8, write_end: u32) {
+        let delay = (write_end + u32::from(CPU_START_DELAY)).min(u32::from(u8::MAX)) as u8;
+        for (index, channel) in self.channels.iter_mut().enumerate() {
+            if channel.active && before & 1 << index == 0 && channel.start_delay != 0 {
+                channel.start_delay = delay;
+            }
+        }
+    }
+
+    /// Cycles until the nearest waiting immediate transfer becomes ready.
+    pub(crate) fn immediate_start_wait(&self) -> Option<u32> {
+        self.channels
+            .iter()
+            .filter(|channel| {
+                channel.active && channel.start_timing() == 0 && channel.start_delay != 0
+            })
+            .map(|channel| u32::from(channel.start_delay))
+            .min()
+    }
+
+    /// Start the immediate transfers that become ready within `cycles`: the next
+    /// instruction's code fetch takes that long and is followed by a bus access or internal
+    /// cycle, which the transfer precedes. Transfers run between instructions here, so it
+    /// starts before that instruction instead of inside it; the data the instruction then
+    /// reads is the same. Blanking transfers keep mGBA's boundary rule (`START_DELAY`).
+    pub(crate) fn start_within(&mut self, cycles: u32) {
+        for channel in &mut self.channels {
+            if channel.active
+                && channel.start_timing() == 0
+                && u32::from(channel.start_delay) <= cycles
+            {
+                channel.start_delay = 0;
+            }
         }
     }
 

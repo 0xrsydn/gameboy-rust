@@ -1093,6 +1093,34 @@ impl Memory {
         }
     }
 
+    /// The cost `record_code_access` would charge for the next instruction's code access,
+    /// without starting a timing transaction or changing the prefetch queue.
+    pub(crate) fn peek_code_cycles(
+        &self,
+        cold: bool,
+        address: u32,
+        width: AccessWidth,
+        kind: AccessKind,
+    ) -> u32 {
+        let mut prefetch = self.gamepak_prefetch;
+        if cold {
+            prefetch.clear();
+        }
+        let mut trace = CpuTiming::new(self.io.bus_waits(), prefetch);
+        trace.code(address, width, kind);
+        trace.total.total()
+    }
+
+    /// Cycles until the nearest waiting immediate DMA transfer becomes ready.
+    pub(crate) fn dma_start_wait(&self) -> Option<u32> {
+        self.io.dma_start_wait()
+    }
+
+    /// Start delayed transfers that become ready within `cycles`; see `Dma::start_within`.
+    pub(crate) fn start_dma_within(&mut self, cycles: u32) {
+        self.io.start_dma_within(cycles);
+    }
+
     pub(crate) fn begin_cpu_timing(&self, cold: bool) {
         debug_assert!(self.cpu_timing.get().is_none());
         let mut prefetch = self.gamepak_prefetch;
@@ -1395,6 +1423,7 @@ impl Memory {
                     .write_keypad(address, &bytes, self.step_elapsed.get());
                 return Ok(());
             }
+            let dma_before = self.io.dma_active_mask();
             for (offset, byte) in bytes.into_iter().enumerate() {
                 let byte_address = address + offset as u32;
                 if !Io::mapped(byte_address) {
@@ -1412,8 +1441,14 @@ impl Memory {
                 }
                 self.io.write8(byte_address, byte);
             }
-            if (DMA_BASE..=DMA_END).contains(&address) && self.write_access() == WriteAccess::Host {
-                self.io.expedite_dma();
+            if (DMA_BASE..=DMA_END).contains(&address) {
+                if self.write_access() == WriteAccess::Host {
+                    self.io.expedite_dma();
+                } else if self.step_active.get() {
+                    // The access is already recorded, so the step's elapsed time ends at it.
+                    self.io
+                        .date_cpu_dma_enables(dma_before, self.step_elapsed.get());
+                }
             }
             // `access`, not `write_access()`: a DMA unit runs outside a CPU access but
             // is still an emulated write, and its enables wait like the CPU's.

@@ -150,19 +150,19 @@ The earlier measurements, kept for history, were made 2026-11-13 before any timi
   until hardware evidence decides it.
 - mGBA begins HBlank 1008 cycles into a line; this emulator uses 1006.
 
-With a local Pokémon FireRed dump (not distributed), lockstep matches 1,021 instructions:
+With a local Pokémon FireRed dump (not distributed), lockstep matched 1,021 instructions before the DMA3 readback fix
+(1,096 since, up to the `RegisterRamReset` gap below):
 
 - The game's `RegisterRamReset` call (`SWI 0x01`) costs about 948,000 more cycles in this emulator's BIOS than in mGBA's
   high-level implementation. Real firmware cost lies somewhere between; it is not measured here.
-- The game starts an immediate DMA3 transfer and reads `DMA3CNT` back in the next instruction. mGBA still reports the
-  enable bit (`0x84000000`) because its transfer has not started yet; this emulator has already finished it (`0x04000000`).
-  GBATEK documents a short DMA start delay; the game's following branch differs.
-  Deferring immediate DMA until after the next instruction matched mGBA here, but cost 194 memory and 56 timing results
-  in the mGBA suite, whose DMA results are read right after each copy. mGBA's actual rule is cycle-based: the transfer
-  starts at the first instruction boundary at least 3 cycles after the enabling instruction began. That rule is now
-  [modeled](hardware/dma.md) and raised the suite's timing results. FireRed's readback still differs, because mGBA
-  charges a store's following ROM fetch to the next instruction (store 2 cycles, load 11) while this emulator charges it
-  to the store (5 and 8). Adopting mGBA's attribution lowered the suite's memory and timing results, so it was not.
+- The game starts an immediate DMA3 transfer and reads `DMA3CNT` back in the next instruction. mGBA and
+  [Mesen](mesen-reference.md) both still report the enable bit (`0x84000000`). This emulator used to finish the transfer
+  first (`0x04000000`): it started immediate transfers at the first instruction boundary at least 3 cycles after the
+  enabling instruction began, mGBA's rule, and its 5-cycle store passed that boundary. Deferring every immediate
+  transfer until after the next instruction had matched here, but cost 194 memory and 56 timing results in the mGBA
+  suite. Mesen's rule is per access: the transfer starts 2 cycles after the write ends, before the first access that
+  begins from then on. The load's fetch here is a 1-cycle prefetch hit, so its read starts first. That rule is now
+  [modeled](hardware/dma.md) without changing any suite result, and lockstep now passes this readback (2026-11-22).
 
 ## Speed comparison
 

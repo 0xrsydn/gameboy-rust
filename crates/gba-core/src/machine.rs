@@ -279,6 +279,17 @@ impl Machine {
             self.last_timing = StepTiming::default();
             return Ok(StepKind::StopIdle);
         }
+        if let Some(wait) = self.memory.dma_start_wait() {
+            // An immediate transfer that becomes ready during the next instruction's code
+            // fetch precedes the instruction's later accesses. IRQ entry is not looked ahead.
+            if !self.memory.irq_pending() && !self.memory.halted() {
+                if let Some(cycles) = self.cpu.code_cycles_before_work(&self.memory) {
+                    if cycles >= wait {
+                        self.memory.start_dma_within(cycles);
+                    }
+                }
+            }
+        }
         if let Some((channel, timing)) = self.memory.step_dma().map_err(MachineError::Dma)? {
             self.last_timing = timing;
             return Ok(StepKind::Dma { channel });

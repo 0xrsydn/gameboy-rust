@@ -844,7 +844,7 @@ fn cpu_can_enable_dma_with_a_combined_count_control_store() {
         0xe59f_0010, // LDR r0,[pc,#16] (DMA3CNT)
         0xe59f_1010, // LDR r1,[pc,#16] (count/control)
         0xe580_1000, // STR r1,[r0]
-        0xe282_2001, // ADD r2,r2,#1 (must wait for transfer)
+        0xe282_2001, // ADD r2,r2,#1 (only its fetch precedes the transfer)
         0xeaff_fffe,
         0xe1a0_0000,
         base(3) + 8,
@@ -859,11 +859,63 @@ fn cpu_can_enable_dma_with_a_combined_count_control_store() {
         assert_eq!(machine.step().unwrap(), StepKind::Instruction);
     }
     assert_eq!(machine.cpu().pc(), ROM_START + 12);
+    // The transfer becomes ready 2 cycles after the write ends. The ADD's fetch starts
+    // before then and is all it does, so the transfer precedes the next fetch instead.
+    assert_eq!(machine.step().unwrap(), StepKind::Instruction);
+    assert_eq!(machine.cpu().registers()[2], 1);
     units(&mut machine, 3, 2);
     assert_eq!(machine.memory().read32(DEST).unwrap(), 0x1234_5678);
-    assert_eq!(machine.cpu().registers()[2], 0);
-    machine.step().unwrap();
-    assert_eq!(machine.cpu().registers()[2], 1);
+}
+
+/// Thumb: load DMA3CNT's address and an enabling value from the literal pool, store it,
+/// and read DMA3CNT back in the next instruction, as Pokémon FireRed's startup does.
+fn dma3_readback(waitcnt: u16) -> (Machine, Vec<StepKind>) {
+    let rom = words(&[
+        0xe28f_3001, // ADD r3,pc,#1 (Thumb code at +8)
+        0xe12f_ff13, // BX r3
+        0x4903_4802, // LDR r0,[pc,#8] (DMA3CNT); LDR r1,[pc,#12] (count/control)
+        0x6802_6001, // STR r1,[r0]; LDR r2,[r0]
+        0x46c0_e7fe, // B .; NOP
+        base(3) + 8,
+        0x8400_0002,
+    ]);
+    let mut bus = Memory::new(rom).unwrap();
+    bus.write16(WAITCNT, waitcnt).unwrap();
+    bus.write32(SOURCE, 0x1234_5678).unwrap();
+    bus.write32(base(3), SOURCE).unwrap();
+    bus.write32(base(3) + 4, DEST).unwrap();
+    let mut machine = Machine::new(Cpu::new(ROM_START), bus);
+    let mut kinds = Vec::new();
+    while machine.cpu().pc() != ROM_START + 0x10 {
+        kinds.push(machine.step().unwrap());
+        assert!(kinds.len() < 16, "the readback never finished: {kinds:?}");
+    }
+    (machine, kinds)
+}
+
+#[test]
+fn readback_after_a_one_cycle_prefetched_fetch_still_sees_the_enable_bit() {
+    // Prefetch on, WS0 3/1: the prefetcher fetches the LDR's lookahead during the store's
+    // write, so the LDR reads DMA3CNT 1 cycle after the write, before the transfer can
+    // start. Mesen 2 and mGBA both read 0x84000000 here in FireRed.
+    let (machine, kinds) = dma3_readback(0x4014);
+    assert_eq!(machine.cpu().registers()[2], 0x8400_0000);
+    let instructions = kinds.iter().filter(|kind| **kind == StepKind::Instruction);
+    assert_eq!(instructions.count(), kinds.len()); // The transfer comes after the readback.
+    assert_eq!(machine.memory().read32(DEST).unwrap(), 0);
+}
+
+#[test]
+fn readback_after_a_slow_fetch_sees_the_finished_transfer() {
+    // Reset WAITCNT: the LDR's nonsequential ROM fetch outlasts the 2-cycle wait, so the
+    // transfer runs before the LDR reads DMA3CNT.
+    let (machine, kinds) = dma3_readback(0);
+    assert_eq!(machine.cpu().registers()[2], 0x0400_0000);
+    let units = kinds
+        .iter()
+        .filter(|kind| **kind == StepKind::Dma { channel: 3 });
+    assert_eq!(units.count(), 2);
+    assert_eq!(machine.memory().read32(DEST).unwrap(), 0x1234_5678);
 }
 
 #[test]

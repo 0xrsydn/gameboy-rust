@@ -99,10 +99,16 @@ Measured 2026-11-21, with this emulator at `5d059b3`:
   diverges in a Thumb loop that stores to SRAM (`0x0e000000`): per-instruction costs there differ by 2 cycles in both
   directions, and this emulator takes an IRQ a few instructions earlier. SRAM store timing is already an open question
   against mGBA (see [Findings so far](mgba-reference.md#findings-so-far)).
-- Pokémon FireRed (local dump, `--save-type flash128`): lockstep stops at instruction 1021 with drift of only +4 cycles
-  (against mGBA, +947,772, almost all of it `RegisterRamReset`). The divergence is the immediate DMA3 readback documented
-  for mGBA: Mesen, too, still reports the enable bit (`0x84000000`) where this emulator has finished the transfer
-  (`0x04000000`). Two independent references now agree on this case. Frame comparison first differs at frame 4, in `IF`.
+- Pokémon FireRed (local dump, `--save-type flash128`): lockstep stopped at instruction 1021 with drift of only +4
+  cycles (against mGBA, +947,772, almost all of it `RegisterRamReset`). The divergence was the immediate DMA3 readback
+  documented for mGBA: Mesen, too, still reported the enable bit (`0x84000000`) where this emulator had finished the
+  transfer (`0x04000000`). Frame comparison first differs at frame 4, in `IF`.
+
+On 2026-11-22 this emulator adopted Mesen's immediate-DMA start rule (see [DMA](hardware/dma.md)), with no change in
+the mGBA suite. FireRed and Emerald lockstep now passes the readback and stops at instruction 1128, +2 cycles: a
+`VCOUNT` read returns line 89 here and line 86 in Mesen. The cycle totals agree, so the display position relative to
+the CPU clock differs by about three lines by then; the cause is not yet known. Frame comparison still first differs
+at frame 4.
 
 Measured 2026-11-22, with this emulator at `f077b46`:
 

@@ -677,6 +677,23 @@ impl Io {
         self.dma.expedite();
     }
 
+    pub(crate) fn dma_active_mask(&self) -> u8 {
+        self.dma.active_mask()
+    }
+
+    pub(crate) fn date_cpu_dma_enables(&mut self, before: u8, write_end: u32) {
+        self.dma.date_cpu_enables(before, write_end);
+    }
+
+    /// Cycles until the nearest waiting immediate transfer becomes ready.
+    pub(crate) fn dma_start_wait(&self) -> Option<u32> {
+        self.dma.immediate_start_wait()
+    }
+
+    pub(crate) fn start_dma_within(&mut self, cycles: u32) {
+        self.dma.start_within(cycles);
+    }
+
     pub(crate) fn next_dma(&self) -> Option<Transfer> {
         self.dma.next()
     }

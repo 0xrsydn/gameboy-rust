@@ -26,12 +26,19 @@ Disable the channel before changing its width, address modes, or start timing; l
 
 Supported triggers:
 
-- Immediate: ready at the first step boundary at least 3 cycles after the enabling CPU instruction began, as mGBA
-  schedules it. A store taking 3 or more cycles (from ROM, say) lets the transfer start right after it; a 2-cycle
-  store from internal RAM lets the next instruction run first. Host and DMA writes start it at once. HALT idling stops
-  at the pending start. Repeat does not keep it running. This raised the mGBA suite's timing results from 1792 to 1824
-  without changing any memory or DMA result; mGBA's own cost attribution (charging a store's following fetch to the
-  next instruction) lowered them, so cycles count with this emulator's attribution.
+- Immediate: ready 2 cycles after the enabling CPU write ends, as Mesen 2 schedules it (`TriggerDmaChannel` and
+  `RunPendingDma` in `Core/GBA/GbaDmaController.cpp`, checked as each bus access or internal cycle begins). Steps here
+  are whole instructions, so at each boundary with a transfer waiting, `Machine::step` looks at the next instruction
+  without side effects. If its code fetch outlasts the rest of the wait and the instruction has more to do (a data
+  access, an internal cycle, or a refill), the transfer runs before it, so a load reads the finished transfer. If the
+  fetch is shorter, or is all the instruction does, the instruction runs first and the transfer follows. Thus a load
+  right after the enabling store reads the finished transfer after a nonsequential ROM fetch, but still sees the
+  enable bit after a 1-cycle fetch from internal RAM or a prefetch hit. Pokémon FireRed and Emerald read `DMA3CNT` back
+  this way, and both mGBA and Mesen report `0x84000000` there. The look-ahead skips steps where an IRQ is pending.
+  Host and DMA writes start the transfer at once. HALT idling stops at the pending start. Repeat does not keep it
+  running. The previous rule, mGBA's (ready at the first boundary at least 3 cycles after the enabling instruction
+  began), let a 3-cycle store start the transfer before any later instruction; the mGBA suite gives identical results
+  under both.
 - VBlank and HBlank transfers wait the same 3 cycles after their display edge (as mGBA schedules both): the transfer is
   ready at the first step boundary at least 3 cycles after line 160 begins or after cycle 1,006 of a visible line.
   A clock batch that ends past the edge has already spent part of the wait; HALT idles through the rest. The mGBA

@@ -43,6 +43,7 @@ Update this file when a feature lands or a limit is removed.
 - A 228-line display clock, VCOUNT/DISPSTAT, and VBlank/HBlank/VCount-match interrupts.
 - Four direct memory access (DMA) channels, with immediate, VBlank, and visible-line HBlank triggers, Direct Sound FIFO requests, and DMA3 video capture at the HBlanks of lines 2–161 as mGBA models it.
 - Halfword/word DMA, address controls, repeat, channel priority, CPU pausing, and completion IRQs.
+- Immediate DMA enabled by a CPU store starts 2 cycles after the write, before the next instruction's data access when its fetch outlasts that wait, as Mesen 2 schedules it.
 - Separate retained DMA channel data, with known-value reuse for blocked sources below work RAM.
 - One-shot non-sequential nominal CPU code timing after successful DMA, including RAM-only transfers.
 - HALT with enabled-request wake-up, continued device clocks, and bounded idle steps.
