@@ -58,6 +58,9 @@ operation. This emulator does the same; none of these is hardware-verified:
   `_ARMModeHasSPSR`). In User and System they set ordinary flags or act as a plain load.
 - In User mode, S-bit block transfers name the registers already in use; a user-bank `STM` with writeback writes
   back to the current mode's base register.
+- A user-bank `LDM` with writeback (`LDM rn!,{list}^` without PC) follows Mesen 2 (`ArmBlockDataTransfer`), which
+  armwrestler's LDM/STM page exercises: the loads go to the User registers, and the base is written back in the
+  current mode's bank and, unless the list loads it there, in the User bank.
 - Thumb `0xe800`–`0xe83f` are no-ops, as in mGBA (`GBAIllegal`), and `BX` ignores its low destination bits.
 
 The results above were measured on mGBA 0.10.5 with original probe programs through `mgba-ref`, then checked
@@ -73,7 +76,7 @@ diagnostic at the faulting address is kept:
 - `MRS` and `SWP` into PC, which mGBA executes without a pipeline refill;
 - SPSR access in User/System mode: mGBA keeps one shared slot there, which this core's save states do not hold;
 - CPSR writes that select an invalid mode or change the Thumb bit, and returns to an invalid saved mode;
-- `LDM`/`STM` with a written-back PC base, S-bit empty lists, and user-bank `LDM` with writeback.
+- `LDM`/`STM` with a written-back PC base, and S-bit empty lists.
 For subtraction, carry means no unsigned borrow occurred.
 Logical flag-setting operations preserve overflow and take carry from the shifter.
 Unshifted operands preserve the previous carry flag.
@@ -348,7 +351,7 @@ Instruction-state-changing compare forms and exact pipeline behavior remain hard
 
 Other S-bit block transfers access User registers while using the current mode's base register.
 User-bank `STM` writeback and User-mode S-bit transfers follow mGBA (see above).
-User-bank `LDM` writeback and S-bit empty lists return diagnostics.
+User-bank `LDM` writeback follows Mesen 2 (see above); S-bit empty lists return diagnostics.
 
 ARM multiplies accept a destination equal to the first operand: `MUL`/`MLA` with Rd=Rm and long multiplies with RdHi or RdLo equal to Rm.
 Every operand is read before the result is written. R15 operands and RdHi=RdLo follow mGBA (see above).

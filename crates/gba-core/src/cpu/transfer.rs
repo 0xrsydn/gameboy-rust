@@ -32,9 +32,10 @@ impl Cpu {
         let user_bank = special && !(load && list & (1 << 15) != 0);
         // As in mGBA 0.10.5, `^` in User mode names the registers already in use, an LDM
         // with PC restores SPSR only where one exists, and a user-bank STM writes back to
-        // the current bank. An empty list with `^` and a user-bank LDM with writeback
-        // stay diagnostic.
-        if special && encoded_list == 0 || user_bank && load && write_back {
+        // the current bank. A user-bank LDM with writeback, unpredictable in ARMv4, follows
+        // Mesen 2 (`ArmBlockDataTransfer`): the base is written back in the current bank,
+        // and in the user bank unless loaded there. An empty list with `^` stays diagnostic.
+        if special && encoded_list == 0 {
             return Err(self.unsupported(instruction));
         }
         let restore = if special && !user_bank && self.spsr().is_some() {
@@ -108,6 +109,11 @@ impl Cpu {
         }
         // Commit only after every access succeeds. This keeps diagnostics retryable.
         if user_bank && load {
+            if write_back {
+                // A base outside the list keeps its writeback in `next`.
+                self.set_user_register(base_register, adjusted);
+                self.registers[base_register] = adjusted;
+            }
             for (register, value) in next.into_iter().enumerate() {
                 if list & (1 << register) != 0 {
                     self.set_user_register(register, value);

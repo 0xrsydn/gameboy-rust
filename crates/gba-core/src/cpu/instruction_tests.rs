@@ -522,7 +522,6 @@ fn invalid_or_unimplemented_encodings_do_not_change_state_or_memory() {
     for instruction in [
         0xe790_1012, // illegal register-specified memory shift
         0xe1c0_10d0, // ARMv5 doubleword load, not an ARM7 signed store
-        0xe8f0_0001, // LDM user-bank transfer with writeback
         0xe100_f090, // SWP with PC destination
         0xe12f_ff30, // BLX, ARMv5 only
     ] {

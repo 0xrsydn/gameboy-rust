@@ -496,7 +496,6 @@ fn pc_base_user_bank_and_swap_forms_follow_mgba() {
 fn unsupported_transfer_variants_preserve_registers_and_memory() {
     for instruction in [
         0xe8ef_0001, // PC base writeback
-        0xe8f0_0001, // LDM user-bank transfer with writeback
         0xe8c0_0000, // Empty-list STM with S bit
         0xe100_f092, // SWP PC destination
         0xe110_1092, // Reserved SWP bit 20
@@ -519,4 +518,38 @@ fn unsupported_transfer_variants_preserve_registers_and_memory() {
         assert_eq!(cpu.flags, flags());
         assert_eq!(memory.read32(BASE).unwrap(), 0xdead_beef);
     }
+}
+
+#[test]
+fn user_bank_ldm_with_writeback_follows_mesen() {
+    // LDMIA rn!,{list}^ without PC: loads go to the user bank; the base is written back
+    // in the current bank and, unless loaded there, in the user bank (Mesen 2).
+    let run = |instruction: u32, mode: Mode| {
+        let mut memory = program(&[instruction]);
+        memory.write32(BASE, 0x1111_1111).unwrap();
+        memory.write32(BASE + 4, 0x2222_2222).unwrap();
+        let mut cpu = Cpu::new(ROM_START);
+        cpu.registers[0] = BASE;
+        cpu.registers[13] = 0x0300_7f00; // System/User sp
+        cpu.switch_mode(mode);
+        cpu.registers[13] = BASE;
+        cpu.step(&mut memory).unwrap();
+        let current = cpu.registers;
+        cpu.switch_mode(Mode::System);
+        (current, cpu.registers)
+    };
+    // IRQ mode, LDMIA sp!,{r0,r1}^: banked base outside the list.
+    let (irq, user) = run(0xe8fd_0003, Mode::Irq);
+    assert_eq!((irq[0], irq[1], irq[13]), (0x1111_1111, 0x2222_2222, BASE + 8));
+    assert_eq!(user[13], BASE + 8);
+    // IRQ mode, LDMIA sp!,{r0,sp}^: the user sp takes the loaded word.
+    let (irq, user) = run(0xe8fd_2001, Mode::Irq);
+    assert_eq!((irq[0], irq[13]), (0x1111_1111, BASE + 8));
+    assert_eq!(user[13], 0x2222_2222);
+    // System mode, LDMIA r0!,{r0,r1}^: one physical r0, so the load wins.
+    let (system, _) = run(0xe8f0_0003, Mode::System);
+    assert_eq!((system[0], system[1]), (0x1111_1111, 0x2222_2222));
+    // System mode, LDMIA r0!,{r1}^: plain writeback.
+    let (system, _) = run(0xe8f0_0002, Mode::System);
+    assert_eq!((system[0], system[1]), (BASE + 4, 0x1111_1111));
 }

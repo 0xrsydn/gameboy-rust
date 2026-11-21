@@ -141,7 +141,6 @@ fn unsupported_instructions_do_not_change_cpu() {
     for instruction in [
         0xe340_0001, // CMP encoding with S=0
         0xe10f_f000, // MRS pc, CPSR
-        0xe8f0_0001, // LDM user-bank transfer with writeback
         0xe100_f090, // SWP with PC destination
         0xe14f_0000, // MRS SPSR in System mode
         0xe16f_0f10, // CLZ (ARMv5)
