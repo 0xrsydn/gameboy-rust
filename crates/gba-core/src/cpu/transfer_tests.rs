@@ -540,7 +540,10 @@ fn user_bank_ldm_with_writeback_follows_mesen() {
     };
     // IRQ mode, LDMIA sp!,{r0,r1}^: banked base outside the list.
     let (irq, user) = run(0xe8fd_0003, Mode::Irq);
-    assert_eq!((irq[0], irq[1], irq[13]), (0x1111_1111, 0x2222_2222, BASE + 8));
+    assert_eq!(
+        (irq[0], irq[1], irq[13]),
+        (0x1111_1111, 0x2222_2222, BASE + 8)
+    );
     assert_eq!(user[13], BASE + 8);
     // IRQ mode, LDMIA sp!,{r0,sp}^: the user sp takes the loaded word.
     let (irq, user) = run(0xe8fd_2001, Mode::Irq);
