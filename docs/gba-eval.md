@@ -53,7 +53,8 @@ stops. `Session::error` reports it; the ABI has no error channel.
 
 `gba-diff --eval` runs one testcase. This emulator runs through `Session`; mesen-ref runs in its `eval` mode, which
 loads as the benchmark's reference does. Both burn the boot frames, take the replay's keys before each frame, and
-compare pictures after 5-bit quantization. Audio is not compared.
+compare pictures after 5-bit quantization. Audio is not compared. `--images FRAME,... --out DIR` writes those frames
+(ours, Mesen's, and a difference mask) as PPM files.
 
 ```sh
 direnv exec . cargo build --locked --release -p gba-diff

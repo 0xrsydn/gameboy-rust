@@ -64,12 +64,19 @@ pub struct Summary {
     pub error: Option<String>,
 }
 
+/// Frames to write as images, and where (`--images`, `--out`).
+pub struct Images<'a> {
+    pub frames: &'a [u64],
+    pub dir: Option<&'a Path>,
+}
+
 pub fn run(
     reference: &mut Reference,
     rom_path: &Path,
     bios_path: &Path,
     frames: u64,
     replay: &[(u64, u16)],
+    images: Images<'_>,
     out: &mut impl Write,
 ) -> Result<Summary, String> {
     let report = |error: io::Error| error.to_string();
@@ -99,12 +106,19 @@ pub fn run(
         session.drain_audio();
         reference.run_frame().map_err(report)?;
         let theirs = reference.frame().map_err(report)?;
-        let differing = session
+        let ours: Vec<u16> = session
             .pixels()
             .iter()
+            .map(|&pixel| rgb555(pixel))
+            .collect();
+        let differing = ours
+            .iter()
             .zip(&theirs)
-            .filter(|&(&ours, &theirs)| rgb555(ours) != theirs)
+            .filter(|(ours, theirs)| ours != theirs)
             .count();
+        if let Some(dir) = images.dir.filter(|_| images.frames.contains(&frame)) {
+            crate::write_images(dir, frame, &ours, &theirs, reference.label()).map_err(report)?;
+        }
         if differing == 0 {
             summary.identical += 1;
         } else if summary.first.len() < 8 {

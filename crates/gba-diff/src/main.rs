@@ -743,12 +743,17 @@ fn run_eval(options: &Options) -> Result<bool, String> {
         None => Vec::new(),
     };
     let mut out = io::stdout().lock();
+    let images = eval::Images {
+        frames: &options.images,
+        dir: options.out.as_deref(),
+    };
     let summary = eval::run(
         &mut reference,
         &options.rom,
         bios,
         options.frames,
         &replay,
+        images,
         &mut out,
     )?;
     Ok(summary.identical == summary.frames && summary.error.is_none())
