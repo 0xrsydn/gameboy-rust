@@ -293,6 +293,13 @@ impl Memory {
         Ok(memory)
     }
 
+    /// Set the word protected BIOS reads return, as if the firmware had last fetched it.
+    /// Used when a boot is skipped: no BIOS code has run to latch one. Call between steps.
+    pub fn set_bios_open_bus(&mut self, word: u32) {
+        assert!(!self.step_active.get(), "BIOS open bus during a step");
+        self.bios_prefetch = Some(word);
+    }
+
     /// Replace GPIO/RTC hardware with its initial state. Call between machine steps.
     /// Save hardware/data are preserved. This never modifies ROM bytes or enables a host clock.
     pub fn set_cartridge_hardware(&mut self, hardware: CartridgeHardware) {

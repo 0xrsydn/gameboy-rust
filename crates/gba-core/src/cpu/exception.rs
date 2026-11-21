@@ -24,6 +24,26 @@ impl Cpu {
         cpu
     }
 
+    /// The CPU state a BIOS boot leaves at the cartridge entry, set directly as mGBA's and
+    /// Mesen 2's boot skips do: ARM System mode at `ROM_START` with interrupts unmasked,
+    /// the System, IRQ, and Supervisor stacks at the firmware's addresses, and the link
+    /// register at `ROM_START`, as in Mesen (`GbaCpu::Init`). Other registers are zero.
+    pub fn after_boot() -> Self {
+        use crate::bios::{IRQ_STACK, SVC_STACK, SYSTEM_STACK};
+        use crate::memory::ROM_START;
+        let mut cpu = Self::at_reset();
+        cpu.registers[13] = SVC_STACK;
+        cpu.switch_mode(Mode::Irq);
+        cpu.registers[13] = IRQ_STACK;
+        cpu.switch_mode(Mode::System);
+        cpu.registers[13] = SYSTEM_STACK;
+        cpu.registers[14] = ROM_START;
+        cpu.registers[15] = ROM_START;
+        cpu.irq_disabled = false;
+        cpu.fiq_disabled = false;
+        cpu
+    }
+
     /// Enter an exception explicitly, regardless of interrupt masks.
     /// For synchronous exceptions, PC must identify the faulting instruction.
     /// For IRQ/FIQ, PC must identify the next instruction, between CPU steps.

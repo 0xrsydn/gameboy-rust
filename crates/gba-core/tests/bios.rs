@@ -38,6 +38,8 @@ mod readback;
 mod reset;
 #[path = "bios/run_length.rs"]
 mod run_length;
+#[path = "bios/skip_boot.rs"]
+mod skip_boot;
 #[path = "bios/stop.rs"]
 mod stop;
 

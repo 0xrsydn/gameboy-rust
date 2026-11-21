@@ -16,6 +16,9 @@ Then call `Machine::step()` to execute its minimal boot sequence.
 Starting directly at a cartridge with uninitialized banked stacks does not prepare these services.
 Existing caller-supplied BIOS images and `Memory::new` behavior remain unchanged.
 
+`bios::skip_boot(rom, firmware)` instead starts at the cartridge without running any boot code, as mGBA's and Mesen 2's
+boot skips do; see [Skipped boot](#skipped-boot).
+
 Minimal boot initializes:
 
 - System stack: `0x03007f00`.
@@ -136,6 +139,23 @@ Sources below `0x02000000`, or ranges with a wrapping end address, return withou
 Other invalid accesses use normal memory diagnostics. Earlier successful writes remain committed if a later instruction fails.
 These copy services run with the caller's IRQ mask; device clocks and DMA continue throughout.
 BIOS bus protection, exact firmware timing, and undocumented side effects remain incomplete.
+
+## Skipped boot
+
+`bios::skip_boot(rom, firmware)` maps any 16 KiB `firmware` (this emulator's, or another such as the
+[GBA Eval](../gba-eval.md) stub) and enters the cartridge in the state Mesen 2 sets for `SkipBootScreen`
+(`GbaCpu::Init`, `GbaMemoryManager::Init`, `GbaPpu::Init`, `GbaSerial`, `GbaApu`):
+
+- CPU (`Cpu::after_boot`): ARM System mode at `0x08000000`, IRQ and FIQ unmasked, sp `0x03007f00`, sp_irq `0x03007fa0`,
+  sp_svc `0x03007fe0`, lr `0x08000000`; other registers zero.
+- I/O: DISPCNT `0x0080` (forced blank), BG2/BG3 `PA`/`PD` `0x0100`, SOUNDBIAS `0x0200`, RCNT `0x8000`, POSTFLG 1.
+- Protected BIOS reads return `0xe129f000` (`Memory::set_bios_open_bus`) until the firmware runs.
+- The display starts at line 225, cycle 0, where Mesen starts it: the clock runs that far before the CPU starts, with
+  nothing enabled, so no interrupt or transfer is raised.
+
+RAM and the remaining registers keep their power-on values. None of this is hardware-verified; it exists so that a
+benchmark judged against Mesen's boot skip starts from the same state. RCNT's low four bits read the idle link-port
+lines here (`0x800f`); Mesen reads `0x8000`.
 
 ## CPU BIOS read protection
 

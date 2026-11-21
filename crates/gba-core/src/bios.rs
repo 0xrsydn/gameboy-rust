@@ -44,6 +44,43 @@ pub fn boot(rom: Vec<u8>) -> Result<Machine, MemoryError> {
     ))
 }
 
+/// Lines the display has run when a skipped boot reaches the cartridge: Mesen 2 starts its
+/// display at line 225 (`GbaPpu::Init`), not hardware-verified.
+pub const SKIP_BOOT_LINE: u32 = 225;
+/// The word protected BIOS reads return after a skipped boot, as Mesen 2 sets it
+/// (`GbaMemoryManager::Init`): what a read sees after the firmware's SWI and IRQ return.
+pub const SKIP_BOOT_OPEN_BUS: u32 = 0xe129_f000;
+
+/// Enter the cartridge in the state a BIOS boot leaves, without running one, as mGBA's and
+/// Mesen 2's boot skips do. `firmware` (any 16 KiB image, such as a benchmark's BIOS stub)
+/// stays mapped for SWIs and IRQs. The values follow Mesen's skip (`SkipBootScreen`): the
+/// CPU as [`Cpu::after_boot`] sets it, forced blank, identity BG2/BG3 matrices, SOUNDBIAS
+/// 0x200, RCNT 0x8000, POSTFLG 1, BIOS open bus [`SKIP_BOOT_OPEN_BUS`], and the display at
+/// line [`SKIP_BOOT_LINE`]. RAM and the other registers keep their power-on values. Nothing
+/// is enabled while the display runs to that line, so no interrupt or transfer is raised.
+pub fn skip_boot(rom: Vec<u8>, firmware: Vec<u8>) -> Result<Machine, MemoryError> {
+    use crate::{
+        display::CYCLES_PER_LINE,
+        io::{BG2PD, BG3PA, BG3PD, DISPCNT, RCNT, SOUNDBIAS},
+    };
+    let mut memory = Memory::with_bios(rom, firmware)?;
+    memory.advance_cycles(SKIP_BOOT_LINE * CYCLES_PER_LINE);
+    for (address, value) in [
+        (DISPCNT, 0x0080),
+        (BG2PA, 0x0100),
+        (BG2PD, 0x0100),
+        (BG3PA, 0x0100),
+        (BG3PD, 0x0100),
+        (SOUNDBIAS, 0x0200),
+        (RCNT, 0x8000),
+    ] {
+        memory.write16(address, value)?;
+    }
+    memory.write8(POSTFLG, 1)?; // A byte: the next one is HALTCNT.
+    memory.set_bios_open_bus(SKIP_BOOT_OPEN_BUS);
+    Ok(Machine::new(Cpu::after_boot(), memory))
+}
+
 /// Build a deterministic 16 KiB image from original ARM instructions and a
 /// mathematically generated sine table. Documented protected-read compatibility
 /// words are explicit exit data; no Nintendo firmware routines are included.
