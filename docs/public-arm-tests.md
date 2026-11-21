@@ -9,7 +9,7 @@ Compare/status, load/writeback aliases, and ARM unused-memory reads are fixed. E
 
 ```sh
 direnv exec . python3 tools/prepare_gba_tests.py /tmp/gba-public-arm
-direnv exec . cargo run --locked --release -- --test-suite /tmp/gba-public-arm/suite.json > /tmp/gba-public-arm-report.json
+direnv exec . cargo run --locked --release --bin gameboy-rust -- --test-suite /tmp/gba-public-arm/suite.json > /tmp/gba-public-arm-report.json
 ```
 
 The destination must not exist. Its parent directory must exist.

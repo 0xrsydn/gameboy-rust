@@ -203,7 +203,7 @@ This does not reproduce a physical Flash chip's independent oscillator during ST
 Persistence is explicit. A typical local command is:
 
 ```sh
-direnv exec . cargo run --locked --release -- --rom roms/pokemon-emerald.gba --rtc --save-type flash128 --save-file roms/pokemon-emerald.sav --window --audio
+direnv exec . cargo run --locked --release --bin gameboy-rust -- --rom roms/pokemon-emerald.gba --rtc --save-type flash128 --save-file roms/pokemon-emerald.sav --window --audio
 ```
 
 Omit `--audio` for muted execution. This command is not a game-save compatibility claim.

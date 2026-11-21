@@ -8,7 +8,7 @@ This suite samples memory mirrors and video-byte writes. It does not establish c
 
 ```sh
 direnv exec . python3 tools/prepare_gba_tests.py /tmp/gba-public-memory --suite memory
-direnv exec . cargo run --locked --release -- --test-suite /tmp/gba-public-memory/suite.json > /tmp/gba-public-memory-report.json
+direnv exec . cargo run --locked --release --bin gameboy-rust -- --test-suite /tmp/gba-public-memory/suite.json > /tmp/gba-public-memory-report.json
 ```
 
 Use a new directory outside the repository or inside ignored `roms/`. Its parent directory must exist.

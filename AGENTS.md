@@ -25,7 +25,7 @@ direnv exec . cargo test --locked                                  # everything
 direnv exec . cargo test --locked -p gba-core -p gba-demos         # skip the window dependency
 direnv exec . cargo clippy --locked --all-targets -- -D warnings
 direnv exec . cargo fmt --all
-direnv exec . cargo run --locked --release -- --tile-demo          # --help lists all modes
+direnv exec . cargo run --locked --release --bin gameboy-rust -- --tile-demo          # --help lists all modes
 ```
 
 Window smoke tests (`--*-smoke-test`) need a logged-in desktop session. Details are in [docs/testing.md](docs/testing.md).

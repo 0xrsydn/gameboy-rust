@@ -14,7 +14,7 @@ A passing suite establishes only its specified checkpoints and assertions. It do
 
 ```sh
 direnv exec . cargo run --locked --example write_test_suite -- /tmp/gba-original-tests
-direnv exec . cargo run --locked --release -- --test-suite /tmp/gba-original-tests/suite.json > /tmp/gba-test-report.json
+direnv exec . cargo run --locked --release --bin gameboy-rust -- --test-suite /tmp/gba-original-tests/suite.json > /tmp/gba-test-report.json
 ```
 
 The generator creates original ARM, Thumb, and BIOS-division programs, plus a JSON manifest.

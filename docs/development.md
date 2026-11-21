@@ -44,7 +44,7 @@ From this project directory:
 
 ```sh
 direnv allow
-cargo run
+cargo run --bin gameboy-rust
 cargo test
 cargo fmt --all --check
 cargo clippy --all-targets -- -D warnings
@@ -54,7 +54,7 @@ To run commands without a shell hook:
 
 ```sh
 direnv allow .
-direnv exec . cargo run --locked
+direnv exec . cargo run --locked --bin gameboy-rust
 direnv exec . cargo test --locked
 ```
 

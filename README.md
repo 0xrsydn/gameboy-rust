@@ -23,12 +23,12 @@ macOS on Apple Silicon is the verified platform. Install Nix (with flakes) and d
 
 ```sh
 direnv allow .
-direnv exec . cargo run --locked --release -- --tile-demo
+direnv exec . cargo run --locked --release --bin gameboy-rust -- --tile-demo
 direnv exec . cargo test --locked
 ```
 
 Arrows scroll, Q rotates, W zooms, Z flips, X changes priority, Enter resets, and Escape exits.
-Run `direnv exec . cargo run --locked -- --help` to list all modes.
+Run `direnv exec . cargo run --locked --bin gameboy-rust -- --help` to list all modes.
 For original ROM files, use `--rom path/to/original.gba --window`, or `--steps 100000` instead of `--window` for terminal diagnostics.
 See [cartridge loading](docs/hardware/cartridge.md) for limits and report meanings.
 Use `--test-suite suite.json` for [repeatable headless ROM assertions](docs/rom-tests.md).

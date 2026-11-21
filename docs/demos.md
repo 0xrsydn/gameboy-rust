@@ -21,7 +21,7 @@ From a logged-in macOS desktop session:
 
 ```sh
 direnv allow .
-direnv exec . cargo run --locked --release -- --affine-raster-demo
+direnv exec . cargo run --locked --release --bin gameboy-rust -- --affine-raster-demo
 ```
 
 The emulated CPU builds a scanline offset table during VBlank.
@@ -44,7 +44,7 @@ From a logged-in macOS desktop session:
 
 ```sh
 direnv allow .
-direnv exec . cargo run --locked --release -- --raster-demo
+direnv exec . cargo run --locked --release --bin gameboy-rust -- --raster-demo
 ```
 
 The CPU configures repeated HBlank DMA to change the backdrop palette after each visible row.
@@ -64,7 +64,7 @@ From a logged-in macOS desktop session:
 
 ```sh
 direnv allow .
-direnv exec . cargo run --locked --release -- --mosaic-demo
+direnv exec . cargo run --locked --release --bin gameboy-rust -- --mosaic-demo
 ```
 
 The CPU cycles background and sprite mosaic blocks from 1×1 to 16×16 pixels.
@@ -86,7 +86,7 @@ From a logged-in macOS desktop session:
 
 ```sh
 direnv allow .
-direnv exec . cargo run --locked --release -- --effects-demo
+direnv exec . cargo run --locked --release --bin gameboy-rust -- --effects-demo
 ```
 
 The CPU moves a rectangular display window over the original tile scene.
@@ -109,10 +109,10 @@ From a logged-in macOS desktop session:
 ```sh
 direnv allow .
 # Mode 4: 240×160 pixels selected from a palette.
-direnv exec . cargo run --locked --release -- --bitmap4-demo
+direnv exec . cargo run --locked --release --bin gameboy-rust -- --bitmap4-demo
 
 # Mode 5: 160×128 RGB555 pixels, centered without automatic stretching.
-direnv exec . cargo run --locked --release -- --bitmap5-demo
+direnv exec . cargo run --locked --release --bin gameboy-rust -- --bitmap5-demo
 ```
 
 Each demo uses two original bitmap images. The emulated CPU switches pages every 32 updates during VBlank.
@@ -132,7 +132,7 @@ From a logged-in macOS desktop session:
 
 ```sh
 direnv allow .
-direnv exec . cargo run --locked --release -- --affine-demo
+direnv exec . cargo run --locked --release --bin gameboy-rust -- --affine-demo
 ```
 
 This Mode 2 demo rotates and scales an original tiled background around the screen center.
@@ -152,7 +152,7 @@ From a logged-in macOS desktop session:
 
 ```sh
 direnv allow .
-direnv exec . cargo run --locked --release -- --tile-demo
+direnv exec . cargo run --locked --release --bin gameboy-rust -- --tile-demo
 ```
 
 This Mode 0 demo shows an original red-and-white sprite above grass, water, and transparent gold crosses.
@@ -177,7 +177,7 @@ From a logged-in macOS desktop session:
 
 ```sh
 direnv allow .
-direnv exec . cargo run --locked --release -- --graphics-demo
+direnv exec . cargo run --locked --release --bin gameboy-rust -- --graphics-demo
 ```
 
 The emulated CPU uses direct memory access (DMA) channel 3 to fill a blue background.
@@ -201,7 +201,7 @@ Presentation targets 59.73 Hz. Each visible row samples at HBlank; the completed
 Run without arguments to open the earlier display test:
 
 ```sh
-direnv exec . cargo run --locked --release
+direnv exec . cargo run --locked --release --bin gameboy-rust
 ```
 
 The window displays a 240×160 framebuffer at 4× scale, with a 960×640 content area.
@@ -219,28 +219,28 @@ Other commands:
 
 ```sh
 # Terminal-only CPU demo; does not open a window.
-direnv exec . cargo run --locked -- --cpu-demo
+direnv exec . cargo run --locked --bin gameboy-rust -- --cpu-demo
 
 # Run a timer-generated interrupt through an original test handler.
 # Uses nominal instruction/bus costs and opcode prefetch; sub-instruction device scheduling is not modeled.
-direnv exec . cargo run --locked -- --timer-demo
+direnv exec . cargo run --locked --bin gameboy-rust -- --timer-demo
 
 # Verify 60 CPU-driven frames with scripted movement and color changes.
-direnv exec . cargo run --locked --release -- --graphics-smoke-test
+direnv exec . cargo run --locked --release --bin gameboy-rust -- --graphics-smoke-test
 
 # Verify 60 page-flipping frames in each new bitmap mode.
-direnv exec . cargo run --locked --release -- --bitmap4-smoke-test
-direnv exec . cargo run --locked --release -- --bitmap5-smoke-test
+direnv exec . cargo run --locked --release --bin gameboy-rust -- --bitmap4-smoke-test
+direnv exec . cargo run --locked --release --bin gameboy-rust -- --bitmap5-smoke-test
 
 # Verify 60 affine background frames, including pan state and every pixel.
-direnv exec . cargo run --locked --release -- --affine-smoke-test
+direnv exec . cargo run --locked --release --bin gameboy-rust -- --affine-smoke-test
 
 # Verify 60 CPU-driven tile frames, including scroll state and every pixel.
-direnv exec . cargo run --locked --release -- --tile-smoke-test
+direnv exec . cargo run --locked --release --bin gameboy-rust -- --tile-smoke-test
 
 # Open the host display test, submit 60 frames, then exit automatically.
-direnv exec . cargo run --locked --release -- --smoke-test
+direnv exec . cargo run --locked --release --bin gameboy-rust -- --smoke-test
 
 # Show command-line help.
-direnv exec . cargo run --locked -- --help
+direnv exec . cargo run --locked --bin gameboy-rust -- --help
 ```

@@ -9,7 +9,7 @@ Our runner uses the original replacement BIOS. It neither supplies nor loads Nin
 
 ```sh
 direnv exec . python3 tools/prepare_gba_tests.py /tmp/gba-public-bios --suite bios
-direnv exec . cargo run --locked --release -- --test-suite /tmp/gba-public-bios/suite.json > /tmp/gba-public-bios-report.json
+direnv exec . cargo run --locked --release --bin gameboy-rust -- --test-suite /tmp/gba-public-bios/suite.json > /tmp/gba-public-bios-report.json
 ```
 
 `bios/bios.gba` is a public test cartridge, not a BIOS image.

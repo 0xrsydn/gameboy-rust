@@ -25,8 +25,8 @@ Byte, halfword, word, block-store, and DMA validation retain explicit errors wit
 Use a local ROM that you may lawfully use:
 
 ```sh
-direnv exec . cargo run --locked --release -- --rom roms/pokemon-emerald.gba --rtc --save-type flash128 --steps 3000000
-direnv exec . cargo run --locked --release -- --rom roms/pokemon-emerald.gba --rtc --save-type flash128 --window --frames 600
+direnv exec . cargo run --locked --release --bin gameboy-rust -- --rom roms/pokemon-emerald.gba --rtc --save-type flash128 --steps 3000000
+direnv exec . cargo run --locked --release --bin gameboy-rust -- --rom roms/pokemon-emerald.gba --rtc --save-type flash128 --window --frames 600
 ```
 
 The earlier reset-only implementation stopped at master sound enable (`0x04000084`, PC `0x082e0518`).

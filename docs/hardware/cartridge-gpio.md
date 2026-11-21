@@ -16,8 +16,8 @@ Call this API between machine steps. The core does not inspect filenames, game h
 The desktop enables this interface with `--rtc`, in either ROM execution mode:
 
 ```sh
-direnv exec . cargo run --locked --release -- --rom roms/pokemon-emerald.gba --rtc --steps 2000000
-direnv exec . cargo run --locked --release -- --rom roms/pokemon-emerald.gba --rtc --window --frames 60
+direnv exec . cargo run --locked --release --bin gameboy-rust -- --rom roms/pokemon-emerald.gba --rtc --steps 2000000
+direnv exec . cargo run --locked --release --bin gameboy-rust -- --rom roms/pokemon-emerald.gba --rtc --window --frames 60
 ```
 
 The report states the desktop clock policy: UTC at startup, then host elapsed time, without persistence or RTC interrupts.

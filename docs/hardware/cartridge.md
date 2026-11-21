@@ -5,8 +5,8 @@ This supports original test programs. It does not establish commercial-game comp
 For explicit pass/fail assertions instead of diagnostic limits, use the [headless ROM suite runner](../rom-tests.md).
 
 ```sh
-direnv exec . cargo run --locked --release -- --rom path/to/original.gba --steps 100000
-direnv exec . cargo run --locked --release -- --rom path/to/original.gba --window
+direnv exec . cargo run --locked --release --bin gameboy-rust -- --rom path/to/original.gba --steps 100000
+direnv exec . cargo run --locked --release --bin gameboy-rust -- --rom path/to/original.gba --window
 ```
 
 Supply `--rom PATH` and exactly one execution mode: `--steps COUNT` or `--window`.
@@ -120,7 +120,7 @@ Missing values, duplicate options, fractions, and values outside this range are 
 The option is not available for terminal runs, test suites, or demos.
 
 ```sh
-direnv exec . cargo run --locked --release -- --rom roms/pokemon-emerald.gba --rtc --save-type flash128 --save-file roms/pokemon-emerald.sav --window --speed 2
+direnv exec . cargo run --locked --release --bin gameboy-rust -- --rom roms/pokemon-emerald.gba --rtc --save-type flash128 --save-file roms/pokemon-emerald.sav --window --speed 2
 ```
 
 Speed changes only the host frame period. CPU/device cycle ratios, captured frames, execution budgets, and save operations remain unchanged.
@@ -154,7 +154,7 @@ Generate an original headerless input-test file, then open that file through the
 
 ```sh
 direnv exec . cargo run --locked --example write_rom_demo -- /tmp/gba-input-demo.gba
-direnv exec . cargo run --locked --release -- --rom /tmp/gba-input-demo.gba --window
+direnv exec . cargo run --locked --release --bin gameboy-rust -- --rom /tmp/gba-input-demo.gba --window
 ```
 
 The generator refuses to overwrite an existing file. Choose a new path if needed.

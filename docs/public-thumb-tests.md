@@ -8,7 +8,7 @@ This is an independent compatibility baseline, not complete ARM7TDMI conformance
 
 ```sh
 direnv exec . python3 tools/prepare_gba_tests.py /tmp/gba-public-thumb --suite thumb
-direnv exec . cargo run --locked --release -- --test-suite /tmp/gba-public-thumb/suite.json > /tmp/gba-public-thumb-report.json
+direnv exec . cargo run --locked --release --bin gameboy-rust -- --test-suite /tmp/gba-public-thumb/suite.json > /tmp/gba-public-thumb-report.json
 ```
 
 Use a new directory outside the repository or inside ignored `roms/`. The parent directory must exist.

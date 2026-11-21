@@ -8,8 +8,8 @@ This is a narrow gameplay baseline, not a complete playthrough or general commer
 
 ```sh
 direnv exec . python3 -B tools/prepare_homebrew_pong.py /tmp/gba-public-pong-pinned
-direnv exec . cargo run --locked --release -- --test-suite /tmp/gba-public-pong-pinned/suite.json > /tmp/gba-pong-report.json
-direnv exec . cargo run --locked --release -- --rom /tmp/gba-public-pong-pinned/Pong-Homebrew-GBA.gba --window
+direnv exec . cargo run --locked --release --bin gameboy-rust -- --test-suite /tmp/gba-public-pong-pinned/suite.json > /tmp/gba-pong-report.json
+direnv exec . cargo run --locked --release --bin gameboy-rust -- --rom /tmp/gba-public-pong-pinned/Pong-Homebrew-GBA.gba --window
 ```
 
 The preparation directory must not already exist. Choose another path for another preparation.

@@ -90,7 +90,7 @@ A separate 600-frame Emerald native run still reaches its frame limit without in
 For a manual native check, use:
 
 ```sh
-direnv exec . cargo run --locked --release -- --rom roms/pokemon-emerald.gba --rtc --save-type flash128 --window
+direnv exec . cargo run --locked --release --bin gameboy-rust -- --rom roms/pokemon-emerald.gba --rtc --save-type flash128 --window
 ```
 
 Enter maps to Start. Z maps to A. Escape exits. Add `--audio` for optional Darwin output.
