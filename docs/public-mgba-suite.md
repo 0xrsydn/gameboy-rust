@@ -164,30 +164,46 @@ Every sub-suite now runs to completion. Every counted sub-suite except Misc. edg
   [delayed background enable](hardware/video.md). "Layer toggle 2" differs in 16 pixels: on two lines hardware
   starts the background partway along the row, and rows here are composed whole.
 
-## mGBA 0.10.5 on the same ROM
+## mGBA 0.10.5 and Mesen 2 on the same ROM
 
-Measured 2026-11-13 on Linux x86_64 with the pinned [reference build](mgba-reference.md).
-`tools/score_mgba_suite_reference.py MGBA_REF ROM` drives `mgba-ref` through the same menu presses and reads the same
-counters. The video row came from `gba-diff --images`, which writes both emulators' frames for the actual and
-expected pictures of each screen. mGBA is a reference, not ground truth; the suite's expectations are. This is the
-0.10.5 release; later mGBA versions were not measured.
+`tools/score_mgba_suite_reference.py SHIM ROM` drives a reference shim through the same menu presses, reads the same
+counters, and compares each visual screen's actual and expected pictures as that emulator draws them. mGBA's column
+was measured 2026-11-13 on Linux x86_64 with the pinned [reference build](mgba-reference.md); its video row then came
+from `gba-diff --images`, and the scorer reproduced it on Darwin arm64 on 2026-11-22. Mesen's column was measured
+2026-11-22 on Darwin arm64 with the pinned [Mesen build](mesen-reference.md). Mesen has no high-level BIOS, so it runs
+this emulator's firmware:
 
-| # | Sub-suite | This emulator | mGBA 0.10.5 |
-| ---: | --- | ---: | ---: |
-| 0 | Memory | 1552 / 1552 | 1546 / 1552 |
-| 1 | I/O read | 130 / 130 | 128 / 130 |
-| 2 | Timing | 2020 / 2020 | 1768 / 2020 |
-| 3 | Timer count-up | 936 / 936 | 639 / 936 |
-| 4 | Timer IRQ | 90 / 90 | 70 / 90 |
-| 5 | Shifter | 140 / 140 | 140 / 140 |
-| 6 | Carry | 93 / 93 | 93 / 93 |
-| 7 | Multiply long | 72 / 72 | 52 / 72 |
-| 8 | BIOS math | 615 / 615 | 615 / 615 |
-| 9 | DMA | 1244 / 1244 | 1228 / 1244 |
-| 10 | SIO register R/W | 90 / 90 | 26 / 90 |
-| 11 | SIO timing | 4 / 4 | 0 / 4 |
-| 12 | Misc. edge | 8 / 12 | 3 / 12 |
-| 13 | Video (screens identical) | 6 / 7 | 3 / 7 |
+```sh
+direnv exec . cargo run --locked --release -p gba-diff --example write_bios -- /tmp/gba-bios.bin
+python3 tools/score_mgba_suite_reference.py --bios /tmp/gba-bios.bin roms/mesen-reference/mesen-ref roms/mgba-suite/suite.gba
+```
 
-A high score here says the emulator matches the cases this suite measures. It says nothing about games: mGBA runs
-the commercial library, and this emulator has not been verified on it.
+Both are references, not ground truth; the suite's expectations are. mGBA's is the 0.10.5 release; later versions were
+not measured.
+
+| # | Sub-suite | This emulator | mGBA 0.10.5 | Mesen 2 |
+| ---: | --- | ---: | ---: | ---: |
+| 0 | Memory | 1552 / 1552 | 1546 / 1552 | 1552 / 1552 |
+| 1 | I/O read | 130 / 130 | 128 / 130 | 130 / 130 |
+| 2 | Timing | 2020 / 2020 | 1768 / 2020 | 2020 / 2020 |
+| 3 | Timer count-up | 936 / 936 | 639 / 936 | 866 / 936 |
+| 4 | Timer IRQ | 90 / 90 | 70 / 90 | 90 / 90 |
+| 5 | Shifter | 140 / 140 | 140 / 140 | 140 / 140 |
+| 6 | Carry | 93 / 93 | 93 / 93 | 93 / 93 |
+| 7 | Multiply long | 72 / 72 | 52 / 72 | 72 / 72 |
+| 8 | BIOS math | 615 / 615 | 615 / 615 | 615 / 615 |
+| 9 | DMA | 1244 / 1244 | 1228 / 1244 | 1244 / 1244 |
+| 10 | SIO register R/W | 90 / 90 | 26 / 90 | 28 / 90 |
+| 11 | SIO timing | 4 / 4 | 0 / 4 | 0 / 8 |
+| 12 | Misc. edge | 8 / 12 | 3 / 12 | 7 / 12 |
+| 13 | Video (screens identical) | 6 / 7 | 3 / 7 | 6 / 7 |
+
+Mesen fails Misc. edge "Hblank" and "Flip" 1 to 3 with exactly this emulator's values (`0x4D0`, `0x87`, `0x3EC`,
+`0xE5`). A second, independently written emulator landing on the same numbers supports the inference above that those
+expectations came from a different build. Mesen also fails "Reload" (5 against 3) and, by one tick, timer count-up
+cases with a 1× or 16× prescaler at the 6- and 8-bit offsets. It fails most SIO register reads. Its SIO timing
+sub-suite runs eight cases, four of them multiplayer, where this emulator runs four; it fails all eight. Its one
+differing screen is "Layer toggle 2", the same one as here, in 14 pixels.
+
+A high score here says the emulator matches the cases this suite measures. It says nothing about games: mGBA and
+Mesen run the commercial library, and this emulator has not been verified on it.

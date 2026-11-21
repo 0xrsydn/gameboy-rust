@@ -104,6 +104,22 @@ Measured 2026-11-21, with this emulator at `5d059b3`:
   for mGBA: Mesen, too, still reports the enable bit (`0x84000000`) where this emulator has finished the transfer
   (`0x04000000`). Two independent references now agree on this case. Frame comparison first differs at frame 4, in `IF`.
 
+Measured 2026-11-22, with this emulator at `f077b46`:
+
+- On the [mGBA test suite](public-mgba-suite.md#mgba-0105-and-mesen-2-on-the-same-rom), Mesen passes every Memory,
+  I/O read, Timing, Timer IRQ, Multiply long, and DMA result, which mGBA 0.10.5 does not. It loses to this emulator on
+  timer count-up, SIO, and one Misc. edge case, and fails the same four Misc. edge expectations, with the same values.
+- How Mesen starts an immediate DMA (`Core/GBA/GbaDmaController.cpp`): the enabling write sets a start time 2 cycles
+  later (3 for HBlank, 3 for sound FIFOs, 5 for video capture). The transfer begins at the first cycle of a bus
+  access or idle cycle at or after that time, so it can start partway through an instruction, with an idle cycle
+  before and after the transfer.
+- In FireRed's readback (`0x080006a4`–`0x080006a8`), Mesen charges the `STR` to `DMA3CNT` 2 cycles and the earlier
+  ROM literal load 11, as mGBA does, where this emulator charges 5 and 8. The following `LDR r0,[r0]` reads
+  `0x84000000`, and its cost includes the whole transfer (2,569 cycles): the transfer began in that load's internal
+  cycle, after its read. [mGBA findings](mgba-reference.md#findings-so-far) record that adopting mGBA's attribution here
+  lowered this emulator's suite results. Mesen pairs the same attribution with full Timing and DMA results, so the
+  attribution alone does not rule those results out. This is not yet investigated further.
+
 ## Limits
 
 - Only Darwin arm64 is verified.
