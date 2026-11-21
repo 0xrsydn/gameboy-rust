@@ -1,12 +1,14 @@
 # Architecture and file map
 
-The repository is a Cargo workspace with three crates:
+The repository is a Cargo workspace with these crates:
 
 - `crates/gba-core`: the platform-independent GBA emulator. It has no dependencies and must not depend on window, audio, or file-system libraries.
 - `crates/gba-demos`: original ARM test programs and their frame runners. Depends on `gba-core`.
 - `crates/desktop`: the minifb window frontend and the `gameboy-rust` executable. Depends on both.
 - `crates/gba-diff`: the `gba-diff` differential runner, the mGBA suite scoreboard example, the `replay_hash` example for per-frame game replay hashes ([testing](testing.md)), and the `write_bios` example, which writes the firmware image for `mesen-ref`. Depends on `gba-core` only; it drives mGBA and Mesen 2 through the separately built `mgba-ref` and `mesen-ref` processes, never by linking.
   Serde and serde_json handle host-side test manifests and reports; neither dependency enters the core.
+  It also depends on `gba-eval`, whose `Session` its `--eval` mode runs.
+- `crates/gba-eval`: the [GBA Eval](gba-eval.md) ABI. Library `gba_emu`, a `cdylib` for `wasm32-unknown-unknown` and an `rlib` for native tools; `build.rs` embeds the benchmark's BIOS stub from `GBA_EVAL_BIOS`. Depends on `gba-core` only.
 
 `gba-core` uses `gba-demos` as a development dependency, because its integration tests run the demo programs.
 

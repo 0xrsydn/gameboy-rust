@@ -138,6 +138,22 @@ impl Reference {
         self.command(&line).map(drop)
     }
 
+    /// Load as GBA Eval's reference runs Mesen (`load ROM BIOS eval`): boot skipped, keys
+    /// taken at Mesen's VBlank poll. mesen-ref only.
+    pub fn load_eval(&mut self, rom: &Path, bios: &Path) -> io::Result<()> {
+        let text = |path: &Path| path.to_str().unwrap_or_default().to_owned();
+        for path in [rom, bios] {
+            let path = text(path);
+            if path.is_empty() || path.contains(char::is_whitespace) {
+                return Err(io::Error::other(format!(
+                    "{path}: paths passed to a reference shim must be UTF-8 without whitespace"
+                )));
+            }
+        }
+        self.command(&format!("load {} {} eval", text(rom), text(bios)))
+            .map(drop)
+    }
+
     pub fn set_keys(&mut self, mask: u16) -> io::Result<()> {
         self.command(&format!("keys {mask}")).map(drop)
     }

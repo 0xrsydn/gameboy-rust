@@ -50,6 +50,7 @@ Use `--test-suite suite.json` for [repeatable headless ROM assertions](docs/rom-
 | [docs/public-mgba-suite.md](docs/public-mgba-suite.md) | mGBA test suite build, result reading, and baseline scoreboard |
 | [docs/mgba-reference.md](docs/mgba-reference.md) | Differential testing against mGBA: frame comparison and instruction lockstep |
 | [docs/mesen-reference.md](docs/mesen-reference.md) | Mesen 2 as a second `gba-diff` reference: build, use, and findings |
+| [docs/gba-eval.md](docs/gba-eval.md) | The GBA Eval WebAssembly build, its alignment with the benchmark's reference, and local scoring |
 | [docs/public-bios-tests.md](docs/public-bios-tests.md) | Pinned BIOS read-protection result and firmware limits |
 | [docs/public-pong.md](docs/public-pong.md) | Playable homebrew setup, scripted gameplay baseline, and limits |
 | [docs/architecture.md](docs/architecture.md) | Crate boundaries and a file-by-file map |

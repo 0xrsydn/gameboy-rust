@@ -14,7 +14,13 @@
 //   name              reply "ok mesen2"; mgba-ref answers "err unknown command"
 //   load ROM BIOS     load a ROM with a 16 KiB BIOS image, then power on at the reset vector.
 //                     Mesen has no high-level BIOS, so the image is required.
+//   load ROM BIOS eval
+//                     configure Mesen as the GBA Eval benchmark's reference does
+//                     (reference/mesen_step.cpp there): Mesen's own boot skip starts at the
+//                     cartridge entry, its display starts where Mesen starts it, and keys
+//                     take effect at Mesen's VBlank input poll rather than at once
 //   keys MASK         hold buttons (GBA KEYINPUT bit order, pressed-high), effective at once
+//                     (in eval mode, at the end of the next frame)
 //   frame             run to the next VBlank; reply "ok FRAMECOUNTER"
 //   step              run one CPU step (one instruction, or one halted cycle)
 //   regs              reply "ok r0 .. r15 cpsr spsr mode" in hex; r15 is reported the way
@@ -138,7 +144,10 @@ bool read_file(const char* path, std::vector<uint8_t>& bytes) {
 	return ok;
 }
 
-void load(const char* rom, const char* bios) {
+bool eval_mode = false;
+
+void load(const char* rom, const char* bios, bool eval) {
+	eval_mode = eval;
 	unload();
 	std::vector<uint8_t> rom_bytes;
 	std::vector<uint8_t> bios_bytes;
@@ -177,8 +186,9 @@ void load(const char* rom, const char* bios) {
 	emulator = std::make_unique<Emulator>();
 	emulator->Initialize(false);
 	GbaConfig& config = emulator->GetSettings()->GetGbaConfig();
-	// Power on at the reset vector and run the supplied firmware, like this emulator.
-	config.SkipBootScreen = false;
+	// Power on at the reset vector and run the supplied firmware, like this emulator. GBA
+	// Eval's reference skips the boot instead, starting at the cartridge entry.
+	config.SkipBootScreen = eval;
 	// Render every frame; Mesen otherwise skips frames that finish within 15 ms of the last.
 	config.DisableFrameSkipping = true;
 	config.RamPowerOnState = RamState::AllZeros;
@@ -203,14 +213,18 @@ void load(const char* rom, const char* bios) {
 	// is anchored to hardware with this firmware, so start Mesen where this emulator starts,
 	// as gba-diff moves mGBA's display clock to its own.
 	uint64_t clock = console()->GetMasterClock();
-	if(clock >= CYCLES_PER_LINE) {
+	if(eval) {
+		// The benchmark keeps Mesen's own start.
+	} else if(clock >= CYCLES_PER_LINE) {
 		unload();
 		reply_err("Mesen ran past the first line during power-on");
 		return;
 	}
-	GbaPpuState& ppu = console()->GetPpu()->GetState();
-	ppu.Scanline = 0;
-	ppu.Cycle = (uint16_t)clock;
+	if(!eval) {
+		GbaPpuState& ppu = console()->GetPpu()->GetState();
+		ppu.Scanline = 0;
+		ppu.Cycle = (uint16_t)clock;
+	}
 	emulator->GetConsole()->GetControlManager()->RegisterInputProvider(&keys_provider);
 	held = 0;
 	reply_ok();
@@ -219,8 +233,10 @@ void load(const char* rom, const char* bios) {
 void set_keys(uint16_t mask) {
 	held = mask & 0x3ff;
 	// Mesen polls input once per frame, at VBlank. Poll now so a change applies at once, as in
-	// mgba-ref and this emulator.
-	console()->GetControlManager()->UpdateInputState();
+	// mgba-ref and this emulator; the benchmark leaves it to that poll.
+	if(!eval_mode) {
+		console()->GetControlManager()->UpdateInputState();
+	}
 	reply_ok();
 }
 
@@ -362,10 +378,11 @@ int main() {
 		if(!strcmp(command, "load")) {
 			char* rom = strtok(nullptr, " ");
 			char* bios = strtok(nullptr, " ");
-			if(!rom || !bios) {
-				reply_err("usage: load ROM BIOS (Mesen needs a BIOS image)");
+			char* mode = strtok(nullptr, " ");
+			if(!rom || !bios || (mode && strcmp(mode, "eval"))) {
+				reply_err("usage: load ROM BIOS [eval] (Mesen needs a BIOS image)");
 			} else {
-				load(rom, bios);
+				load(rom, bios, mode != nullptr);
 			}
 			continue;
 		}

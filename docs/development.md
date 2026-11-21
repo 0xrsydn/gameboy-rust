@@ -118,7 +118,9 @@ on the host.
 The Rust `gba-core` owns CPU, memory, video, audio generation, input state, and cartridge protocols.
 It has no external dependencies or filesystem, window, host-clock, or audio-device code.
 The same core can serve another frontend; porting does not require rewriting emulated hardware.
-This separation is a design boundary, not a completed Linux or WebAssembly port.
+This separation is a design boundary, not a completed Linux or browser port.
+`crates/gba-eval` builds the core for `wasm32-unknown-unknown` as a [GBA Eval](gba-eval.md) candidate; the dev shell's
+`lld` links it. That is a headless library for a benchmark host, not a browser frontend.
 
 - Linux can reuse the desktop structure and Unix raw-save adapter. Build dependencies and native behavior still need validation.
   Host audio currently returns an explicit unsupported-platform error outside macOS; add and test a Linux backend separately.

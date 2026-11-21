@@ -2,6 +2,7 @@
 //! (through the `mgba-ref` shim) or Mesen 2 (through `mesen-ref`), with the same inputs, and
 //! report where their state diverges. See docs/mgba-reference.md and docs/mesen-reference.md.
 
+mod eval;
 mod reference;
 mod trace;
 
@@ -15,8 +16,10 @@ use std::{
 use gba_core::{
     bios,
     cartridge::{CartridgeHardware, RtcDateTime, SaveDevice},
+    cpu::Cpu,
     input::{Button, Buttons},
     machine::Machine,
+    memory::{Memory, BIOS_SIZE},
     video::{Framebuffer, HEIGHT, WIDTH},
 };
 
@@ -27,7 +30,7 @@ const DISPCNT: u32 = 0x0400_0000;
 /// Machine steps allowed between VBlanks before the run is reported as stuck.
 const FRAME_STEP_LIMIT: usize = 2_000_000;
 
-const USAGE: &str = "usage: gba-diff --reference MGBA_REF|MESEN_REF --rom ROM [--frames N] [--save-type sram|flash64|flash128|eeprom|eeprom512|eeprom8k] [--rtc UNIX_SECONDS] [--input FRAME:BUTTON:HOLD[,...]] [--ignore START-END[,...]] [--max-report N] [--out DIR] [--images FRAME[,...]] [--detail-frame FRAME[,...]] [--no-align] [--trace INSTRUCTIONS]";
+const USAGE: &str = "usage: gba-diff --reference MGBA_REF|MESEN_REF --rom ROM [--frames N] [--save-type sram|flash64|flash128|eeprom|eeprom512|eeprom8k] [--rtc UNIX_SECONDS] [--input FRAME:BUTTON:HOLD[,...]] [--ignore START-END[,...]] [--max-report N] [--out DIR] [--images FRAME[,...]] [--detail-frame FRAME[,...]] [--no-align] [--trace INSTRUCTIONS] [--bios IMAGE] [--eval [--replay FILE]]";
 
 /// Memory compared every frame. Video memory is compared after both frames render.
 const REGIONS: [(&str, u32, usize); 5] = [
@@ -104,6 +107,12 @@ struct Options {
     detail: Vec<u64>,
     align: bool,
     trace: Option<u64>,
+    /// A 16 KiB firmware image run on both sides instead of this emulator's (Mesen only).
+    bios: Option<PathBuf>,
+    /// Score as GBA Eval lines frames up (mesen-ref and --bios only); see eval.rs.
+    eval: bool,
+    /// A GBA Eval replay (`<frame> <keys_hex>` lines) for --eval.
+    replay: Option<PathBuf>,
 }
 
 fn number(text: &str) -> Result<u64, String> {
@@ -145,6 +154,9 @@ fn parse(args: &[String]) -> Result<Options, String> {
         detail: Vec::new(),
         align: true,
         trace: None,
+        bios: None,
+        eval: false,
+        replay: None,
     };
     let mut args = args.iter();
     while let Some(arg) = args.next() {
@@ -156,6 +168,9 @@ fn parse(args: &[String]) -> Result<Options, String> {
         match arg.as_str() {
             "--reference" => options.reference = value()?.into(),
             "--rom" => options.rom = value()?.into(),
+            "--bios" => options.bios = Some(value()?.into()),
+            "--eval" => options.eval = true,
+            "--replay" => options.replay = Some(value()?.into()),
             "--frames" => options.frames = number(&value()?)?,
             "--max-report" => options.max_report = number(&value()?)? as usize,
             "--out" => options.out = Some(value()?.into()),
@@ -245,8 +260,19 @@ struct Local {
 }
 
 impl Local {
-    fn boot(rom: Vec<u8>, save: SaveDevice, rtc: Option<u64>) -> Result<Self, String> {
-        let mut machine = bios::boot(rom).map_err(|error| format!("{error:?}"))?;
+    fn boot(
+        rom: Vec<u8>,
+        firmware: Option<Vec<u8>>,
+        save: SaveDevice,
+        rtc: Option<u64>,
+    ) -> Result<Self, String> {
+        let mut machine = match firmware {
+            Some(image) => {
+                Memory::with_bios(rom, image).map(|memory| Machine::new(Cpu::at_reset(), memory))
+            }
+            None => bios::boot(rom),
+        }
+        .map_err(|error| format!("{error:?}"))?;
         machine.memory_mut().set_save_device(save);
         machine.memory_mut().set_scanline_rendering(true);
         if let Some(unix) = rtc {
@@ -634,13 +660,13 @@ fn align_after_ram_reset(
     .map_err(report)
 }
 
-/// This emulator's firmware as a temporary file, for a reference that runs it (Mesen).
+/// The firmware both sides run, as a temporary file for a reference that runs it (Mesen).
 struct BiosFile(PathBuf);
 
 impl BiosFile {
-    fn write() -> Result<Self, String> {
+    fn write(image: &[u8]) -> Result<Self, String> {
         let path = env::temp_dir().join(format!("gba-diff-bios-{}.bin", process::id()));
-        fs::write(&path, bios::image()).map_err(|error| format!("{}: {error}", path.display()))?;
+        fs::write(&path, image).map_err(|error| format!("{}: {error}", path.display()))?;
         Ok(Self(path))
     }
 }
@@ -701,16 +727,70 @@ fn align_mgba_start(
     .map_err(report)
 }
 
+/// `--eval`: frames scored as GBA Eval lines them up. Passes when every frame matches.
+fn run_eval(options: &Options) -> Result<bool, String> {
+    let mut reference = Reference::spawn(&options.reference).map_err(|error| error.to_string())?;
+    if reference.kind() != Kind::Mesen {
+        return Err("--eval needs mesen-ref: the benchmark's reference is Mesen 2".to_owned());
+    }
+    let Some(bios) = &options.bios else {
+        return Err("--eval needs --bios: the benchmark's BIOS stub".to_owned());
+    };
+    let replay = match &options.replay {
+        Some(path) => eval::parse_replay(
+            &fs::read_to_string(path).map_err(|error| format!("{}: {error}", path.display()))?,
+        )?,
+        None => Vec::new(),
+    };
+    let mut out = io::stdout().lock();
+    let summary = eval::run(
+        &mut reference,
+        &options.rom,
+        bios,
+        options.frames,
+        &replay,
+        &mut out,
+    )?;
+    Ok(summary.identical == summary.frames && summary.error.is_none())
+}
+
 fn run(options: Options) -> Result<bool, String> {
+    if options.eval {
+        return run_eval(&options);
+    }
+    if options.replay.is_some() {
+        return Err("--replay needs --eval".to_owned());
+    }
     let rom =
         fs::read(&options.rom).map_err(|error| format!("{}: {error}", options.rom.display()))?;
-    let mut local = Local::boot(rom, options.save, options.rtc)?;
+    let firmware = match &options.bios {
+        Some(path) => {
+            let image = fs::read(path).map_err(|error| format!("{}: {error}", path.display()))?;
+            if image.len() != BIOS_SIZE {
+                return Err(format!(
+                    "{}: a BIOS image is {} bytes, not {}",
+                    path.display(),
+                    BIOS_SIZE,
+                    image.len()
+                ));
+            }
+            Some(image)
+        }
+        None => None,
+    };
+    let mut local = Local::boot(rom, firmware.clone(), options.save, options.rtc)?;
     let mut reference = Reference::spawn(&options.reference).map_err(|error| error.to_string())?;
     let report = |error: io::Error| error.to_string();
     let label = reference.label();
     let mut out = io::stdout().lock();
     match reference.kind() {
         Kind::Mgba => {
+            if options.bios.is_some() {
+                return Err(
+                    "--bios needs mesen-ref: mGBA starts at its own approximation of the BIOS exit"
+                        .to_owned(),
+                );
+            }
             reference.load(&options.rom, None).map_err(report)?;
             if let Some(unix) = options.rtc {
                 reference.set_rtc(unix).map_err(report)?;
@@ -727,16 +807,21 @@ fn run(options: Options) -> Result<bool, String> {
                         .to_owned(),
                 );
             }
-            let bios = BiosFile::write()?;
+            let image = firmware.unwrap_or_else(bios::image);
+            let bios = BiosFile::write(&image)?;
             reference
                 .load(&options.rom, Some(&bios.0))
                 .map_err(report)?;
             drop(bios);
-            writeln!(
-                out,
-                "Mesen runs this emulator's firmware from reset; no start alignment"
-            )
-            .map_err(report)?;
+            // Both sides started at reset, so frames count from there: another firmware's
+            // boot may pass a VBlank before the cartridge entry.
+            local.vblank = 0;
+            let firmware = match &options.bios {
+                Some(path) => format!("{}", path.display()),
+                None => "this emulator's firmware".to_owned(),
+            };
+            writeln!(out, "Mesen runs {firmware} from reset; no start alignment")
+                .map_err(report)?;
         }
     }
 
@@ -847,7 +932,7 @@ mod tests {
 
     fn local_with(words: &[u32]) -> Local {
         let rom = words.iter().flat_map(|word| word.to_le_bytes()).collect();
-        Local::boot(rom, SaveDevice::None, None).unwrap()
+        Local::boot(rom, None, SaveDevice::None, None).unwrap()
     }
 
     #[test]

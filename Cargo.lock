@@ -283,6 +283,14 @@ name = "gba-diff"
 version = "0.1.0"
 dependencies = [
  "gba-core",
+ "gba-eval",
+]
+
+[[package]]
+name = "gba-eval"
+version = "0.1.0"
+dependencies = [
+ "gba-core",
 ]
 
 [[package]]

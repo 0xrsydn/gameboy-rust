@@ -1,0 +1,9 @@
+{
+  "project": "mechanize-work/gba-eval",
+  "commit": "e39dc39598968a972ccd173e5c216c3bd6ca6da8",
+  "license": "per-directory (spec/ MIT; corpus ROMs under their own licenses; see LICENSE there)",
+  "url": "https://github.com/mechanize-work/gba-eval/archive/e39dc39598968a972ccd173e5c216c3bd6ca6da8.tar.gz",
+  "bytes": 39166218,
+  "sha256": "cdcaaad3ec62cb395a863359682165d4b1796977d91abafec5c16681efd3109d",
+  "bios_sha256": "86c698ba0144f49dd3f625c11a3c9a79abccfd15a03cba764fdbb21ef2173d5f"
+}

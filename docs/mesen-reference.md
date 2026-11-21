@@ -63,6 +63,10 @@ Frame comparison, `--ignore`, `--detail-frame`, `--images` (written as `frameNNN
 work as described for [mGBA](mgba-reference.md). Lockstep still skips instructions inside the BIOS, as against mGBA,
 even though both sides now run the same firmware there.
 
+`--bios IMAGE` runs another 16 KiB firmware on both sides instead of this emulator's, such as the
+[GBA Eval](gba-eval.md) stub; frames then count from power-on on both sides. `--eval` scores frames as that benchmark
+lines them up; see [Local scoring](gba-eval.md#local-scoring).
+
 Differences from the mGBA path:
 
 - `--rtc` is rejected. Mesen's RTC follows the host clock, so `mesen-ref` disables it for reproducible runs; RTC games
@@ -72,6 +76,9 @@ Differences from the mGBA path:
 - `--no-align` has no effect.
 
 ## Shim details
+
+`load ROM BIOS eval` instead configures Mesen as GBA Eval's reference does: Mesen's own boot skip, its own display
+start, and keys taken at its VBlank input poll.
 
 `mesen-ref` answers `name` with `ok mesen2`; `mgba-ref` has no such command and answers with an error, which `gba-diff`
 takes to mean mGBA. `load ROM BIOS` requires the 16 KiB image. `write16`, `video`, and `rtc` answer

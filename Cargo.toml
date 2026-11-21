@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/gba-core", "crates/gba-demos", "crates/desktop", "crates/gba-diff"]
+members = ["crates/gba-core", "crates/gba-demos", "crates/desktop", "crates/gba-diff", "crates/gba-eval"]
 
 [workspace.package]
 version = "0.1.0"
