@@ -1193,10 +1193,7 @@ impl Memory {
         // Every cartridge device decodes at or above the first ROM window.
         let cartridge_region = address >> 24 >= 0x08;
         if cartridge_region && self.with_cartridge(|cartridge| cartridge.eeprom_mapped(address)) {
-            return Err(MemoryError::UnsupportedCartridgeAccess {
-                address,
-                operation: "EEPROM non-halfword read",
-            });
+            return self.eeprom_window_byte(address);
         }
         if address >> 24 == 0x04 && address & 0x00ff_fc00 == 0 && self.cpu_access.is_some() {
             match Io::read_policy(address) {
@@ -1652,19 +1649,41 @@ impl Memory {
             .set(self.side_accesses.get().wrapping_add(1));
         self.record_access(address, AccessWidth::Halfword);
         let mut cartridge = self.cartridge_now();
-        let value = cartridge.read_eeprom16(address, self.cpu_access.is_some())?;
+        let value = cartridge.read_eeprom16();
         if let Some(mut staged) = self.staged_cartridge() {
             *staged = cartridge;
         }
         Ok(value)
     }
 
+    /// A byte of a non-halfword read in the EEPROM window. mGBA 0.10.5 (`GBALoad8`,
+    /// `LOAD_CART` in `src/gba/memory.c`) reads the ROM window there and never the EEPROM:
+    /// image bytes, or the Game Pak address pattern beyond the ROM chip. Bytes between a
+    /// trimmed image's end and the chip boundary, and host reads, stay diagnostic.
+    fn eeprom_window_byte(&self, address: u32) -> Result<u8, MemoryError> {
+        let offset = (address & 0x01ff_ffff) as usize;
+        if self.cpu_access.is_some() || self.step_active.get() {
+            if let Some(&byte) = self.rom.get(offset) {
+                return Ok(byte);
+            }
+            if offset >= self.rom.len().next_power_of_two() {
+                let halfword = ((address & 0x01ff_fffe) >> 1) as u16;
+                return Ok(halfword.to_le_bytes()[(address & 1) as usize]);
+            }
+        }
+        Err(MemoryError::UnsupportedCartridgeAccess {
+            address,
+            operation: "EEPROM non-halfword read",
+        })
+    }
+
     fn validate_save_read_width(&self, address: u32) -> Result<(), MemoryError> {
         if address >> 24 < 0x08 {
             return Ok(()); // No cartridge device decodes below the ROM windows.
         }
+        let emulated = self.cpu_access.is_some() || self.step_active.get();
         self.with_cartridge(|cartridge| {
-            if cartridge.eeprom_mapped(address) {
+            if cartridge.eeprom_mapped(address) && !emulated {
                 return Err(MemoryError::UnsupportedCartridgeAccess {
                     address,
                     operation: "EEPROM non-halfword read",

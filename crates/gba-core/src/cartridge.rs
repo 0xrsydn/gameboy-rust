@@ -94,12 +94,9 @@ impl Cartridge {
         self.eeprom.is_some_and(|eeprom| eeprom.mapped(address))
     }
 
-    /// One EEPROM halfword read. CPU reads poll status; other reads shift out data.
-    pub(crate) fn read_eeprom16(&mut self, address: u32, cpu: bool) -> Result<u16, MemoryError> {
-        self.eeprom
-            .as_mut()
-            .expect("mapped EEPROM")
-            .read(address, cpu)
+    /// One EEPROM halfword read: the next read-out bit, or status.
+    pub(crate) fn read_eeprom16(&mut self) -> u16 {
+        self.eeprom.as_mut().expect("mapped EEPROM").read()
     }
 
     pub(crate) fn save_mapped(&self, address: u32) -> bool {
@@ -205,6 +202,11 @@ impl Cartridge {
         }
         if self.eeprom_mapped(address) {
             if bytes.len() != 2 {
+                // mGBA 0.10.5 (`GBAStore8`, `STORE_CART`) ignores byte and word stores in
+                // the EEPROM window; host setup stays strict.
+                if store != Store::Host {
+                    return Ok(());
+                }
                 return Err(MemoryError::UnsupportedCartridgeAccess {
                     address,
                     operation: "EEPROM non-halfword write",

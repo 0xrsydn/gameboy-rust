@@ -110,15 +110,10 @@ impl Eeprom {
         (address as u16) & if self.is_large() { 0x3ff } else { 0x3f }
     }
 
-    /// One halfword read. CPU reads only poll status; DMA reads also shift out data.
-    pub(super) fn read(&mut self, address: u32, cpu: bool) -> Result<u16, MemoryError> {
+    /// One halfword read. During a read-out, CPU and DMA reads alike shift out the next
+    /// bit, as in mGBA 0.10.5 (`GBASavedataReadEEPROM`); otherwise a read polls status.
+    pub(super) fn read(&mut self) -> u16 {
         if let Some(output) = self.output.as_mut() {
-            if cpu {
-                return Err(MemoryError::UnsupportedCartridgeAccess {
-                    address,
-                    operation: "EEPROM CPU read during a data read-out",
-                });
-            }
             output.remaining -= 1;
             let bit = if output.remaining < 64 {
                 (output.data >> output.remaining) & 1
@@ -128,10 +123,10 @@ impl Eeprom {
             if output.remaining == 0 {
                 self.output = None;
             }
-            return Ok(bit as u16);
+            return bit as u16;
         }
         // Bits 1-15 read as zero here; hardware drives only bit 0.
-        Ok(u16::from(self.busy.is_none()))
+        u16::from(self.busy.is_none())
     }
 
     /// One halfword of a request bitstream. Only bit 0 is used.
@@ -154,10 +149,14 @@ impl Eeprom {
         if self.busy.is_some() {
             return Err(fail("EEPROM write while busy"));
         }
-        if self.output.is_some() {
-            return Err(fail("EEPROM request during a data read-out"));
-        }
         let mut next = *self;
+        // The rest follows mGBA 0.10.5 (`GBASavedataWriteEEPROM`): a request abandons an
+        // unfinished read-out, and 0 bits before a request's leading 1 are ignored.
+        next.output = None;
+        if next.count == 0 && value & 1 == 0 {
+            *self = next;
+            return Ok(());
+        }
         if next.large.is_none() {
             next.large = Some(match store {
                 Store::Dma { units: 9 | 73 } => false,
@@ -167,18 +166,13 @@ impl Eeprom {
         }
         next.input = (next.input << 1) | u128::from(value & 1);
         next.count += 1;
-        if next.count == 1 && value & 1 == 0 {
-            return Err(fail("EEPROM request without a leading 1 bit"));
-        }
         let address_bits = next.address_bits();
         let read_bits = 2 + address_bits + 1;
         let write_bits = 2 + address_bits + 64 + 1;
         let reading = next.count >= 2 && (next.input >> (next.count - 2)) & 1 == 1;
         let complete = if reading { read_bits } else { write_bits };
         if next.count == complete {
-            if next.input & 1 != 0 {
-                return Err(fail("EEPROM request without a trailing 0 bit"));
-            }
+            // The trailing bit ends the request whatever its value, as in mGBA.
             if reading {
                 let block = next.block(next.input >> 1);
                 let offset = usize::from(block) * 8;
@@ -334,7 +328,7 @@ mod tests {
             );
             let mut value = 0_u64;
             for index in 0..68 {
-                let bit = eeprom.read(0x0d00_0000, false).unwrap();
+                let bit = eeprom.read();
                 if index < 4 {
                     assert_eq!(bit, 0);
                 } else {
@@ -343,7 +337,7 @@ mod tests {
             }
             assert_eq!(value, 0x0123_4567_89ab_cdef);
             assert!(!eeprom.unfinished());
-            assert_eq!(eeprom.read(0x0d00_0000, true).unwrap(), 1); // Idle and ready.
+            assert_eq!(eeprom.read(), 1); // Idle and ready.
         }
     }
 
@@ -358,7 +352,7 @@ mod tests {
             73,
             &image,
         );
-        assert_eq!(eeprom.read(0x0d00_0000, true).unwrap(), 0);
+        assert_eq!(eeprom.read(), 0);
         eeprom.advance(EEPROM_WRITE_CYCLES - 1);
         assert_eq!(eeprom.take_block(), None);
         eeprom.advance(1);
@@ -366,20 +360,43 @@ mod tests {
             eeprom.take_block(),
             Some((40, 0xfedc_ba98_7654_3210_u64.to_be_bytes()))
         );
-        assert_eq!(eeprom.read(0x0d00_0000, true).unwrap(), 1);
+        assert_eq!(eeprom.read(), 1);
     }
 
     #[test]
-    fn malformed_requests_cpu_stores_and_busy_writes_are_diagnostics() {
+    fn cpu_stores_and_busy_writes_are_diagnostics() {
         let image = vec![0xff; SaveDevice::Eeprom512.capacity()];
         let mut eeprom = Eeprom::new(SaveDevice::Eeprom512, 0).unwrap();
-        assert!(eeprom.write(0x0d00_0000, 0, Store::Host, &image).is_err());
         assert!(eeprom.write(0x0d00_0000, 1, Store::Cpu, &image).is_err());
-        let mut trailing = Eeprom::new(SaveDevice::Eeprom512, 0).unwrap();
-        bits(&mut trailing, 0b11_000000, 8, &image);
-        assert!(trailing.write(0x0d00_0000, 1, Store::Host, &image).is_err());
         bits(&mut eeprom, 0b10 << 71, 73, &image);
+        let busy = eeprom;
         assert!(eeprom.write(0x0d00_0000, 1, Store::Host, &image).is_err());
+        assert_eq!(eeprom, busy);
+    }
+
+    // mGBA 0.10.5 (`GBASavedataWriteEEPROM`) accepts these; none is hardware-verified.
+    #[test]
+    fn leading_zeros_trailing_ones_and_new_requests_follow_mgba() {
+        let mut image = vec![0xff; SaveDevice::Eeprom512.capacity()];
+        image[8..16].copy_from_slice(&0x0123_4567_89ab_cdef_u64.to_be_bytes());
+        let mut eeprom = Eeprom::new(SaveDevice::Eeprom512, 0).unwrap();
+        // Zeros before the leading 1 are ignored.
+        for _ in 0..3 {
+            eeprom.write(0x0d00_0000, 0, Store::Host, &image).unwrap();
+        }
+        assert!(!eeprom.unfinished());
+        // A read request of block 1 ending in a 1 bit still starts the read-out.
+        bits(&mut eeprom, (0b11 << 7) | (1 << 1) | 1, 9, &image);
+        assert_eq!(eeprom.output.map(|o| o.data), Some(0x0123_4567_89ab_cdef));
+        for _ in 0..4 {
+            assert_eq!(eeprom.read(), 0); // Dummy bits.
+        }
+        assert_eq!(eeprom.read(), 0); // MSB of 0x01.
+                                      // A new request abandons the unfinished read-out.
+        eeprom.write(0x0d00_0000, 1, Store::Host, &image).unwrap();
+        assert_eq!(eeprom.output, None);
+        assert_eq!(eeprom.count, 1);
+        assert_eq!(eeprom.read(), 1); // Status: ready.
     }
 
     #[test]

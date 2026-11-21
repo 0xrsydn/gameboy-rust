@@ -140,7 +140,7 @@ fn large_parts_decode_only_the_low_ten_address_bits() {
 }
 
 #[test]
-fn cpu_stores_and_byte_or_word_accesses_are_diagnostics() {
+fn cpu_stores_and_host_byte_or_word_accesses_are_diagnostics() {
     let mut machine = machine(SaveDevice::Eeprom512);
     let bus = machine.memory_mut();
     assert!(matches!(
@@ -173,15 +173,45 @@ fn cpu_stores_and_byte_or_word_accesses_are_diagnostics() {
 }
 
 #[test]
-fn malformed_streams_fail_without_partial_state() {
+fn leading_zero_bits_are_ignored_as_mgba_does() {
     let mut machine = machine(SaveDevice::Eeprom512);
-    machine.memory_mut().write16(BUFFER, 0).unwrap(); // Missing leading 1 bit.
-    let bus = machine.memory_mut();
-    bus.write32(DMA3, BUFFER).unwrap();
-    bus.write32(DMA3 + 4, EEPROM).unwrap();
-    bus.write32(DMA3 + 8, 0x8000_0001).unwrap();
-    assert!(matches!(machine.step(), Err(MachineError::Dma(_))));
+    send(&mut machine, &[0, 0]);
     assert!(!machine.memory().save_write_pending());
+    // A whole write request after the ignored zeros still programs its block.
+    let request = write_request(SaveDevice::Eeprom512, 3, 0x1122_3344_5566_7788);
+    send(&mut machine, &[vec![0], request].concat());
+    machine.memory_mut().advance_cycles(EEPROM_WRITE_CYCLES);
+    assert_eq!(
+        &machine.memory().save_image().unwrap()[24..32],
+        &0x1122_3344_5566_7788_u64.to_be_bytes()
+    );
+}
+
+// mGBA 0.10.5 (`GBALoad8`/`LOAD_CART`, `GBAStore8`/`STORE_CART`): byte and word CPU
+// accesses in the EEPROM window reach the ROM window, never the EEPROM.
+#[test]
+fn cpu_byte_and_word_accesses_bypass_the_eeprom() {
+    // LDR r0,=EEPROM; LDRB r1,[r0,#2]; LDR r2,[r0]; STRB r0,[r0]; STR r0,[r0]; loop.
+    let mut bus = Memory::new(words(&[
+        0xe59f_0010,
+        0xe5d0_1002,
+        0xe590_2000,
+        0xe5c0_0000,
+        0xe580_0000,
+        0xeaff_fffe,
+        EEPROM,
+    ]))
+    .unwrap();
+    bus.set_save_device(SaveDevice::Eeprom512);
+    let mut machine = Machine::new(Cpu::new(ROM_START), bus);
+    for _ in 0..5 {
+        machine.step().unwrap();
+    }
+    // Beyond the ROM chip: the Game Pak halfword-address pattern.
+    assert_eq!(machine.cpu().registers()[1], 1);
+    assert_eq!(machine.cpu().registers()[2], 0x0001_0000);
+    assert!(!machine.memory().save_write_pending());
+    assert_eq!(machine.memory().read16(EEPROM).unwrap(), 1);
 }
 
 #[test]
@@ -295,4 +325,23 @@ fn automatic_size_states_restore_into_any_automatic_session() {
     assert!(self::machine(SaveDevice::Eeprom8k)
         .load_state(&decided)
         .is_err()); // The configured device is part of a state's setup identity.
+}
+
+// mGBA 0.10.5 (`GBASavedataReadEEPROM`) shifts out a read-out bit on any halfword load.
+#[test]
+fn cpu_halfword_loads_shift_out_a_read_out_like_dma() {
+    let device = SaveDevice::Eeprom512;
+    let mut machine = machine(device);
+    send(
+        &mut machine,
+        &write_request(device, 4, 0x8000_0000_0000_0001),
+    );
+    machine.memory_mut().advance_cycles(EEPROM_WRITE_CYCLES);
+    send(&mut machine, &[vec![1, 1], field(4, 6), vec![0]].concat());
+    dma(&mut machine, EEPROM, BUFFER + 0x400, 4); // The four dummy bits.
+    machine.step().unwrap(); // LDRH r1,[r0] from ROM code: the block's MSB.
+    assert_eq!(machine.cpu().registers()[1], 1);
+    dma(&mut machine, EEPROM, BUFFER + 0x400, 63);
+    assert_eq!(machine.memory().read16(BUFFER + 0x400 + 62 * 2).unwrap(), 1);
+    assert!(!machine.memory().save_write_pending());
 }

@@ -97,8 +97,15 @@ Loading a 512- or 8192-byte image fixes it up front, so an existing save keeps i
 The decided width is save-state data; the state's setup identity records `Eeprom`, so states restore into any
 automatically sized session but not into an explicit `eeprom512` or `eeprom8k` one.
 Bitstreams must come from DMA (or host setup writes). GBATEK states manual `STRH` transfers do not work, so CPU stores are diagnostics.
-A CPU `LDRH` polls status; a CPU read during a data read-out, byte or word accesses, a missing leading `1`,
-a missing trailing `0`, a request while busy, and a request during a read-out are all diagnostics.
+A request while a write is busy is also a diagnostic: the stored block is deferred until the write completes.
+Other irregular accesses follow mGBA 0.10.5 (`GBASavedataReadEEPROM`/`GBASavedataWriteEEPROM` in `src/gba/savedata.c`,
+`GBALoad8`/`GBAStore8` and the `LOAD_CART`/`STORE_CART` macros in `src/gba/memory.c`). None is hardware-verified:
+
+- Any halfword load during a read-out, CPU `LDRH` included, shifts out the next bit; otherwise it polls status.
+- A request abandons an unfinished read-out.
+- Zero bits before a request's leading `1` are ignored, and the trailing bit ends a request whatever its value.
+- CPU and DMA byte and word loads in the EEPROM window read the ROM window instead: image bytes, or the Game Pak
+  address pattern beyond the ROM chip. Byte and word stores there are ignored. Host byte and word accesses stay diagnostic.
 Bits shift out only inside machine steps, so a failed step rolls back; host reads between steps only inspect.
 An unfinished request, read-out, or write sets `save_write_pending()`, which blocks host persistence.
 
