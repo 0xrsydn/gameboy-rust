@@ -251,3 +251,32 @@ fn dma3_word_store_uses_gpio_without_modifying_rom_or_raising_a_cartridge_irq() 
     machine.memory_mut().write16(GPIO_CONTROL, 0).unwrap();
     assert_eq!(machine.memory().read32(GPIO_DATA).unwrap(), 0xa5a5a5a5);
 }
+
+// mGBA 0.10.5 ignores byte stores to the Game Pak (`GBAStore8`), GPIO included.
+#[test]
+fn cpu_byte_stores_to_gpio_are_ignored() {
+    let mut rom = vec![0xa5; 0x200];
+    for (i, word) in [
+        0xe59f_0008,
+        0xe3a0_1000,
+        0xe5c0_1000,
+        0xeaff_fffe,
+        GPIO_DATA,
+    ]
+    .iter()
+    .enumerate()
+    {
+        rom[i * 4..i * 4 + 4].copy_from_slice(&word.to_le_bytes());
+    }
+    let mut bus = Memory::new(rom).unwrap();
+    bus.set_cartridge_hardware(CartridgeHardware::Rtc);
+    bus.write16(GPIO_CONTROL, 1).unwrap();
+    start(&mut bus);
+    let before = bus.read16(GPIO_DATA).unwrap();
+    let mut machine = Machine::new(Cpu::new(ROM_START), bus);
+    for _ in 0..3 {
+        machine.step().unwrap(); // LDR r0,=GPIO_DATA; MOV r1,#0; STRB r1,[r0]
+    }
+    assert_eq!(machine.memory().read16(GPIO_DATA).unwrap(), before);
+    assert_ne!(before, 0);
+}

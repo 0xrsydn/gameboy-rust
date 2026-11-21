@@ -48,7 +48,9 @@ No solar sensor, rumble, gyro, or cartridge interrupt source is attached.
 Aligned halfword writes are supported. A word at `0x080000c4` applies data, then direction, as two ordered halfwords.
 A rejected second halfword leaves both registers unchanged under the core's diagnostic policy.
 A word at `0x080000c8` reaches ordinary ROM at `0x080000ca` and fails without changing control.
-Byte writes are diagnostic because the consulted bus-width description is uncertain about GBA versus DS behavior.
+CPU and DMA byte writes are ignored, as in mGBA 0.10.5, which reaches GPIO only through `GBAStore16` and ignores
+`GBAStore8` to the Game Pak. Hardware byte-write behavior is not established; the consulted bus-width description is
+uncertain about GBA versus DS behavior. Host byte writes stay diagnostic.
 Byte, halfword, and word reads use ordinary little-endian lanes, including register/ROM boundaries.
 
 Only the documented first-window addresses are implemented.

@@ -241,6 +241,11 @@ impl Cartridge {
             operation,
         };
         if bytes.len() == 1 {
+            // mGBA 0.10.5 reaches GPIO only through `GBAStore16`; `GBAStore8` ignores byte
+            // stores to the Game Pak. Host setup stays strict.
+            if store != Store::Host {
+                return Ok(());
+            }
             return Err(fail(address, bytes[0], "Game Pak GPIO byte write"));
         }
         let mut next = self.gpio.unwrap();
