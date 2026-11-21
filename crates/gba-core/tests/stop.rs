@@ -210,9 +210,9 @@ fn dma_is_frozen_before_work_or_diagnostics_and_resumes_before_cpu_after_wake() 
         enable_keypad(m.memory_mut());
         m.memory_mut().write32(0x0200_0000, 0x1234_5678).unwrap();
         m.memory_mut().write32(DMA_BASE, 0x0200_0000).unwrap();
-        // A transfer into the DMA registers is a diagnostic.
+        // A transfer into the power-control registers is a diagnostic.
         m.memory_mut()
-            .write32(DMA_BASE + 4, if invalid { DMA_BASE } else { 0x0300_0000 })
+            .write32(DMA_BASE + 4, if invalid { POSTFLG } else { 0x0300_0000 })
             .unwrap();
         m.memory_mut().write32(DMA_BASE + 8, 0x8400_0001).unwrap();
         stop(m.memory_mut());
@@ -228,9 +228,9 @@ fn dma_is_frozen_before_work_or_diagnostics_and_resumes_before_cpu_after_wake() 
         if invalid {
             assert_eq!(
                 m.step(),
-                Err(MachineError::Dma(DmaError::RegisterDestination {
+                Err(MachineError::Dma(DmaError::PowerControlDestination {
                     channel: 0,
-                    address: DMA_BASE
+                    address: POSTFLG
                 }))
             );
         } else {

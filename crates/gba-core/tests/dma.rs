@@ -2,7 +2,7 @@ use gba_core::{
     cpu::{Cpu, Mode},
     display::{CYCLES_PER_FRAME, CYCLES_PER_LINE, HBLANK_START, VBLANK_START},
     dma::{DmaError, DMA_BASE, DMA_STRIDE, START_DELAY},
-    io::{DISPCNT, DISPSTAT, IE, IF, IME, TIMER_BASE, WAITCNT},
+    io::{DISPCNT, DISPSTAT, IE, IF, IME, POSTFLG, TIMER_BASE, WAITCNT},
     machine::{FrameRunError, Machine, MachineError, StepKind},
     memory::{Memory, MemoryError, BIOS_SIZE, PALETTE_START, ROM_START, VRAM_START},
     timing::{bus_cycles, AccessKind, AccessWidth},
@@ -779,14 +779,6 @@ fn invalid_memory_and_dma_register_destinations_are_diagnostics() {
                 error: MemoryError::Unmapped(0x0e00_0000),
             },
         ),
-        (
-            SOURCE,
-            DMA_BASE,
-            DmaError::RegisterDestination {
-                channel: 3,
-                address: DMA_BASE,
-            },
-        ),
     ] {
         let mut machine = machine();
         configure(machine.memory_mut(), 3, source, destination, 1, 0x4000);
@@ -974,7 +966,7 @@ fn frame_runner_counts_dma_units_obeys_limits_and_reports_dma_errors() {
     assert_eq!(machine.run_until_vblank(1).unwrap(), 1);
     assert_eq!(machine.memory().display_position().scanline, 160);
     assert_eq!(machine.cpu().pc(), ROM_START);
-    configure(machine.memory_mut(), 0, SOURCE, DMA_BASE, 1, 0); // Into DMA registers.
+    configure(machine.memory_mut(), 0, SOURCE, POSTFLG, 1, 0); // Into power control.
     assert!(matches!(
         machine.run_until_vblank(1),
         Err(FrameRunError::Dma(_))
@@ -1056,4 +1048,27 @@ fn disabling_a_blank_transfer_during_its_start_delay_leaves_a_loadable_state() {
     // Re-enabling waits for the next edge and its own full delay.
     configure(machine.memory_mut(), 0, SOURCE, DEST, 1, 0x2000);
     assert_eq!(machine.step().unwrap(), StepKind::Instruction);
+}
+
+#[test]
+fn a_transfer_can_program_and_start_another_channel() {
+    // DMA3 copies DMA0's source, destination, and enabling control word into DMA0's
+    // registers, as destoer's dma-priority test does; DMA0 then starts at once.
+    let mut machine = machine();
+    let program = SOURCE + 0x100;
+    let words = [SOURCE, DEST, 0x8400_0001]; // DMA0: one word, immediate.
+    for (index, word) in words.iter().enumerate() {
+        machine
+            .memory_mut()
+            .write32(program + index as u32 * 4, *word)
+            .unwrap();
+    }
+    machine.memory_mut().write32(SOURCE, 0x1234_5678).unwrap();
+    configure(machine.memory_mut(), 3, program, base(0), 3, 0x0400);
+    units(&mut machine, 3, 3);
+    assert!(!enabled(&machine, 3));
+    assert!(enabled(&machine, 0));
+    units(&mut machine, 0, 1);
+    assert_eq!(machine.memory().read32(DEST).unwrap(), 0x1234_5678);
+    assert!(!enabled(&machine, 0));
 }

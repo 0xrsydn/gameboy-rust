@@ -31,7 +31,7 @@ fn failed_cpu_and_dma_steps_discard_speculative_samples_and_phase() {
         memory.advance_cycles(508);
         if dma {
             memory.write32(DMA_BASE, 0x02000000).unwrap();
-            memory.write32(DMA_BASE + 4, DMA_BASE + 12).unwrap(); // DMA register destination.
+            memory.write32(DMA_BASE + 4, POSTFLG).unwrap(); // Power-control destination.
             memory.write32(DMA_BASE + 8, 0x84000001).unwrap();
         }
         let before = memory.io.audio_capture.clone();

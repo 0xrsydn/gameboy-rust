@@ -757,12 +757,6 @@ impl Memory {
                 address: transfer.destination,
             });
         }
-        if (DMA_BASE..=DMA_END).contains(&transfer.destination) {
-            return Err(DmaError::RegisterDestination {
-                channel,
-                address: transfer.destination,
-            });
-        }
         let map_error = |error| DmaError::Memory { channel, error };
         // Validate before reading or committing channel data. Failed units are atomic.
         // The 8-bit save bus takes one byte whatever the transfer width.

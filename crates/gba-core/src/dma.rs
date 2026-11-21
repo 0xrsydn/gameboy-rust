@@ -18,7 +18,6 @@ const LAST_CAPTURE_LINE: u16 = 161;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DmaError {
     Memory { channel: usize, error: MemoryError },
-    RegisterDestination { channel: usize, address: u32 },
     PowerControlDestination { channel: usize, address: u32 },
 }
 
@@ -30,12 +29,6 @@ impl fmt::Display for DmaError {
                 write!(
                     f,
                     "DMA{channel}: power-control writes are not supported ({address:#010x})"
-                )
-            }
-            Self::RegisterDestination { channel, address } => {
-                write!(
-                    f,
-                    "DMA{channel}: writes to DMA registers are not supported ({address:#010x})"
                 )
             }
         }
