@@ -419,14 +419,14 @@ fn original_program_can_switch_to_thumb() {
 
 #[test]
 fn diagnostics_keep_the_failed_pc_registers_and_clock() {
-    for code in [vec![0xee00_0000], vec![0xe3a0_002a]] {
+    for code in [vec![0xe7f0_00f0], vec![0xe3a0_002a]] {
         let mut machine = boot(&code);
         let report = run_bounded(&mut machine, 100);
         assert!(matches!(report.reason, Reason::Diagnostic(_)));
         assert!(report.stats.steps < 100);
         assert_eq!(
             machine.cpu().pc(),
-            ROM_START + if code[0] == 0xee00_0000 { 0 } else { 4 }
+            ROM_START + if code[0] == 0xe7f0_00f0 { 0 } else { 4 }
         );
         let cpu = machine.cpu().clone();
         let cycles = machine.cycles();

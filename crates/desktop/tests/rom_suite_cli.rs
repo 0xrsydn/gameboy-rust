@@ -75,7 +75,7 @@ fn report(output: &Output) -> Value {
 #[test]
 fn relative_paths_resolve_from_suite_and_success_reports_are_repeatable() {
     let fixture = Fixture::new();
-    fixture.rom("original λ.gba", &[0xe3a0_002a, 0xee00_0000]);
+    fixture.rom("original λ.gba", &[0xe3a0_002a, 0xe7f0_00f0]);
     let path = fixture.manifest(vec![case("original \"ARM\"\ncase", "original λ.gba")]);
     let first = run(&path);
     let second = run(&path);
@@ -101,7 +101,7 @@ fn relative_paths_resolve_from_suite_and_success_reports_are_repeatable() {
 fn failures_do_not_skip_later_cases_and_never_count_as_passes() {
     let fixture = Fixture::new();
     fixture.rom("valid.gba", &[0xe3a0_002a, 0xeaff_fffe]);
-    fixture.rom("invalid.gba", &[0xee00_0000]);
+    fixture.rom("invalid.gba", &[0xe7f0_00f0]);
     fixture.rom("stop.gba", &[0xef03_0000, 0xeaff_fffe]);
     let mut mismatch = case("mismatch", "valid.gba");
     mismatch["checks"][0]["equals"] = json!(43);

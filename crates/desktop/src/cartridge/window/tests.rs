@@ -210,7 +210,7 @@ fn frame_budget_is_retained_across_slices_and_stop_waits() {
 
 #[test]
 fn cpu_diagnostics_preserve_the_failed_state_and_last_image() {
-    let mut session = code(&[0xee00_0000]);
+    let mut session = code(&[0xe7f0_00f0]);
     assert!(session.update(Buttons::default()).is_err());
     assert_eq!(session.machine.cpu().pc(), ROM_START);
     let cpu = session.machine.cpu().clone();

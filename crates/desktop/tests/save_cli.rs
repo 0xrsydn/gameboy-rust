@@ -68,7 +68,7 @@ fn writer(value: u8, fail: bool) -> Vec<u32> {
         code.extend([0xe3a01000 | u32::from(byte), 0xe5c01000]);
     }
     code.extend([0xe1a00000; 700]); // Allow pending program to complete before failure or exit.
-    code.push(if fail { 0xee000000 } else { 0xeafffffe });
+    code.push(if fail { 0xe7f000f0 } else { 0xeafffffe });
     code
 }
 fn reader() -> Vec<u32> {

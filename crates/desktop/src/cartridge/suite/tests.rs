@@ -196,7 +196,7 @@ fn reset_pc_is_not_an_immediate_pass_without_execution() {
 
 #[test]
 fn checkpoint_is_checked_before_execution_and_on_the_last_budgeted_step() {
-    let code = [0xe3a0_002a, 0xee00_0000]; // MOV r0,#42; unsupported (never fetched)
+    let code = [0xe3a0_002a, 0xe7f0_00f0]; // MOV r0,#42; unsupported (never fetched)
     let mut machine = boot(&code);
     let (stats, outcome) = run_to_checkpoint(&mut machine, &case());
     assert_eq!(outcome, Outcome::Checkpoint);
@@ -319,7 +319,7 @@ fn stop_is_failure_while_halt_consumes_a_bounded_budget() {
 
 #[test]
 fn failing_instructions_do_not_advance_the_reported_state() {
-    let mut machine = boot(&[0xee00_0000]);
+    let mut machine = boot(&[0xe7f0_00f0]);
     let (stats, outcome) = run_to_checkpoint(&mut machine, &case());
     assert!(matches!(outcome, Outcome::EmulationError(_)));
     assert!(stats.steps < case().step_limit);

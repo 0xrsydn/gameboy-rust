@@ -480,7 +480,7 @@ fn stop_is_a_normal_bounded_outcome() {
 #[test]
 fn unsupported_instruction_and_fallthrough_fail_with_machine_state() {
     let fixture = Fixture::new();
-    for code in [[0xee00_0000], [0xe3a0_002a]] {
+    for code in [[0xe7f0_00f0], [0xe3a0_002a]] {
         let path = fixture.rom(&code);
         let output = run(&path, "100");
         assert_eq!(output.status.code(), Some(1));
@@ -748,7 +748,7 @@ fn native_rom_window_presents_file_bytes_and_reports_stop_cpu_and_video_errors()
     assert!(stdout(&flash_output).contains("r6=0x00000009"));
     for (code, error) in [
         (vec![0xef03_0000, 0xeaff_fffe], "entered STOP"),
-        (vec![0xee00_0000], "instruction"),
+        (vec![0xe7f0_00f0], "instruction"),
         (
             vec![0xe3a0_0006, 0xe3a0_1301, 0xe1c1_00b0, 0xeaff_fffe],
             "6",
