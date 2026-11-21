@@ -53,7 +53,7 @@ impl Cpu {
             (false, true) => adjusted,                  // DB
         };
         // Unlike LDR, block loads align down without rotating the loaded word.
-        // The low base bits stay on the address bus, where only SRAM's 8-bit bus sees them,
+        // The low base bits stay on the address bus, where only the 8-bit save bus sees them,
         // and are retained in writeback.
         let mut address = start;
         let mut next = self.registers;
@@ -70,7 +70,7 @@ impl Cpu {
                 continue;
             }
             if load {
-                // SRAM's 8-bit bus repeats one byte in each loaded word.
+                // The 8-bit save bus repeats one byte in each loaded word.
                 let value = memory.load_multiple(address)?;
                 *destination = if register == 15 && restore.is_none() {
                     self.instruction_set.align(value)

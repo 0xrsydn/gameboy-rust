@@ -758,10 +758,10 @@ impl Memory {
         }
         let map_error = |error| DmaError::Memory { channel, error };
         // Validate before reading or committing channel data. Failed units are atomic.
-        // SRAM's 8-bit bus takes one byte whatever the transfer width.
-        let sram_destination = self.sram_lane(transfer.destination);
+        // The 8-bit save bus takes one byte whatever the transfer width.
+        let save_destination = self.save_lane(transfer.destination);
         match transfer.width {
-            _ if sram_destination => {
+            _ if save_destination => {
                 self.write_index::<1>(transfer.destination, WriteAccess::Emulated)
             }
             AccessWidth::Halfword => {
@@ -821,8 +821,8 @@ impl Memory {
                 // Before any transfer the value is unknown; read 0, mGBA 0.10.5's initial
                 // transfer latch (`dmaTransferRegister`). Not verified on hardware.
                 transfer.data_latch.unwrap_or(0)
-            } else if self.sram_lane(transfer.source) {
-                // The addressed SRAM byte appears on every lane, as for CPU loads.
+            } else if self.save_lane(transfer.source) {
+                // The addressed save byte appears on every lane, as for CPU loads.
                 u32::from(self.read8(transfer.source)?) * 0x0101_0101
             } else {
                 match transfer.width {
@@ -839,8 +839,8 @@ impl Memory {
             };
             self.advance_timer_step(timing.total());
             match transfer.width {
-                // SRAM stores the data-bus lane that matches the address.
-                _ if sram_destination => self.write_aligned(
+                // The save bus stores the data-bus lane that matches the address.
+                _ if save_destination => self.write_aligned(
                     transfer.destination,
                     [(data_latch >> ((transfer.destination & 3) * 8)) as u8],
                     WriteAccess::Emulated,
@@ -1342,7 +1342,7 @@ impl Memory {
                 *self.staged_cartridge().expect("step is active") = cartridge;
             } else {
                 self.cartridge = cartridge;
-                // Outside a machine step, an SRAM store has no step boundary to commit at.
+                // Outside a machine step, a save store has no step boundary to commit at.
                 self.commit_save_mutation();
             }
             return Ok(());
@@ -1588,8 +1588,8 @@ impl Memory {
         // A serial request can finish before a later control write reaches the bus.
         let validation = (|| {
             for &(address, value) in writes {
-                if self.sram_lane(address) {
-                    // One byte per word on SRAM's 8-bit bus; see store32.
+                if self.save_lane(address) {
+                    // One byte per word on the 8-bit save bus; see store32.
                     self.write_index::<1>(address, self.write_access())?;
                     let byte = [(value >> ((address & 3) * 8)) as u8];
                     cartridge.write(address, &byte, &self.save_image, self.store())?;
@@ -1704,15 +1704,16 @@ impl Memory {
         Ok(value)
     }
 
-    /// The 8-bit SRAM bus receives the unaligned address of CPU halfword/word accesses.
-    fn sram_lane(&self, address: u32) -> bool {
-        matches!(address >> 24, 0x0e | 0x0f) && self.with_cartridge(|c| c.sram_mapped(address))
+    /// SRAM and Flash sit on the 8-bit save bus, which receives the unaligned address of
+    /// CPU and DMA halfword/word accesses and moves one byte per access.
+    fn save_lane(&self, address: u32) -> bool {
+        matches!(address >> 24, 0x0e | 0x0f) && self.with_cartridge(|c| c.save_mapped(address))
     }
 
     /// A CPU `LDR` at its own (possibly unaligned) address, with ARM7TDMI rotation.
-    /// SRAM returns the addressed byte on every lane in one 8-bit bus access.
+    /// The save bus returns the addressed byte on every lane in one 8-bit bus access.
     pub fn load32(&self, address: u32) -> Result<u32, MemoryError> {
-        let value = if self.sram_lane(address) {
+        let value = if self.save_lane(address) {
             u32::from(self.read8(address)?) * 0x0101_0101
         } else {
             self.read32(address & !3)?
@@ -1721,9 +1722,9 @@ impl Memory {
     }
 
     /// One word of a CPU `LDM` at its own address. Unlike `LDR`, it never rotates; other
-    /// regions take the aligned word, while SRAM's 8-bit bus reads the addressed byte.
+    /// regions take the aligned word, while the 8-bit save bus reads the addressed byte.
     pub fn load_multiple(&self, address: u32) -> Result<u32, MemoryError> {
-        if self.sram_lane(address) {
+        if self.save_lane(address) {
             Ok(u32::from(self.read8(address)?) * 0x0101_0101)
         } else {
             self.read32(address & !3)
@@ -1731,9 +1732,9 @@ impl Memory {
     }
 
     /// A CPU `LDRH` at its own address, rotated by the odd-address byte.
-    /// SRAM returns the addressed byte on both lanes in one 8-bit bus access.
+    /// The save bus returns the addressed byte on both lanes in one 8-bit bus access.
     pub fn load16(&self, address: u32) -> Result<u32, MemoryError> {
-        let value = if self.sram_lane(address) {
+        let value = if self.save_lane(address) {
             u32::from(self.read8(address)?) * 0x0101
         } else {
             u32::from(self.read16(address & !1)?)
@@ -1741,20 +1742,20 @@ impl Memory {
         Ok(value.rotate_right((address & 1) * 8))
     }
 
-    /// A CPU `STR` at its own address. SRAM stores only the data-bus byte lane that
+    /// A CPU `STR` at its own address. The save bus stores only the data-bus byte lane that
     /// matches the address; other regions take the aligned word.
     pub fn store32(&mut self, address: u32, value: u32) -> Result<(), MemoryError> {
-        if self.sram_lane(address) {
+        if self.save_lane(address) {
             self.write8(address, (value >> ((address & 3) * 8)) as u8)
         } else {
             self.write32(address & !3, value)
         }
     }
 
-    /// A CPU `STRH` at its own address. The halfword drives both bus halves, so SRAM
+    /// A CPU `STRH` at its own address. The halfword drives both bus halves, so the save bus
     /// stores its low byte at even addresses and its high byte at odd ones.
     pub fn store16(&mut self, address: u32, value: u16) -> Result<(), MemoryError> {
-        if self.sram_lane(address) {
+        if self.save_lane(address) {
             self.write8(address, (value >> ((address & 1) * 8)) as u8)
         } else {
             self.write16(address & !1, value)

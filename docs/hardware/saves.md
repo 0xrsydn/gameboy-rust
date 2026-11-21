@@ -104,8 +104,14 @@ An unfinished request, read-out, or write sets `save_write_pending()`, which blo
 
 ## Bus and commands
 
-Only `0x0e000000` through `0x0e00ffff` are mapped. Accesses are byte-only.
-Halfword/word transfers, DMA, instruction fetches, and unverified aliases remain diagnostic.
+Only `0x0e000000` through `0x0e00ffff` are mapped. Flash shares SRAM's 8-bit save bus, so CPU and DMA halfword
+and word accesses use the [SRAM byte lanes](#sram): a load repeats the addressed byte on every lane, and a store writes
+the one byte its address selects. mGBA 0.10.5 loads the same way (`GBALoad16`/`GBALoad32` in `src/gba/memory.c`).
+Its wide stores differ: they issue a byte store of the low byte at each address of an aligned halfword or word and
+drop unaligned ones. For the aligned stores a game would use, the extra bytes are ignored command writes, so both
+program the same byte; an aligned `STRH` of `0xaa` to `0x0e005554` would start an unlock prefix only in mGBA.
+None of this is hardware-verified for Flash. Host halfword/word accesses, instruction fetches, and unverified aliases
+remain diagnostic.
 GBATEK says Flash reads must execute from work RAM. mGBA 0.10.5 has no such restriction, and neither does this core:
 CPU code in any region can read and write Flash.
 Ordinary ROM bytes remain read-only.

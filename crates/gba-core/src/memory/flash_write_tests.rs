@@ -76,6 +76,9 @@ fn preflight_and_discard_cannot_apply_save_mutations() {
     let (_, mut m) = prepared(false, &[0xe1a00000], &[]);
     setup(&mut m);
     m.write8(BASE, 0x12).unwrap();
+    m.write8(BASE + 0x5555, 0xaa).unwrap();
+    m.write8(BASE + 0x2aaa, 0x55).unwrap();
+    m.write8(BASE + 0x5555, 0xa0).unwrap(); // A second program before the first commits.
     m.advance_cycles(PROGRAM - 1);
     let before = m.cartridge;
     m.begin_timer_step();

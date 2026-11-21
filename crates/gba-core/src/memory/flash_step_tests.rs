@@ -160,7 +160,7 @@ fn staged_id_reads_and_discard_do_not_mutate_array_or_committed_controller() {
 }
 
 #[test]
-fn instruction_fetch_and_block_word_access_cannot_bypass_byte_only_device() {
+fn instruction_fetch_stays_diagnostic_and_block_stores_use_the_byte_lane() {
     let (_, mut memory) = prepared(false, &[0xe1a00000], &[]);
     unlocked(&mut memory);
     for state in [InstructionSet::Arm, InstructionSet::Thumb] {
@@ -170,10 +170,10 @@ fn instruction_fetch_and_block_word_access_cannot_bypass_byte_only_device() {
             .unwrap_err();
         assert!(error.to_string().contains("Flash instruction fetch"));
     }
-    let before = memory.cartridge;
-    assert!(memory
-        .write_words(&[(0x02000000, 0x12345678), (SAVE_START, 0)])
-        .is_err());
-    assert_eq!(memory.read32(0x02000000).unwrap(), 0);
-    assert_eq!(memory.cartridge, before);
+    // Each STM word moves one byte on the 8-bit save bus: the lane its address selects.
+    memory
+        .write_words(&[(0x02000000, 0x12345678), (HI, 0x1234_9012)])
+        .unwrap();
+    assert_eq!(memory.read32(0x02000000).unwrap(), 0x12345678);
+    assert_eq!(memory.read8(SAVE_START).unwrap(), 0xc2);
 }

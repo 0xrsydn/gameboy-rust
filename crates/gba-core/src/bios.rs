@@ -356,7 +356,7 @@ fn emit_copy_checks(a: &mut ArmImage, word: bool) {
     a.emit(0xe353_0000); // CMP r3,#0
     a.branch(0, "return");
     // Pointers are not aligned here. Block transfers and LDRH/STRH apply the CPU's own
-    // misalignment rules, which SRAM's 8-bit bus exposes.
+    // misalignment rules, which the 8-bit save bus exposes.
     // Reject protected source ranges and wrapping end addresses before writing.
     a.emit(0xe350_0402); // CMP r0,#0x02000000
     a.branch(3, "return"); // BLO
