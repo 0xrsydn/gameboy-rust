@@ -90,6 +90,8 @@ Frame comparison also re-aligns after the game's first `RegisterRamReset` (`SWI 
 high-level function of a few dozen cycles, while this emulator's firmware clears RAM with real stores (a full reset
 takes over three frames); neither cost is hardware-verified. Both sides run in instruction lockstep to that call, then
 mGBA's display position is moved to ours again. Without this, every later frame differs only by that offset.
+The search covers the first 1,000,000 instructions. A ROM that makes no such call, such as the mGBA test suite, is
+restored to its cartridge-entry state, so both sides start the frame comparison from the same point.
 
 The reference is built with mGBA's 16-bit (BGR555) renderer. Its default 32-bit renderer blends 8-bit channels, which
 rounds differently from hardware's 5-bit blending by one step in some fades; the 16-bit renderer matches this emulator.

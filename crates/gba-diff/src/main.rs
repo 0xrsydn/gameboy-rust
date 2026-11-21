@@ -578,6 +578,25 @@ fn is_ram_reset(local: &Local, address: u32, thumb: bool) -> bool {
     }
 }
 
+/// Step this emulator up to `limit` instructions to the game's first RegisterRamReset and
+/// return its instruction count and address. Without one, restore the state before the search,
+/// so that both sides still start frame comparison from the same point.
+fn find_ram_reset(local: &mut Local, limit: u64) -> Result<Option<(u64, u32)>, String> {
+    let start = local.machine.save_state().map_err(|error| {
+        format!("cannot save state before the RegisterRamReset search: {error:?}")
+    })?;
+    for count in 1..=limit {
+        let record = trace::next_local(&mut local.machine)?;
+        if is_ram_reset(local, record.address, record.thumb) {
+            return Ok(Some((count, record.address)));
+        }
+    }
+    local.machine.load_state(&start).map_err(|error| {
+        format!("cannot restore state after the RegisterRamReset search: {error:?}")
+    })?;
+    Ok(None)
+}
+
 /// mGBA runs RegisterRamReset as a high-level call of a few dozen cycles, while this
 /// emulator's firmware clears RAM with real stores. Neither cost is hardware-verified, and the
 /// gap shifts every later frame. Run both sides in lockstep to the first such call, then move
@@ -588,35 +607,29 @@ fn align_after_ram_reset(
     out: &mut impl Write,
 ) -> Result<(), String> {
     let report = |error: io::Error| error.to_string();
-    for count in 1..=RESET_SEARCH {
-        let record = trace::next_local(&mut local.machine)?;
-        if !is_ram_reset(local, record.address, record.thumb) {
-            continue;
-        }
-        let theirs = reference.sync(count as usize).map_err(report)?;
-        let last = theirs.last().map(|record| record.address);
-        if last != Some(record.address) {
-            return Err(format!(
-                "cannot align after RegisterRamReset: ours at {:#010x}, mGBA at {last:x?}",
-                record.address
-            ));
-        }
-        let position = local.machine.memory().display_position();
-        local.vblank = position.vblanks; // Frames count from here on both sides.
-        reference
-            .align_video(position.scanline, position.line_cycle)
-            .map_err(report)?;
-        writeln!(
+    let Some((count, address)) = find_ram_reset(local, RESET_SEARCH)? else {
+        return writeln!(
             out,
-            "aligned mGBA after RegisterRamReset at {:#010x} (instruction {count}): VCOUNT {} cycle {}",
-            record.address, position.scanline, position.line_cycle
+            "no RegisterRamReset within {RESET_SEARCH} instructions; not aligned"
         )
-        .map_err(report)?;
-        return Ok(());
+        .map_err(report);
+    };
+    let theirs = reference.sync(count as usize).map_err(report)?;
+    let last = theirs.last().map(|record| record.address);
+    if last != Some(address) {
+        return Err(format!(
+            "cannot align after RegisterRamReset: ours at {address:#010x}, mGBA at {last:x?}"
+        ));
     }
+    let position = local.machine.memory().display_position();
+    local.vblank = position.vblanks; // Frames count from here on both sides.
+    reference
+        .align_video(position.scanline, position.line_cycle)
+        .map_err(report)?;
     writeln!(
         out,
-        "no RegisterRamReset within {RESET_SEARCH} instructions; not aligned"
+        "aligned mGBA after RegisterRamReset at {address:#010x} (instruction {count}): VCOUNT {} cycle {}",
+        position.scanline, position.line_cycle
     )
     .map_err(report)
 }
@@ -830,6 +843,31 @@ mod tests {
 
     fn args(text: &str) -> Vec<String> {
         text.split_whitespace().map(str::to_owned).collect()
+    }
+
+    fn local_with(words: &[u32]) -> Local {
+        let rom = words.iter().flat_map(|word| word.to_le_bytes()).collect();
+        Local::boot(rom, SaveDevice::None, None).unwrap()
+    }
+
+    #[test]
+    fn ram_reset_search_finds_the_first_call() {
+        // mov r0, #0; swi 0x010000; b .
+        let mut local = local_with(&[0xe3a0_0000, 0xef01_0000, 0xeaff_fffe]);
+        assert_eq!(
+            find_ram_reset(&mut local, 100).unwrap(),
+            Some((2, 0x0800_0004))
+        );
+        assert_eq!(local.machine.cpu().pc(), 0x0800_0008);
+    }
+
+    #[test]
+    fn ram_reset_search_without_a_call_leaves_the_machine_where_it_was() {
+        // b .
+        let mut local = local_with(&[0xeaff_fffe]);
+        let before = (local.machine.cpu().pc(), local.machine.cycles());
+        assert_eq!(find_ram_reset(&mut local, 1000).unwrap(), None);
+        assert_eq!((local.machine.cpu().pc(), local.machine.cycles()), before);
     }
 
     #[test]
