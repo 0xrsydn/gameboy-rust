@@ -2,7 +2,7 @@
 //! Snapshots use half-open, wrapping bounds. Row capture supplies vertical flags
 //! and horizontal comparator history. Layer/effect selection remains row-sampled.
 
-use super::Pixel;
+use super::{DarkenRounding, Pixel};
 use crate::snapshot::{Reader, Snapshot, SnapshotError, Writer};
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -14,6 +14,8 @@ pub(crate) struct Effects {
     pub control: u16,
     pub alpha: u16,
     pub brightness: u16,
+    /// Host configuration, not a register: kept across save states.
+    pub darken_rounding: DarkenRounding,
 }
 
 impl Effects {
@@ -71,7 +73,10 @@ impl Effects {
                 if mode == 2 {
                     x + (((31 - x) * coefficient) >> 4)
                 } else {
-                    x - ((x * coefficient) >> 4)
+                    match self.darken_rounding {
+                        DarkenRounding::Up => x - ((x * coefficient) >> 4),
+                        DarkenRounding::Down => (x * (16 - coefficient)) >> 4,
+                    }
                 }
             });
         }
@@ -105,6 +110,7 @@ impl Snapshot for Effects {
             control,
             alpha,
             brightness,
+            darken_rounding: _,
         } = self;
         writer.tag(b"EFCT");
         for value in horizontal {
@@ -129,6 +135,7 @@ impl Snapshot for Effects {
             control,
             alpha,
             brightness,
+            darken_rounding: _,
         } = self;
         reader.tag(b"EFCT")?;
         for value in horizontal {
@@ -160,6 +167,7 @@ mod snapshot_tests {
             control: 0xaaaa,
             alpha: 0x5555,
             brightness: 0xdead,
+            darken_rounding: DarkenRounding::Up,
         };
         let mut writer = Writer::new();
         source.save(&mut writer);
@@ -167,6 +175,14 @@ mod snapshot_tests {
         let mut restored = Effects::default();
         restored.load(&mut Reader::new(&bytes)).unwrap();
         assert_eq!(restored, source);
+        // The rounding is host configuration: a loaded state keeps the current choice.
+        let mut kept = Effects {
+            darken_rounding: DarkenRounding::Down,
+            ..Effects::default()
+        };
+        kept.load(&mut Reader::new(&bytes)).unwrap();
+        assert_eq!(kept.darken_rounding, DarkenRounding::Down);
+        assert_eq!(kept.brightness, source.brightness);
         for end in 0..bytes.len() {
             assert!(Effects::default()
                 .load(&mut Reader::new(&bytes[..end]))

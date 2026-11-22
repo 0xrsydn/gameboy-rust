@@ -673,6 +673,10 @@ impl Io {
         self.master_enable && self.irq_line()
     }
 
+    pub(crate) fn set_darken_rounding(&mut self, rounding: crate::video::DarkenRounding) {
+        self.effects.darken_rounding = rounding;
+    }
+
     pub(crate) fn expedite_dma(&mut self) {
         self.dma.expedite();
     }

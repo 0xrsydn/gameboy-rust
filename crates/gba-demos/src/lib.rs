@@ -3,6 +3,7 @@
 pub mod affine_demo;
 pub mod affine_raster_demo;
 pub mod bitmap_demo;
+pub mod blend_rounding;
 pub mod effects_demo;
 pub mod graphics_demo;
 pub mod mosaic_demo;

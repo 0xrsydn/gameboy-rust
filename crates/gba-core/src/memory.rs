@@ -293,6 +293,13 @@ impl Memory {
         Ok(memory)
     }
 
+    /// Choose how brightness decrease rounds; mGBA's rounding (`Up`) by default. Host
+    /// configuration: save states neither store nor change it. Call between steps.
+    pub fn set_darken_rounding(&mut self, rounding: crate::video::DarkenRounding) {
+        assert!(!self.step_active.get(), "darken rounding during a step");
+        self.io.set_darken_rounding(rounding);
+    }
+
     /// Set the word protected BIOS reads return, as if the firmware had last fetched it.
     /// Used when a boot is skipped: no BIOS code has run to latch one. Call between steps.
     pub fn set_bios_open_bus(&mut self, word: u32) {

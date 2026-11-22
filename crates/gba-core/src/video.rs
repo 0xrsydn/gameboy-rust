@@ -10,6 +10,18 @@ pub(crate) mod mosaic;
 pub(crate) mod sprites;
 pub(crate) mod windows;
 
+/// How the brightness-decrease effect (BLDCNT mode 3) rounds `x·(16−EVY)/16`, which hardware
+/// documentation leaves open; see docs/research/blend-rounding.md. Brightness increase and
+/// alpha blending do not depend on it.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub enum DarkenRounding {
+    /// `x − ((x·EVY) >> 4)`, as mGBA 0.10.5 computes it: the result rounds up.
+    #[default]
+    Up,
+    /// `(x·(16−EVY)) >> 4`, as Mesen 2 and ares compute it: the result rounds down.
+    Down,
+}
+
 use crate::snapshot::{Reader, Snapshot, SnapshotError, Writer};
 use std::{error::Error, fmt};
 

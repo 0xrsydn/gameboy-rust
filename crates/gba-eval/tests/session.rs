@@ -180,3 +180,23 @@ fn the_c_exports_load_run_and_report_through_stable_buffers() {
     assert_eq!(emu_boot_frames(), 6);
     assert_eq!(emu_rom_buffer(), buffer, "stable ROM buffer");
 }
+
+#[test]
+fn brightness_decrease_rounds_down_like_the_mesen_reference() {
+    use gba_demos::blend_rounding::{blend_rounding_rom, block_center, Side, BANDS};
+    let mut session = session(blend_rounding_rom());
+    for _ in 0..3 {
+        session.run_frame();
+    }
+    let level = |(x, y): (usize, usize)| session.pixels()[y * 240 + x] & 0xff;
+    for (band_index, band) in BANDS.iter().enumerate() {
+        for (group_index, group) in band.groups().iter().enumerate() {
+            let expected = match group.mesen {
+                Side::Lower => group.lower,
+                Side::Higher => group.higher,
+            };
+            let sample = level(block_center(band_index, group_index, 1)) >> 3;
+            assert_eq!(sample, expected, "{band:?} {group:?}");
+        }
+    }
+}

@@ -224,6 +224,7 @@ The [pinned public memory ROM](public-memory-tests.md) passes without a core cha
 The [mGBA test suite](public-mgba-suite.md) builds reproducibly at a pinned revision and has a dated baseline scoreboard; automated preparation and running are not in the repository yet.
 [`gba-diff`](mgba-reference.md) compares ROM execution against a locally built mGBA 0.10.5, per frame (memory, I/O, pixels) or per instruction (registers, control flow, cycle drift).
 It also drives a locally built [Mesen 2](mesen-reference.md) GBA core, which runs this emulator's firmware from reset, so the comparison needs no start alignment and has no BIOS-cost gap.
+Brightness-decrease rounding is unverified on hardware: the core rounds like mGBA by default and can round like Mesen 2 (`Memory::set_darken_rounding`); an original [test ROM](research/blend-rounding.md) is ready for a hardware capture.
 `crates/gba-eval` builds the emulator as a [GBA Eval](gba-eval.md) WebAssembly candidate (`gba_emu.wasm`), starting from `bios::skip_boot` as the benchmark's Mesen reference does; `gba-diff --eval` and `tools/score_gba_eval.py` score the benchmark's corpus locally.
 Boot leaves SOUNDBIAS at `0x0200` and r0–r12 and flags cleared, matching mGBA's cartridge-entry state; forced blank and the entry scanline are not copied.
 The [pinned BIOS read-protection ROM](public-bios-tests.md) passes after correcting the replacement firmware's exit layout.

@@ -12,6 +12,8 @@
 //! - A frame ends where Mesen's does, on entry to line 160.
 //! - Mesen polls input at that VBlank, so keys set before a frame take effect as it ends.
 //! - The save type is chosen as Mesen chooses it ([`save_device`]).
+//! - Brightness decrease rounds down, as Mesen's does ([`DarkenRounding::Down`]); hardware's
+//!   rounding is not known yet (docs/research/blend-rounding.md).
 //!
 //! [`Session`] is the whole emulator state; the exports wrap one instance. Native tools use
 //! [`Session`] directly, so local scoring runs exactly the code the benchmark loads.
@@ -24,7 +26,7 @@ use gba_core::{
     cartridge::SaveDevice,
     input::Buttons,
     machine::Machine,
-    video::{Framebuffer, HEIGHT, WIDTH},
+    video::{DarkenRounding, Framebuffer, HEIGHT, WIDTH},
 };
 
 /// The firmware embedded at build time from `GBA_EVAL_BIOS` (see build.rs); empty if none.
@@ -136,6 +138,7 @@ impl Session {
             .map_err(|error| format!("cannot start the ROM: {error:?}"))?;
         let memory = machine.memory_mut();
         memory.set_save_device(save_device(&self.rom));
+        memory.set_darken_rounding(DarkenRounding::Down);
         memory.set_scanline_rendering(true);
         memory.set_audio_capture(true);
         self.vblanks = memory.display_position().vblanks;

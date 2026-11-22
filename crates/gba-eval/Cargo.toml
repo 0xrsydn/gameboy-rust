@@ -12,3 +12,6 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 gba-core = { path = "../gba-core" }
+
+[dev-dependencies]
+gba-demos = { path = "../gba-demos" }

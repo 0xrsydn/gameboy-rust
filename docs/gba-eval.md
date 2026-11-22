@@ -40,6 +40,7 @@ what a frame shows:
 | Input is polled at that VBlank, so keys set before a frame apply as it ends | Keys are latched and applied after the frame's VBlank |
 | Save type: three forced game codes, then the first of `SRAM_V`, `EEPROM_V`, `FLASH_V`, `FLASH512_V`, `FLASH1M_V` anywhere in the ROM, else SRAM | `gba_emu::save_device`, the same rules |
 | 32768 Hz stereo audio, drained per frame | Captured 10-bit levels scaled by 64 to i16, 32768 Hz |
+| Brightness decrease rounds down: `(x·(16−EVY)) >> 4` | `DarkenRounding::Down`; the core's default is mGBA's rounding up, and hardware's is [unknown](research/blend-rounding.md) |
 
 Running the stub from its reset vector instead reaches the same frames (Spout changes picture at the same frame), but
 leaves different I/O state; `skip_boot` matches Mesen exactly where that state is visible. With these choices, Spout's
@@ -78,6 +79,10 @@ differences, not the benchmark's number.
   but one. Spout drifts from frame 344 (22% identical); Heartwrench, Waimanu, and Chip Advance each have a stretch of
   frames that differ across the whole screen.
 - Many testcases differ only in a few pixels of their first compared frame.
+
+Later fixes: user-bank `LDM` writeback and DMA writes to DMA registers (14 of 16 endstate frames identical), and
+Mesen's brightness-decrease rounding in `Session`, which made Waimanu's and Chip Advance's fades match (99.9% and
+99.1% of frames identical; 91.4% of replay frames overall).
 
 ## Limits
 

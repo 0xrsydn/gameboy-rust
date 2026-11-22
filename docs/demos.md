@@ -3,6 +3,15 @@
 Every demo runs original test content through the `gameboy-rust` desktop executable. None of them load games.
 Keyboard mapping to GBA buttons lives in `crates/desktop/src/desktop.rs`.
 
+## Test brightness rounding on hardware
+
+```sh
+direnv exec . cargo run --locked -p gba-demos --example write_blend_rounding_rom -- /tmp/blend-rounding.gba
+```
+
+Writes an original ROM whose one screen shows how the brightness effects round, and prints what each emulator predicts.
+Run `gbafix` on a copy before using it on a cartridge. See [brightness rounding](research/blend-rounding.md).
+
 ## Diagnose prefetch cancellation timing
 
 ```sh

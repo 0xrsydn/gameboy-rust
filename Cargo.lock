@@ -291,6 +291,7 @@ name = "gba-eval"
 version = "0.1.0"
 dependencies = [
  "gba-core",
+ "gba-demos",
 ]
 
 [[package]]

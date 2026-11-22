@@ -372,6 +372,9 @@ The backdrop can be a target but cannot blend with itself. Only one OBJ color pi
 Coefficients are stored as five-bit values and clamped to 16 when used.
 Each RGB555 channel uses `min(31, (first*EVA + second*EVB) / 16)`, with integer division after summing.
 Brightness uses `color + (31-color)*EVY/16` or `color - color*EVY/16` on selected top-layer channels.
+Darkening rounds the result up by default (`color - ((color*EVY) >> 4)`, as mGBA does); `Memory::set_darken_rounding`
+selects Mesen 2's rounding down instead. Hardware's rounding is not known; see
+[brightness rounding](../research/blend-rounding.md) for the evidence and an original test ROM that settles it.
 No layer receives brightness changes before it becomes a blend target.
 
 Semi-transparent OBJ pixels request alpha blending regardless of BLDCNT's mode and first-target selection.
