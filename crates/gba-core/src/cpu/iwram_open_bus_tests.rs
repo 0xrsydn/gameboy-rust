@@ -279,7 +279,7 @@ fn failed_steps_discard_prefetch_history_before_retry() {
         for instruction in [0xde00, 0x6823] {
             // Undefined instruction / LDR from unsupported save memory.
             let (mut cpu, mut bus) = program(pc, &[SEED, instruction, 0x1111, 0x9bcd]);
-            cpu.registers[4] = 0x0e00_0000;
+            cpu.registers[4] = crate::memory::UNSUPPORTED_READ;
             cpu.step(&mut bus).unwrap();
             let before = cpu.clone();
             assert!(cpu.step_timed(&mut bus).is_err());
@@ -352,7 +352,14 @@ fn successful_dma_updates_history_and_failed_dma_preserves_it() {
         let dma = DMA_BASE + 3 * DMA_STRIDE;
         machine
             .memory_mut()
-            .write32(dma, if fail { 0x0e00_0000 } else { SOURCE })
+            .write32(
+                dma,
+                if fail {
+                    crate::memory::UNSUPPORTED_READ
+                } else {
+                    SOURCE
+                },
+            )
             .unwrap();
         machine.memory_mut().write32(dma + 4, 0x0200_0000).unwrap();
         machine.memory_mut().write32(dma + 8, 0x8400_0001).unwrap();

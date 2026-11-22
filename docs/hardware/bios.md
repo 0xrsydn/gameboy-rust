@@ -61,6 +61,7 @@ Supported software interrupt services:
 | `0x0a` | ArcTan2 | Signed fixed-point X/Y in r0/r1; return the unsigned direction angle in r0 |
 | `0x0b` | CpuSet | `r0`: source; `r1`: destination; `r2`: count, fill, and width control |
 | `0x0c` | CpuFastSet | Word copy/fill in eight-word blocks; round count upward to a multiple of eight |
+| `0x0d` | GetBiosChecksum | Return the Nintendo firmware's documented checksum `0xbaae187f` in r0 (not a sum of this image), 1 in r1, and `0x4000` in r3 |
 | `0x0e` | BgAffineSet | Build background matrices and origins from r0 into r1; r2 is the record count |
 | `0x0f` | ObjAffineSet | Build sprite matrices from r0 into r1; r2 is the count, r3 the coefficient stride |
 | `0x10` | BitUnPack | Expand packed units from r0 to r1 using the descriptor at r2; write complete words |

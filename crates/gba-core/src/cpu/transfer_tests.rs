@@ -302,15 +302,19 @@ fn block_diagnostics_do_not_commit_partial_register_or_ram_changes() {
         memory.write32(0x07ff_fffc, 0xdead_beef).unwrap();
         let mut cpu = Cpu::new(0x0300_0000);
         cpu.registers[0] = 42;
-        // The second load reaches absent ROM. The second store crosses an ignored
-        // ROM word into the diagnostic cartridge window.
-        cpu.registers[2] = if load { 0x07ff_fffc } else { 0x0cff_fffc };
+        // The second load reaches the injected read fault. The second store crosses an
+        // ignored ROM word into the diagnostic cartridge window.
+        cpu.registers[2] = if load {
+            crate::memory::UNSUPPORTED_READ - 4
+        } else {
+            0x0cff_fffc
+        };
         cpu.flags = flags();
         let before = cpu.registers;
         assert_eq!(
             cpu.step(&mut memory),
             Err(CpuError::Memory(if load {
-                MemoryError::Unmapped(ROM_START)
+                MemoryError::Unmapped(crate::memory::UNSUPPORTED_READ)
             } else {
                 MemoryError::ReadOnly(0x0d00_0000)
             }))
@@ -342,11 +346,11 @@ fn block_load_can_read_rom_and_store_to_rom_is_ignored() {
 }
 
 #[test]
-fn truncated_rom_does_not_partially_load_a_register_list() {
-    // A 12-byte image in a 16-byte chip: the second word is unknown, so it stays diagnostic.
+fn a_failed_word_does_not_partially_load_a_register_list() {
+    // The first word loads; the second is the injected read fault.
     let mut memory = program(&[block(0x0080_0000, true, true, 0, 0x6), 0, 11]);
     let mut cpu = Cpu::new(ROM_START);
-    cpu.registers[0] = ROM_START + 8;
+    cpu.registers[0] = crate::memory::UNSUPPORTED_READ - 4;
     let before = cpu.registers;
     assert!(matches!(cpu.step(&mut memory), Err(CpuError::Memory(_))));
     assert_eq!(cpu.registers, before);

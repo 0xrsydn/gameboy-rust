@@ -130,7 +130,7 @@ fn failed_dma_preserves_an_existing_resume_but_cannot_create_one() {
         if completed {
             dma(&mut bus);
         }
-        configure(&mut bus, 3, 0x0e00_0000, DEST, 1);
+        configure(&mut bus, 3, crate::memory::UNSUPPORTED_READ, DEST, 1);
         let cycles = bus.cycles();
         for _ in 0..2 {
             assert!(bus.step_dma().is_err());
@@ -154,7 +154,7 @@ fn failed_cpu_fetch_and_data_access_preserve_resume_until_success() {
     cpu.registers[15] = DEST + 0x100;
     assert!(cpu.step_timed(&mut bus).is_err());
     cpu.registers[15] = PC;
-    cpu.registers[1] = 0x0e00_0000;
+    cpu.registers[1] = crate::memory::UNSUPPORTED_READ;
     let before = cpu.clone();
     for _ in 0..2 {
         assert!(cpu.step_timed(&mut bus).is_err());

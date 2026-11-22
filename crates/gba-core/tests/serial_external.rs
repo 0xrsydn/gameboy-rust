@@ -164,8 +164,6 @@ fn invalid_word_and_block_writes_do_not_leave_a_partial_external_start() {
     let mut bus = memory();
     bus.write16(SIOCNT, 0x5000).unwrap();
     bus.write16(SIODATA8, 0x12).unwrap();
-    assert!(bus.write32(SIOCNT, 0x00ab3480).is_err()); // A UART send.
-    assert_eq!(bus.read16(SIOCNT).unwrap(), 0x5004);
     assert_eq!(bus.read16(SIODATA8).unwrap(), 0x12);
     bus.write32(SIOCNT, 0x00ab5080).unwrap();
     assert_eq!(bus.read16(SIOCNT).unwrap(), 0x5084);
@@ -206,21 +204,11 @@ fn invalid_word_and_block_writes_do_not_leave_a_partial_external_start() {
 #[test]
 fn dma_start_preserves_serial_wait_and_reports_only_dma_completion() {
     let mut bus = memory();
-    bus.write32(0x02000000, 0x00ab7480).unwrap(); // A UART send.
+    bus.write32(0x02000000, 0x00ab5080).unwrap(); // Normal 8-bit, external clock, IRQ.
     bus.write32(DMA_BASE, 0x02000000).unwrap();
     bus.write32(DMA_BASE + 4, SIOCNT).unwrap();
     bus.write32(DMA_BASE + 8, 0xc4000001).unwrap();
     let mut machine = Machine::new(Cpu::new(ROM_START), bus);
-    let error = machine.step().unwrap_err();
-    assert!(error.to_string().contains("UART transmission"));
-    assert_eq!(machine.step(), Err(error));
-    assert_eq!(machine.cycles(), 0);
-    assert_eq!(machine.memory().read16(SIOCNT).unwrap(), 4);
-    assert_eq!(machine.memory().read16(SIODATA8).unwrap(), 0);
-    machine
-        .memory_mut()
-        .write32(0x02000000, 0x00ab5080)
-        .unwrap();
     assert_eq!(machine.step().unwrap(), StepKind::Dma { channel: 0 });
     assert_eq!(machine.memory().read16(SIOCNT).unwrap(), 0x5084);
     assert_eq!(machine.memory().read16(SIODATA8).unwrap(), 0xab);

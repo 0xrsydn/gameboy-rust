@@ -35,13 +35,15 @@ fn copy_and_fill_to_bios_return_without_modifying_firmware() {
 #[test]
 fn ignored_bios_destination_does_not_bypass_invalid_source_reads() {
     for service in [0x0b, 0x0c] {
-        let (mut machine, _) = call(service, true, [0x0e00_0000, 0, 1]);
+        // The call program is 52 bytes in a 64-byte chip; its lost padding is strict here.
+        let source = ROM_START + 56;
+        let (mut machine, _) = call(service, true, [source, 0, 1]);
         let error = (0..200)
             .find_map(|_| machine.step().err())
             .expect("source read must still fail");
         assert_eq!(
             error,
-            MachineError::Cpu(CpuError::Memory(MemoryError::Unmapped(0x0e00_0000)))
+            MachineError::Cpu(CpuError::Memory(MemoryError::Unmapped(source)))
         );
         let cpu = machine.cpu().clone();
         let cycles = machine.cycles();

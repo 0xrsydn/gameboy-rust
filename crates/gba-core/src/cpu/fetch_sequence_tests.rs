@@ -306,7 +306,7 @@ fn failed_execution_retains_next_kind_and_retry_does_not_consume_it() {
         let load = if thumb { 0x6808 } else { 0xe591_0000 };
         let (mut cpu, mut memory) = program(thumb, PC, &[load, load]);
         cpu.step(&mut memory).unwrap();
-        cpu.registers[1] = 0x0e00_0000;
+        cpu.registers[1] = crate::memory::UNSUPPORTED_READ;
         let before = cpu.clone();
         for _ in 0..2 {
             assert!(cpu.step_timed(&mut memory).is_err());

@@ -218,6 +218,8 @@ pub struct Memory {
     // Data of the last DMA unit, until a CPU step consumes it.
     dma_bus: Option<u32>,
     bios_prefetch: Option<u32>,
+    /// Host option: reads of a trimmed image's lost padding are diagnostics.
+    strict_rom_padding: bool,
     iwram_bus: IwramBus,
     scanline_capture: Option<video::capture::Capture>,
     sprite_pipeline: pipeline::SpritePipeline,
@@ -275,6 +277,7 @@ impl Memory {
             dma_units: None,
             dma_bus: None,
             bios_prefetch: None,
+            strict_rom_padding: false,
             iwram_bus: IwramBus::default(),
             scanline_capture: None,
             sprite_pipeline: pipeline::SpritePipeline::default(),
@@ -298,6 +301,23 @@ impl Memory {
     pub fn set_darken_rounding(&mut self, rounding: crate::video::DarkenRounding) {
         assert!(!self.step_active.get(), "darken rounding during a step");
         self.io.set_darken_rounding(rounding);
+    }
+
+    /// Report CPU and DMA reads of the padding a trimmed image has lost (between its end and
+    /// the next power of two, the ROM chip's size) as diagnostics instead of the Game Pak bus
+    /// pattern hardware-like reads give there. A debugging aid for truncated dumps, and for
+    /// tests that need a source to fail; reads beyond the chip keep the bus pattern.
+    pub fn set_strict_rom_padding(&mut self, strict: bool) {
+        self.strict_rom_padding = strict;
+    }
+
+    /// Where reads past the image start taking the Game Pak bus pattern.
+    fn rom_end(&self) -> usize {
+        if self.strict_rom_padding {
+            self.rom.len().next_power_of_two()
+        } else {
+            self.rom.len()
+        }
     }
 
     /// Set the word protected BIOS reads return, as if the firmware had last fetched it.
@@ -1224,6 +1244,10 @@ impl Memory {
 
     // Multi-byte reads use this helper to avoid charging each byte as a bus access.
     fn read_byte(&self, address: u32) -> Result<u8, MemoryError> {
+        #[cfg(test)]
+        if address & !3 == UNSUPPORTED_READ && !self.with_cartridge(|c| c.save_mapped(address)) {
+            return Err(MemoryError::Unmapped(address));
+        }
         self.side_accesses
             .set(self.side_accesses.get().wrapping_add(1));
         // Every cartridge device decodes at or above the first ROM window.
@@ -1268,16 +1292,26 @@ impl Memory {
                 .ok_or(MemoryError::Unmapped(address));
         }
         if matches!(address >> 24, 0x08..=0x0d)
-            && (address & 0x01ff_ffff) as usize >= self.rom.len().next_power_of_two()
+            && (address & 0x01ff_ffff) as usize >= self.rom_end()
             && !self.with_cartridge(|cartridge| cartridge.mapped(address))
             && (self.cpu_access.is_some() || self.step_active.get())
         {
-            // Beyond the power-of-two ROM chip no device drives the Game Pak bus, which
-            // returns the halfword address (A/2, low 16 bits) on each lane. Bytes between a
-            // trimmed image's end and the chip boundary are unknown and stay diagnostic,
-            // as do host reads and instruction fetches.
+            // Beyond the ROM chip no device drives the Game Pak bus, which returns the
+            // halfword address (A/2, low 16 bits) on each lane. A trimmed image has lost the
+            // chip's padding between its end and the chip boundary; those bytes read the same
+            // pattern, as in mGBA 0.10.5 (Mesen 2 returns its internal open bus instead).
+            // Host reads and instruction fetches stay diagnostic.
             let halfword = ((address & 0x01ff_fffe) >> 1) as u16;
             return Ok(halfword.to_le_bytes()[(address & 1) as usize]);
+        }
+        if matches!(address >> 24, 0x0e | 0x0f)
+            && (self.cpu_access.is_some() || self.step_active.get())
+            && !self.with_cartridge(|c| c.save_mapped(address))
+        {
+            // No save chip answers (a ROM-only or EEPROM cartridge): the 8-bit save bus
+            // floats high, as mGBA 0.10.5 ("Reading from non-existent SRAM") and Mesen 2
+            // (GbaCart::ReadRam) read it.
+            return Ok(0xff);
         }
         // Above the I/O register block (except the 0x04xx0800 mirror) the I/O page has no
         // ports and reads like unused memory. Unused slots below 0x400 stay diagnostic:
@@ -1381,7 +1415,7 @@ impl Memory {
             return Ok(());
         }
         if address < BIOS_SIZE as u32
-            || matches!(address >> 24, 0x08..=0x0d)
+            || matches!(address >> 24, 0x08..=0x0f)
             || unused_memory(address)
         {
             // Only validated CPU/DMA writes reach here. Pay the bus cost but never
@@ -1568,6 +1602,9 @@ impl Memory {
                 }
                 Ok(0)
             }
+            // Without a save chip, CPU and DMA stores to the save region go nowhere, as in
+            // mGBA and Mesen 2; host setup stays strict.
+            0x0e | 0x0f if access == WriteAccess::Emulated => Ok(0),
             // Unused memory ignores CPU and DMA writes; host setup stays strict.
             _ if access == WriteAccess::Emulated && unused_memory(address) => Ok(0),
             _ => Err(MemoryError::Unmapped(address)),
@@ -1701,15 +1738,15 @@ impl Memory {
 
     /// A byte of a non-halfword read in the EEPROM window. mGBA 0.10.5 (`GBALoad8`,
     /// `LOAD_CART` in `src/gba/memory.c`) reads the ROM window there and never the EEPROM:
-    /// image bytes, or the Game Pak address pattern beyond the ROM chip. Bytes between a
-    /// trimmed image's end and the chip boundary, and host reads, stay diagnostic.
+    /// image bytes, or the Game Pak address pattern beyond the image. Host reads stay
+    /// diagnostic.
     fn eeprom_window_byte(&self, address: u32) -> Result<u8, MemoryError> {
         let offset = (address & 0x01ff_ffff) as usize;
         if self.cpu_access.is_some() || self.step_active.get() {
             if let Some(&byte) = self.rom.get(offset) {
                 return Ok(byte);
             }
-            if offset >= self.rom.len().next_power_of_two() {
+            if offset >= self.rom_end() {
                 let halfword = ((address & 0x01ff_fffe) >> 1) as u16;
                 return Ok(halfword.to_le_bytes()[(address & 1) as usize]);
             }
@@ -1824,6 +1861,12 @@ impl Memory {
         }
     }
 }
+
+/// Unit tests of rollback after a failed data access read this word to make the access fail.
+/// It is injected only in this crate's unit-test build (`read_byte`), and only without a save
+/// chip; integration tests and every other build read it as hardware does (`0xff`).
+#[cfg(test)]
+pub(crate) const UNSUPPORTED_READ: u32 = 0x0e00_0000;
 
 #[cfg(test)]
 mod tests {

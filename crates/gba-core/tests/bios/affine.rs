@@ -79,6 +79,7 @@ fn prepare(service: u8, thumb: bool, args: [u32; 4], status: u32, data: &[u8]) -
     assert_eq!(rom.len() as u32 + ROM_START, DATA);
     rom.extend(data);
     let mut m = bios::boot(rom).unwrap();
+    m.memory_mut().set_strict_rom_padding(true); // The truncated source must fail.
     reach(&mut m, ROM_START + 68, 100);
     (m, ROM_START + if thumb { 70 } else { 72 })
 }

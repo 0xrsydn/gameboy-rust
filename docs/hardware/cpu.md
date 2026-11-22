@@ -198,7 +198,9 @@ Limits remain explicit:
   register, open bus otherwise. `BGxCNT` bits 4–5 are stored and read back. General DMA-to-CPU bus handoff and
   disabled-RAM reads are not modeled here.
   The instruction right after a DMA unit reads [that unit's data](dma.md#bus-value-after-a-transfer) instead, except Thumb code in IWRAM.
-- Missing BIOS, truncated ROM, unsupported I/O, and save-memory accesses retain their existing diagnostics.
+- Missing BIOS and unsupported I/O accesses retain their existing diagnostics. Reads past a trimmed ROM image take
+  the Game Pak bus pattern and a save region without a chip reads `0xff`, as in mGBA
+  ([cartridge](cartridge.md#loading-and-boot)); `Memory::set_strict_rom_padding` restores the trimmed-ROM diagnostic.
 - CPU and DMA writes to unused memory (`0x00004000..0x01ffffff`, `0x10000000..0xffffffff`) are ignored, as on hardware,
   and pay the nominal one-cycle access. A swap there reads the open-bus value and ignores its write. Host writes stay strict.
 - Writes to the mapped BIOS are a separate [ignored-write subset](bios.md#writes-to-the-mapped-bios), including swap write phases.

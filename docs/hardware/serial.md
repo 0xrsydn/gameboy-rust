@@ -2,7 +2,7 @@
 
 The core supports disconnected normal-mode transfers, external-clock waiting, idle multiplayer, local Joybus registers, and general-purpose pins.
 Internal clocks shift pulled-high input at nominal GBA rates. No link partner is emulated.
-External clock edges, connected multiplayer transfers, UART transfers, Joybus communication, and GPIO interrupt edges remain unsupported.
+External clock edges, connected multiplayer transfers, UART transfers to a partner, Joybus communication, and GPIO interrupt edges remain unsupported.
 Unsupported activity remains diagnostic rather than reporting a fabricated completion.
 
 ## Registers
@@ -17,8 +17,9 @@ Unsupported activity remains diagnostic rather than reporting a fabricated compl
   The retained mask is `0x5f8b`, including unused bits 8–11. The disconnected serial input is high, except when a general-purpose output drives it low.
   Start bit 7 requests a transfer. Bit 0 selects external or internal clock; bit 1 selects the internal rate.
   Completion or software cancellation clears start. Multiplayer uses the separate format described below.
-  UART format retains `0x7f8f` and reads bit 5 set (receive buffer empty). A SIODATA8 write while UART sending is
-  enabled (bit 10) is diagnostic, because no partner receives it.
+  UART format retains `0x7f8f` and reads bit 5 set (receive buffer empty) and bit 4 clear (send buffer not full).
+  Without a cable a UART byte goes nowhere: a SIODATA8 write is accepted and dropped, with no transfer timing or IRQ,
+  as in mGBA 0.10.5 (UART stubbed) and Mesen 2 (serial registers only). Blind Jump writes one at startup.
 - `RCNT` at `0x04000134` retains mode bits, interrupt configuration, output latches, and pin directions with mask `0xc1ff`.
   With bit 15 clear, bits 8 and 14 are writable latches without GPIO interrupt or Joybus effects.
   With bit 15 set, bit 14 selects Joybus; bit 8 is unused in that mode.

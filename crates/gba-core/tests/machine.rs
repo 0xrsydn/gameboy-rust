@@ -207,7 +207,7 @@ fn diagnostics_do_not_advance_timers_or_clock() {
 #[test]
 fn late_block_store_error_does_not_change_timer_reload_or_enable() {
     let mut machine = prepared(
-        0xe8a0_0ffe,
+        0xe8a0_7ffe,
         &[
             (0, TIMER_BASE),
             (1, 0x00c0_ffff),
@@ -215,9 +215,10 @@ fn late_block_store_error_does_not_change_timer_reload_or_enable() {
             (3, 0x00c0_ffff),
             (4, 0x00c0_ffff),
             (5, 123),
-            (11, 0x3400),
+            (14, 0x8140),
         ],
-    ); // STMIA r0!, {r1-r11}; unused words are ignored, and r11 starts a UART send
+    ); // STMIA r0!, {r1-r14}; the other words are zero or ignored, and r14 reaches RCNT:
+       // GPIO with SI driven low and its interrupt enabled, a diagnostic.
     let before = machine.cpu().clone();
     assert!(machine.step().is_err());
     assert_eq!(machine.cpu(), &before);
@@ -283,7 +284,7 @@ fn cpu_only_step_does_not_advance_device_time_or_deliver_irq() {
 }
 
 #[test]
-fn cpu_stores_to_unused_io_are_ignored_but_host_and_unmapped_save_writes_stay_strict() {
+fn cpu_stores_to_unused_io_and_an_empty_save_region_are_ignored_but_host_writes_stay_strict() {
     for address in [
         0x0400_0058,
         0x0400_00e0,
@@ -298,13 +299,13 @@ fn cpu_stores_to_unused_io_are_ignored_but_host_and_unmapped_save_writes_stay_st
             Err(MemoryError::Unmapped(address))
         );
     }
+    // Without a save chip the save region ignores CPU stores, as in mGBA and Mesen 2.
     let mut machine = prepared(0xe580_1000, &[(0, 0x0e00_0000), (1, 0)]);
-    let before = machine.cpu().clone();
+    assert_eq!(machine.step().unwrap(), StepKind::Instruction);
     assert_eq!(
-        machine.step(),
-        Err(MachineError::Cpu(MemoryError::Unmapped(0x0e00_0000).into()))
+        machine.memory_mut().write8(0x0e00_0000, 0),
+        Err(MemoryError::Unmapped(0x0e00_0000))
     );
-    assert_eq!(machine.cpu(), &before);
 }
 
 #[test]

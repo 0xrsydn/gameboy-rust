@@ -156,10 +156,10 @@ fn failed_cpu_load_rolls_back_timer_audio_and_pending_refill_requests() {
 
 #[test]
 fn failed_dma_source_and_destination_restore_audio_after_speculative_timer_edges() {
-    // The second destination is SIOCNT/SIODATA8: UART data with sending enabled.
+    // The second destination is RCNT: GPIO with SI driven low and its interrupt enabled.
     for (source, destination, word) in [
         (FIFO_A, 0x02001000, 0),
-        (0x02000000, 0x04000128, 0x0055_3400),
+        (0x02000000, 0x04000134, 0x0000_8140),
     ] {
         let (cpu, mut memory) = prepared(false, &[0xe1a00000], &[]);
         sound(&mut memory, 1);
@@ -209,7 +209,7 @@ fn batch_validation_simulates_sound_enable_and_disable_before_committing_any_wri
             (0x0400006c, 0x87ff),
             (0x04000070, 0xa0),
             (0x04000074, 0x8000),
-            (0x04000128, 0x0055_3400), // UART data with sending enabled: no partner.
+            (0x04000134, 0x8140), // RCNT: GPIO interrupt with SI driven low (diagnostic).
         ])
         .is_err());
     assert_eq!(memory.read32(0x02000000).unwrap(), 0);

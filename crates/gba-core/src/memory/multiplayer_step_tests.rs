@@ -33,7 +33,7 @@ fn mode_change_uses_normal_completion_phase_before_read_only_busy_masking() {
 }
 
 #[test]
-fn arm_block_store_ignores_receive_registers_and_validates_a_later_uart_send_first() {
+fn arm_block_store_ignores_receive_registers_and_accepts_a_later_uart_send() {
     for unsupported in [false, true] {
         let (cpu, mut memory) = prepared(
             false,
@@ -51,12 +51,12 @@ fn arm_block_store_ignores_receive_registers_and_validates_a_later_uart_send_fir
         let mut machine = Machine::new(cpu, memory);
         let cpu = machine.cpu().clone();
         if unsupported {
-            let error = machine.step().unwrap_err();
-            assert!(error.to_string().contains("UART transmission"));
-            assert_eq!(machine.step(), Err(error));
-            assert_eq!(machine.memory().io.serial, serial);
-            assert_eq!(machine.cpu(), &cpu);
-            assert_eq!(machine.cycles(), 0);
+            // A UART send has no partner: the store completes and the byte is dropped.
+            machine.step().unwrap();
+            assert_ne!(machine.memory().io.serial, serial);
+            assert_ne!(machine.cpu(), &cpu);
+            assert_eq!(machine.memory().read16(SIOCNT).unwrap(), 0x3420);
+            assert_eq!(machine.memory().read16(SIOMLT_SEND).unwrap(), 0); // SIODATA8 in UART
         } else {
             machine.step().unwrap();
             assert_eq!(machine.cpu().registers()[0], SIOMULTI0 + 12);
@@ -102,7 +102,7 @@ fn data_reads_follow_the_staged_mode_and_a_later_diagnostic_preserves_atomicity(
     assert_eq!(memory.read32(SIOMULTI2).unwrap(), 0);
     let serial = memory.io.serial;
     assert!(memory
-        .write_words(&[(0x02000000, 0xabcd), (SIOCNT, 0x9876_3400)])
+        .write_words(&[(0x02000000, 0xabcd), (0x0400_0134, 0x8140)]) // RCNT: GPIO diagnostic
         .is_err());
     assert_eq!(memory.io.serial, serial);
     assert_eq!(memory.read32(0x02000000).unwrap(), 0);

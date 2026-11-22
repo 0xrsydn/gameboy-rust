@@ -241,8 +241,8 @@ fn skipped_loads_need_no_prefetch_and_charge_no_data_cycles() {
 }
 
 #[test]
-fn missing_bios_rom_save_and_unsupported_io_reads_remain_errors() {
-    for address in [0, 0x3ffc, ROM_START + 12, 0x0e00_0000, 0x0fff_fffc] {
+fn missing_bios_and_injected_read_faults_remain_errors() {
+    for address in [0, 0x3ffc, crate::memory::UNSUPPORTED_READ] {
         let mut bus = memory(LDR);
         let mut cpu = Cpu::new(ROM_START);
         cpu.registers[0] = address;
@@ -253,6 +253,15 @@ fn missing_bios_rom_save_and_unsupported_io_reads_remain_errors() {
         );
         assert_eq!(cpu, before);
         assert_eq!(bus.read32(UNUSED), Err(MemoryError::Unmapped(UNUSED)));
+    }
+    // Past the trimmed image the Game Pak bus pattern, and without a save chip the floating
+    // save bus, as in mGBA and Mesen 2.
+    for (address, value) in [(ROM_START + 12, 0x0007_0006), (0x0fff_fffc, 0xffff_ffff)] {
+        let mut bus = memory(LDR);
+        let mut cpu = Cpu::new(ROM_START);
+        cpu.registers[0] = address;
+        cpu.step(&mut bus).unwrap();
+        assert_eq!(cpu.registers()[1], value, "{address:#x}");
     }
 }
 
@@ -310,14 +319,17 @@ fn machine_charges_one_data_access_and_dma_does_not_inherit_cpu_context() {
     let timing = machine.last_timing();
     // DMA3 exposes all 28 source address bits. Save memory is still unsupported.
     let dma = DMA_BASE + 3 * DMA_STRIDE;
-    machine.memory_mut().write32(dma, 0x0e00_0000).unwrap();
+    machine
+        .memory_mut()
+        .write32(dma, crate::memory::UNSUPPORTED_READ)
+        .unwrap();
     machine.memory_mut().write32(dma + 4, RAM).unwrap();
     machine.memory_mut().write32(dma + 8, 0x8400_0001).unwrap();
     assert_eq!(
         machine.step(),
         Err(MachineError::Dma(DmaError::Memory {
             channel: 3,
-            error: MemoryError::Unmapped(0x0e00_0000),
+            error: MemoryError::Unmapped(crate::memory::UNSUPPORTED_READ),
         }))
     );
     assert_eq!(machine.cpu(), &before);

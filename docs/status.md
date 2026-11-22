@@ -251,7 +251,8 @@ CPU and DMA writes to unused I/O addresses and to unused memory are ignored, as 
 CPU reads above the I/O register block (`0x04000400..0x04ffffff`) return open bus like other unused memory.
 CPU reads of write-only registers and unused slots inside the register block return open bus or zero, per the mGBA suite's hardware I/O read table.
 The internal memory control register at `0x04xx0800` sets EWRAM wait states as mGBA 0.10.5 does; its work RAM enable bits are ignored.
-CPU and DMA reads beyond the power-of-two ROM chip return the Game Pak halfword-address pattern; reads inside a trimmed image's chip, host reads, and instruction fetches past the image return errors.
+CPU and DMA reads past the supplied ROM image return the Game Pak halfword-address pattern, as in mGBA (`Memory::set_strict_rom_padding` reports a trimmed image's lost padding instead); host reads and instruction fetches past the image return errors.
+Without a save chip, CPU and DMA reads of the save region return `0xff` and stores are ignored. UART sends without a cable are dropped. GetBiosChecksum (SWI `0x0d`) returns the GBA's documented value.
 Direct memory-bus halfword and word accesses require alignment.
 CPU load/store instructions apply ARM7TDMI alignment and rotation rules before accessing the bus.
 CPU and DMA writes to the `0x08`–`0x0c` ROM windows are ignored; the `0x0d` window stays diagnostic unless EEPROM is selected. Explicitly selected cartridge GPIO and supported Flash command writes are separate from ROM storage.

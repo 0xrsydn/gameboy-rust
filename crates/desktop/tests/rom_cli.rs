@@ -362,7 +362,14 @@ fn explicit_flash_selection_runs_ram_byte_reader_and_leaves_files_unchanged() {
     let fixture = Fixture::new();
     let path = fixture.rom(&flash_setup());
     let bytes = fs::read(&path).unwrap();
-    assert!(stderr(&run(&path, "1000")).contains("unmapped memory at 0x0e005555"));
+    // Without a Flash chip the commands go nowhere and the ID reads the floating bus.
+    let output = run(&path, "1000");
+    assert!(output.status.success(), "{}", stderr(&output));
+    let text = stdout(&output);
+    assert!(
+        text.contains("r5=0x000000ff") && text.contains("r6=0x000000ff"),
+        "{text}"
+    );
     for (device, id) in [("flash64", "r6=0x0000001c"), ("flash128", "r6=0x00000009")] {
         let output = command()
             .args(["--save-type", device, "--rtc", "--rom"])
@@ -406,7 +413,8 @@ fn a_save_library_id_selects_the_device_unless_the_type_is_given() {
         .args(["--steps", "1000"])
         .output()
         .unwrap();
-    assert!(stderr(&output).contains("unmapped memory at 0x0e005555"));
+    assert!(output.status.success(), "{}", stderr(&output));
+    assert!(stdout(&output).contains("r6=0x000000ff")); // No chip answers the ID read.
     assert!(!stdout(&output).contains("Save type"));
 }
 

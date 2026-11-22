@@ -205,7 +205,7 @@ fn diagnostic_steps_keep_previous_bios_history_but_skipped_instructions_refresh_
         let mut memory = bus(LDR, bios);
         let mut cpu = leave_bios(&mut memory, false);
         cpu.registers[15] = 0x200;
-        cpu.registers[0] = 0x0e00_0000;
+        cpu.registers[0] = crate::memory::UNSUPPORTED_READ;
         let before = cpu.clone();
         assert!(cpu.step_timed(&mut memory).is_err());
         assert_eq!(cpu, before);

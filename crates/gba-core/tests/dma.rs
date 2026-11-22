@@ -753,16 +753,8 @@ fn prohibited_source_mode_increments_and_drq_is_ignored_as_in_mgba() {
 }
 
 #[test]
-fn invalid_memory_and_dma_register_destinations_are_diagnostics() {
+fn read_only_and_power_control_destinations_are_diagnostics() {
     for (source, destination, error) in [
-        (
-            0x0e00_0000,
-            DEST,
-            DmaError::Memory {
-                channel: 3,
-                error: MemoryError::Unmapped(0x0e00_0000),
-            },
-        ),
         (
             SOURCE,
             0x0d00_0000,
@@ -773,10 +765,10 @@ fn invalid_memory_and_dma_register_destinations_are_diagnostics() {
         ),
         (
             SOURCE,
-            0x0e00_0000,
-            DmaError::Memory {
+            POSTFLG,
+            DmaError::PowerControlDestination {
                 channel: 3,
-                error: MemoryError::Unmapped(0x0e00_0000),
+                address: POSTFLG,
             },
         ),
     ] {
@@ -797,6 +789,7 @@ fn failing_later_unit_preserves_earlier_data_but_not_partial_current_unit() {
         Cpu::new(ROM_START),
         Memory::new(vec![0x11, 0x22, 0x33]).unwrap(),
     );
+    machine.memory_mut().set_strict_rom_padding(true); // Byte 3 is lost padding.
     configure(machine.memory_mut(), 3, ROM_START, DEST, 2, 0x4000);
     units(&mut machine, 3, 1);
     let timing = machine.last_timing();

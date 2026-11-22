@@ -20,8 +20,9 @@ Without `--save-type`, the desktop selects the device from the save library's ID
 | `FLASH_Vnnn`, `FLASH512_Vnnn` | `Flash64` |
 | `FLASH1M_Vnnn` | `Flash128` |
 
-The first aligned ID in ROM order wins; a ROM without one gets no save device. Games built without the library, or
-whose ID was stripped, need an explicit type. mGBA 0.10.5 does not scan for these IDs: it picks the type on the first
+The first aligned ID in ROM order wins; a ROM without one gets no save device, and its save region reads `0xff` and
+ignores stores, like a cartridge without a save chip. Games built without the library, or whose ID was stripped, need
+an explicit type. mGBA 0.10.5 does not scan for these IDs: it picks the type on the first
 save access and takes Flash size from its built-in game list, which this repository does not copy.
 `--save-type flash64`, `flash128`, `sram`, `eeprom`, `eeprom512`, or `eeprom8k` overrides detection, and
 `--save-type none` leaves save memory unmapped. The terminal output names the type and whether it was detected.

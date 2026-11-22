@@ -231,7 +231,7 @@ fn failed_thumb_steps_keep_previous_history_and_clear_access_context() {
         // Undefined instruction / failing LDR.
         let mut memory = bus(LDR, thumb_image(THUMB_ENTRY, instruction));
         let mut cpu = enter_thumb(&mut memory, THUMB_ENTRY, false);
-        cpu.registers[0] = 0x0e00_0000;
+        cpu.registers[0] = crate::memory::UNSUPPORTED_READ;
         let before = cpu.clone();
         assert!(cpu.step_timed(&mut memory).is_err());
         assert_eq!(cpu, before);

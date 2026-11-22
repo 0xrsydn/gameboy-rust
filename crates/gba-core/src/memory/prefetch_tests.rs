@@ -126,7 +126,10 @@ fn timed_and_cpu_only_execution_commit_the_same_queue_without_device_clocks() {
 
 #[test]
 fn failures_discard_source_and_partial_data_progress() {
-    for (bad, address) in [(0xe591_0000, 0x0e00_0000), (0xe8b1_0005, 0xffff_fffc)] {
+    for (bad, address) in [
+        (0xe591_0000, crate::memory::UNSUPPORTED_READ),
+        (0xe8b1_0005, 0xffff_fffc),
+    ] {
         let (mut cpu, mut memory) = prepared(false, &[NOP, bad], &[(1, address)]);
         enable(&mut memory);
         cpu.step_timed(&mut memory).unwrap();
@@ -250,7 +253,7 @@ fn dma_pauses_the_queue_and_keeps_it_for_cpu_resume() {
 
 #[test]
 fn failed_dma_preserves_queue_and_clocks() {
-    for (source, destination) in [(0x0e00_0000, RAM), (RAM, 0x0d00_0000)] {
+    for (source, destination) in [(crate::memory::UNSUPPORTED_READ, RAM), (RAM, 0x0d00_0000)] {
         let (mut cpu, mut memory) = prepared(false, &[NOP], &[]);
         enable(&mut memory);
         cpu.step_timed(&mut memory).unwrap();

@@ -130,9 +130,7 @@ fn zero_is_known_data_not_an_unknown_latch() {
 #[test]
 fn failed_units_preserve_the_old_latch_without_new_data_or_irq() {
     for (source, destination, control) in [
-        (0x0e00_0000, DEST, 0x4400), // Unmapped reads do not use a known latch.
         (SOURCE, 0x0d00_0000, 0x4400),
-        (SOURCE, 0x0e00_0000, 0x4400), // No save device.
         (SOURCE, 0x0400_0300, 0x4400),
         (0, 0x0d00_0000, 0x4400), // A blocked source cannot bypass destination checks.
     ] {
@@ -187,6 +185,7 @@ fn failed_later_read_retains_last_successful_halfword_not_partial_bytes() {
         Cpu::new(ROM_START),
         Memory::new(vec![0x37, 0x92, 0x6a]).unwrap(),
     );
+    machine.memory_mut().set_strict_rom_padding(true); // Byte 3 is lost padding.
     configure(machine.memory_mut(), 3, ROM_START, DEST, 2, 0);
     units(&mut machine, 3, 1);
     assert!(machine.step().is_err());

@@ -139,26 +139,25 @@ fn empty_stores_advance_devices_only_after_a_successful_single_word_write() {
     assert_eq!(machine.memory().read32(DATA).unwrap(), CODE + 6);
     assert_eq!(machine.cpu().registers[2], DATA + 64);
 
+    // The read-only cartridge window rejects the single-word write.
+    let address = 0x0d00_0000;
     for instruction in [0xc200, 0xb400] {
-        for (address, error) in [
-            (0x0d00_0000, MemoryError::ReadOnly(0x0d00_0000)),
-            (0x0e00_0000, MemoryError::Unmapped(0x0e00_0000)),
-        ] {
-            let (mut cpu, mut memory) = setup(instruction, CODE);
-            let register = if instruction == 0xb400 { 13 } else { 2 };
-            cpu.registers[register] = address + if register == 13 { 64 } else { 0 };
-            memory.write32(TIMER_BASE, 0x0080_0000).unwrap();
-            let before = cpu.clone();
-            let mut machine = Machine::new(cpu, memory);
-            assert_eq!(
-                machine.step(),
-                Err(MachineError::Cpu(CpuError::Memory(error)))
-            );
-            assert_eq!(machine.cpu(), &before);
-            assert_eq!(machine.cycles(), 0);
-            assert_eq!(machine.last_timing(), StepTiming::default());
-            assert_eq!(machine.memory().read16(TIMER_BASE).unwrap(), 0);
-        }
+        let (mut cpu, mut memory) = setup(instruction, CODE);
+        let register = if instruction == 0xb400 { 13 } else { 2 };
+        cpu.registers[register] = address + if register == 13 { 64 } else { 0 };
+        memory.write32(TIMER_BASE, 0x0080_0000).unwrap();
+        let before = cpu.clone();
+        let mut machine = Machine::new(cpu, memory);
+        assert_eq!(
+            machine.step(),
+            Err(MachineError::Cpu(CpuError::Memory(MemoryError::ReadOnly(
+                address
+            ))))
+        );
+        assert_eq!(machine.cpu(), &before);
+        assert_eq!(machine.cycles(), 0);
+        assert_eq!(machine.last_timing(), StepTiming::default());
+        assert_eq!(machine.memory().read16(TIMER_BASE).unwrap(), 0);
     }
 }
 

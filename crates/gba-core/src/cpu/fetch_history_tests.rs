@@ -99,7 +99,7 @@ fn failed_execution_discards_its_sample_and_retry_takes_a_new_one() {
     cpu.instruction_set = InstructionSet::Thumb;
     cpu.registers[0] = UNUSED;
     cpu.registers[1] = DATA;
-    cpu.registers[4] = 0x0e00_0000;
+    cpu.registers[4] = crate::memory::UNSUPPORTED_READ;
     cpu.step(&mut bus).unwrap();
     let before = cpu.clone();
     let fetched = cpu.fetch(&bus).unwrap();

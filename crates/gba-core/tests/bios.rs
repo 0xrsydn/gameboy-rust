@@ -103,6 +103,8 @@ fn call_status_data(
     assert_eq!(rom.len() as u32, ROM_DATA - ROM_START);
     rom.extend_from_slice(data);
     let mut machine = bios::boot(rom).unwrap();
+    // Sources running past a test's short image must fail, not read the bus pattern.
+    machine.memory_mut().set_strict_rom_padding(true);
     reach(&mut machine, ROM_START + 32, 100);
     assert_eq!(
         machine.cpu().instruction_set(),
@@ -253,8 +255,25 @@ fn vblank_wait_halts_dispatches_irq_and_returns_through_original_code() {
 }
 
 #[test]
+fn get_bios_checksum_reports_the_gba_value_and_keeps_other_registers() {
+    for thumb in [false, true] {
+        let (mut machine, return_pc) = call(0x0d, thumb, [0x1111, 0x2222, 0x3333]);
+        let before = *machine.cpu().registers();
+        finish(&mut machine, return_pc);
+        let after = machine.cpu().registers();
+        assert_eq!(after[0], bios::NINTENDO_BIOS_CHECKSUM);
+        assert_eq!(after[1], 1);
+        assert_eq!(after[3], 0x4000);
+        assert_eq!(after[2], 0x3333);
+        assert_eq!(after[4..15], before[4..15]);
+        // The call helper sets N before the SWI; the service returns the caller's flags.
+        assert_eq!(machine.cpu().cpsr() & 0xf000_0000, 0x8000_0000);
+    }
+}
+
+#[test]
 fn unsupported_services_fail_at_an_explicit_instruction_trap() {
-    for service in [0x0d, 0x19, 0xff] {
+    for service in [0x19, 0x2a, 0xff] {
         let (mut machine, _) = call(service, false, [0, 0, 0]);
         let error = (0..100)
             .find_map(|_| machine.step().err())

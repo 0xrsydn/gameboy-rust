@@ -275,7 +275,9 @@ fn irq_entry_records_the_incoming_source_and_vector_pair_without_executing_code(
 fn failed_instructions_discard_events_and_preserve_the_last_successful_trace() {
     // The second LDR reads an unsupported data region; the first retains normal events.
     let (mut cpu, mut memory) = prepared(false, &[0xe591_1000, 0xe591_0000], &[(1, DATA)]);
-    memory.write32(DATA, 0x0e00_0000).unwrap();
+    memory
+        .write32(DATA, crate::memory::UNSUPPORTED_READ)
+        .unwrap();
     cpu.step_timed(&mut memory).unwrap();
     let previous = events(&memory);
     let before = cpu.clone();

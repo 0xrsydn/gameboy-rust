@@ -77,34 +77,25 @@ fn idle_normal_serial_data_and_control_have_distinct_widths() {
 #[test]
 fn unsupported_operations_have_specific_retryable_diagnostics() {
     let mut bus = memory();
-    // UART and GPIO-interrupt configuration alone is accepted.
-    for (setup, address, value, description) in [
-        ((SIOCNT, 0x3400), SIODATA8, 0x55, "UART transmission"),
-        // SI input pulled high: no edge until it is driven low.
-        (
-            (RCNT, 0x8100),
-            RCNT,
-            0x40,
-            "GPIO serial interrupt with SI low",
-        ),
-    ] {
-        bus.write16(setup.0, setup.1).unwrap();
-        if setup.0 == SIOCNT {
-            assert_eq!(bus.read16(SIOCNT).unwrap(), 0x3420); // Receive buffer empty.
-        }
-        let error = bus.write8(address, value).unwrap_err();
-        assert!(matches!(error, MemoryError::UnsupportedIo { .. }));
-        assert!(error.to_string().contains(description));
-        assert_eq!(bus.write8(address, value), Err(error));
-        bus.write16(setup.0, 0).unwrap();
-    }
+    // GPIO-interrupt configuration alone is accepted; SI is pulled high, so there is no
+    // edge until it is driven low.
+    bus.write16(RCNT, 0x8100).unwrap();
+    let error = bus.write8(RCNT, 0x40).unwrap_err();
+    assert!(matches!(error, MemoryError::UnsupportedIo { .. }));
+    assert!(error
+        .to_string()
+        .contains("GPIO serial interrupt with SI low"));
+    assert_eq!(bus.write8(RCNT, 0x40), Err(error));
+    bus.write16(RCNT, 0).unwrap();
     bus.write16(RCNT, 0x8055).unwrap();
     assert!(bus.write16(RCNT, 0x8140).is_err());
     assert_eq!(bus.read16(RCNT).unwrap(), 0x805f); // Low byte was not committed.
     bus.write16(RCNT, 0).unwrap(); // RCNT bit 15 would override the UART selection.
-    bus.write16(SIOCNT, 0x4008).unwrap();
-    assert!(bus.write32(SIOCNT, 0xaabb3480).is_err());
-    assert_eq!(bus.read16(SIOCNT).unwrap(), 0x400c);
+
+    // A UART send has no partner: the byte is dropped, not a diagnostic.
+    bus.write16(SIOCNT, 0x3400).unwrap();
+    bus.write8(SIODATA8, 0x55).unwrap();
+    assert_eq!(bus.read16(SIOCNT).unwrap(), 0x3420); // Receive buffer empty.
     assert_eq!(bus.read16(SIODATA8).unwrap(), 0);
 }
 
@@ -127,14 +118,14 @@ fn block_store_configures_and_triggers_64_sample_wave_playback() {
 #[test]
 fn dma_activation_error_preserves_channel_progress_and_clocks() {
     let mut bus = memory();
-    bus.write32(0x02000000, 0x0055_3400).unwrap(); // UART data with sending enabled.
+    bus.write32(0x02000000, 0x0000_8140).unwrap(); // GPIO with SI driven low, interrupt on.
     bus.write32(DMA_BASE, 0x02000000).unwrap();
-    bus.write32(DMA_BASE + 4, SIOCNT).unwrap();
+    bus.write32(DMA_BASE + 4, RCNT).unwrap();
     bus.write32(DMA_BASE + 8, 0x84000001).unwrap();
     let mut machine = Machine::new(Cpu::new(ROM_START), bus);
     let before = machine.cpu().clone();
     let error = machine.step().unwrap_err();
-    assert!(error.to_string().contains("UART transmission"));
+    assert!(error.to_string().contains("GPIO serial interrupt"));
     assert_eq!(machine.cycles(), 0);
     assert_eq!(machine.cpu(), &before);
     assert_eq!(machine.step(), Err(error));

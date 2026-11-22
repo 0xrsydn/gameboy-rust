@@ -340,7 +340,7 @@ fn cold_fills_and_mapped_crossings_succeed_only_with_known_fetch_lanes() {
 
 #[test]
 fn unsupported_data_regions_and_unused_stores_do_not_gain_fallbacks() {
-    for address in [0, 0x3ffc, ROM_START + 12, 0x0e00_0000, 0x0fff_fffc] {
+    for address in [0, 0x3ffc, crate::memory::UNSUPPORTED_READ] {
         let mut bus = program(ROM_START, LDR);
         let mut cpu = cpu(ROM_START);
         cpu.registers[0] = address;
@@ -423,14 +423,17 @@ fn machine_timing_and_dma_remain_separate_from_thumb_snapshot_reads() {
     let before = machine.cpu().clone();
     let timing = machine.last_timing();
     let dma = DMA_BASE + 3 * DMA_STRIDE;
-    machine.memory_mut().write32(dma, 0x0e00_0000).unwrap();
+    machine
+        .memory_mut()
+        .write32(dma, crate::memory::UNSUPPORTED_READ)
+        .unwrap();
     machine.memory_mut().write32(dma + 4, RAM).unwrap();
     machine.memory_mut().write32(dma + 8, 0x8400_0001).unwrap();
     assert_eq!(
         machine.step(),
         Err(MachineError::Dma(DmaError::Memory {
             channel: 3,
-            error: MemoryError::Unmapped(0x0e00_0000),
+            error: MemoryError::Unmapped(crate::memory::UNSUPPORTED_READ),
         }))
     );
     assert_eq!(machine.cpu(), &before);

@@ -158,7 +158,7 @@ fn speculative_errors_do_not_fail_a_valid_instruction_or_an_escaping_branch() {
 #[test]
 fn failed_data_access_keeps_the_old_buffer_and_discards_speculative_progress() {
     let (mut cpu, mut bus) = program(&[NOP, 0xe591_2000, OLD, OLD]);
-    cpu.registers[1] = 0x0e00_0000;
+    cpu.registers[1] = crate::memory::UNSUPPORTED_READ;
     cpu.step(&mut bus).unwrap();
     let before = cpu.clone();
     assert!(cpu.step(&mut bus).is_err());

@@ -1,5 +1,20 @@
 # Testing and validation
 
+Emulated reads now behave like hardware almost everywhere, so tests of rollback after a failed data access need a
+deliberate fault. In `gba-core`'s unit-test build only, reading the word at `memory::UNSUPPORTED_READ` (`0x0e000000`)
+fails when no save chip is mapped; integration tests and release builds read `0xff` there, as hardware does.
+Integration tests that need a failing source use `Memory::set_strict_rom_padding` on a short image instead.
+
+`gba-eval`'s `survey` example runs ROMs as a player would (Start and A taps, some d-pad) through the same `Session`
+the GBA Eval build uses, from this emulator's own firmware, and lists any that stop on a core diagnostic:
+
+```sh
+direnv exec . cargo run --locked --release -p gba-eval --example survey -- 3600 roms/gba-eval/corpus/roms/homebrew/*.gba
+```
+
+On 2026-11-23 all 39 local ROMs (the GBA Eval corpus's homebrew, Tonc demos, and sound and test ROMs, plus two local
+game dumps) ran 3,600 frames without stopping.
+
 Run native macOS validation from the project directory:
 
 ```sh

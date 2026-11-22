@@ -31,9 +31,12 @@ Bytes are not padded, patched, or written back.
 The loader does not validate a cartridge header, logo, or checksum.
 It does not decode archives or ELF executables. Supply a raw binary with an ARM instruction at offset zero.
 Headerless original programs are accepted.
-CPU and DMA reads beyond the ROM chip, the image size rounded up to a power of two, return the halfword address (`(A >> 1) & 0xffff`) on each lane, as no device drives the Game Pak bus there.
-Bytes between a trimmed image's end and that chip boundary are unknown and remain explicit memory errors, as do host reads and instruction fetches beyond the image.
+CPU and DMA reads beyond the image return the halfword address (`(A >> 1) & 0xffff`) on each lane, as no device drives the Game Pak bus beyond the ROM chip.
+A trimmed image has lost the chip's padding up to the next power of two; those reads take the same pattern, as in mGBA 0.10.5 (Mesen 2 returns its internal open bus).
+The 240p Test Suite copies data from past its trimmed image's end at startup. Host reads and instruction fetches beyond the image remain explicit memory errors.
 All three Game Pak ROM windows use the same supplied bytes and existing wait-state rules.
+Without a save chip (no save type, or EEPROM), CPU and DMA reads of the `0x0e`–`0x0f` save region return `0xff` and
+stores there are ignored, as mGBA 0.10.5 and Mesen 2 do; host access there stays an error. Another World reads it.
 Ordinary cartridge bytes remain read-only. CPU and DMA writes to the `0x08`–`0x0c` ROM windows pay their bus cost and are ignored, as on hardware.
 Writes to the `0x0d` window remain `ReadOnly` diagnostics unless [EEPROM](saves.md#eeprom) is selected there. Host `Memory::write*` calls stay strict everywhere.
 Optional `--save-type flash64` or `--save-type flash128` enables [nominal Flash programming, erase, and reads](saves.md); `--save-type sram` selects [32 KiB SRAM](saves.md#sram), and `eeprom512` or `eeprom8k` selects [serial EEPROM](saves.md#eeprom).

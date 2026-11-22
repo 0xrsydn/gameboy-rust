@@ -139,12 +139,14 @@ fn dma_start_excludes_source_cycles_and_failed_destination_discards_serial_progr
         if fail {
             start(&mut memory, 60);
         }
-        // The failing word switches to UART and writes data with sending enabled.
+        // The failing word selects GPIO with SI driven low and its interrupt enabled.
         memory
-            .write32(0x02000000, if fail { 0x0055_3400 } else { 0x4083 })
+            .write32(0x02000000, if fail { 0x0000_8140 } else { 0x4083 })
             .unwrap();
         memory.write32(DMA_BASE, 0x02000000).unwrap();
-        memory.write32(DMA_BASE + 4, SIOCNT).unwrap();
+        memory
+            .write32(DMA_BASE + 4, if fail { 0x0400_0134 } else { SIOCNT })
+            .unwrap(); // RCNT
         memory.write32(DMA_BASE + 8, 0x84000001).unwrap();
         let serial = memory.io.serial;
         let mut machine = Machine::new(cpu, memory);

@@ -30,6 +30,8 @@ pub const IRQ_FLAGS: u32 = 0x0300_7ff8;
 pub const IRQ_HANDLER: u32 = 0x0300_7ffc;
 /// An intentional undefined instruction used for unsupported SWIs/vectors and invalid IRQ pointers.
 pub const UNSUPPORTED_TRAP: u32 = 0xe7f0_00f0;
+/// GetBiosChecksum's documented result on a GBA (GBATEK); the original DS reports 0xbaae1880.
+pub const NINTENDO_BIOS_CHECKSUM: u32 = 0xbaae_187f;
 /// A diagnostic trap for invalid service arguments, including unsupported reset flags.
 pub const INVALID_ARGUMENT_TRAP: u32 = 0xe7f0_00f1;
 
@@ -199,7 +201,7 @@ pub fn image() -> Vec<u8> {
         "arctan2",
         "cpu_set",
         "cpu_fast_set",
-        "unsupported",
+        "bios_checksum",
         "bg_affine",
         "obj_affine",
         "bit_unpack",
@@ -331,6 +333,15 @@ pub fn image() -> Vec<u8> {
     // IRQs may stay enabled while unwinding the caller's stack, as on the firmware.
     a.label("return");
     emit_return(&mut a);
+
+    // GetBiosChecksum reports the Nintendo firmware's documented result (GBATEK: r0 =
+    // 0xbaae187f on GBA, GBA SP, Micro, and NDS-lite in GBA mode; r1 = 1; r3 = 0x4000), not a
+    // sum of this image: games compare it to tell a GBA from other hardware.
+    a.label("bios_checksum");
+    a.literal(0, NINTENDO_BIOS_CHECKSUM);
+    a.emit(0xe3a0_1001); // MOV r1,#1
+    a.emit(0xe3a0_3901); // MOV r3,#0x4000
+    emit_return_registers(&mut a);
 
     a.label("unsupported");
     a.emit(UNSUPPORTED_TRAP);

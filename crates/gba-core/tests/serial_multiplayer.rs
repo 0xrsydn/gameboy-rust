@@ -151,14 +151,15 @@ fn active_normal_mode_cannot_be_silently_cancelled_by_read_only_multiplayer_busy
 }
 
 #[test]
-fn uart_send_rejection_preserves_multiplayer_control_and_send_lanes() {
+fn a_uart_send_without_a_cable_is_dropped() {
     let mut bus = memory();
     bus.write32(SIOCNT, 0xabcd6001).unwrap();
-    let error = bus.write32(SIOCNT, 0x12343483).unwrap_err();
-    assert!(error.to_string().contains("UART transmission"));
-    assert_eq!(bus.write32(SIOCNT, 0x12343483), Err(error));
-    assert_eq!(bus.read16(SIOCNT).unwrap(), 0x600d);
-    assert_eq!(bus.read16(SIOMLT_SEND).unwrap(), 0xabcd);
+    bus.write32(SIOCNT, 0x12343483).unwrap();
+    // UART, sending enabled: the send buffer reads not full, the receive buffer empty.
+    assert_eq!(bus.read16(SIOCNT).unwrap() & 0x7fff, 0x34a3);
+    assert_eq!(bus.read16(SIOMLT_SEND).unwrap(), 0); // SIODATA8: nothing received.
+    bus.advance_cycles(1000000);
+    assert_eq!(bus.read16(IF).unwrap(), 0);
 }
 
 #[test]

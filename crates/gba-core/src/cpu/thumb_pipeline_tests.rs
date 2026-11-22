@@ -173,7 +173,7 @@ fn dma_halfword_and_word_writes_do_not_replace_thumb_instruction_slots() {
 #[test]
 fn failed_thumb_load_rolls_back_buffer_progress_not_earlier_retention() {
     let (mut cpu, mut bus) = program(CODE, &[NOP, 0x680a, OLD, OLD]); // LDR r2,[r1].
-    cpu.registers[1] = 0x0e00_0000;
+    cpu.registers[1] = crate::memory::UNSUPPORTED_READ;
     cpu.step(&mut bus).unwrap();
     let before = cpu.clone();
     assert!(cpu.step_timed(&mut bus).is_err());

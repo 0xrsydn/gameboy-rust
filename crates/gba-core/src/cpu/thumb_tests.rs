@@ -728,10 +728,9 @@ fn thumb_forms_mgba_accepts() {
 #[test]
 fn thumb_memory_errors_leave_state_unchanged() {
     for instruction in [
-        0x6801, 0x6001, 0x8801, 0x8001, 0x7801, 0x7001, 0x5e81, 0x9801, 0x9001, 0x4802,
+        0x6801, 0x6001, 0x8801, 0x8001, 0x7801, 0x7001, 0x5e81, 0x9801, 0x9001,
     ] {
-        // A 10-byte image in a 16-byte chip: LDR r0,[pc,#8] reads offset 12, an unknown
-        // byte past the trimmed image. Reads beyond the chip return the bus pattern instead.
+        // Each accesses address 0 (r0 or sp) of a machine without a BIOS.
         let mut memory = program(&[instruction, 0, 0, 0, 0]);
         let mut cpu = thumb_cpu();
         cpu.flags = flags();
@@ -780,16 +779,18 @@ fn late_thumb_stack_and_block_errors_do_not_partially_commit() {
         memory.write32(0x07ff_fffc, 0x1234_5678).unwrap();
         let mut cpu = thumb_cpu();
         cpu.registers[15] = 0x0300_0000;
-        // Stores cross an ignored ROM word into the diagnostic cartridge window.
+        // Stores cross an ignored ROM word into the diagnostic cartridge window; loads
+        // reach the injected read fault on their second word.
+        let load_base = crate::memory::UNSUPPORTED_READ - 4;
         cpu.registers[0] = if instruction == 0xc003 {
             0x0cff_fffc
         } else {
-            0x07ff_fffc
+            load_base
         };
         cpu.registers[13] = if instruction == 0xb403 {
             0x0d00_0004
         } else {
-            0x07ff_fffc
+            load_base
         };
         let before = cpu.registers;
         assert!(matches!(cpu.step(&mut memory), Err(CpuError::Memory(_))));

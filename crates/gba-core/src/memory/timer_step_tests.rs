@@ -182,7 +182,7 @@ fn if_acknowledgement_clears_earlier_timer_events_but_not_later_ones() {
 #[test]
 fn failed_instructions_discard_partial_timer_progress_and_pending_irqs() {
     for (instruction, base) in [
-        (0xe591_0000, 0x0e00_0000),
+        (0xe591_0000, crate::memory::UNSUPPORTED_READ),
         (0xe891_0005, 0xffff_fffc), // Open bus, then a protected BIOS read fails.
         (0xe881_00fd, 0x0cff_ffe8), // STMIA r1,{r0,r2-r7}; ROM writes are ignored, r7 hits 0x0d.
         (0xe7f0_00f0, 0),
@@ -258,7 +258,10 @@ fn dma_samples_timers_after_startup_and_source_and_writes_after_destination() {
 
 #[test]
 fn dma_failures_preserve_timers_and_if_and_clear_the_transaction() {
-    for (source, destination) in [(0x0e00_0000, RAM), (TIMER_BASE, 0x0d00_0000)] {
+    for (source, destination) in [
+        (crate::memory::UNSUPPORTED_READ, RAM),
+        (TIMER_BASE, 0x0d00_0000),
+    ] {
         let mut memory = Memory::new(Vec::new()).unwrap();
         start(&mut memory, 0, 0xffff, 0xc0);
         let before = memory.io.timer_step();
@@ -373,7 +376,12 @@ fn failed_cpu_and_dma_work_cannot_consume_a_shared_prescaler_edge() {
     assert!(machine.step().is_err()); // The open-bus read ends after the t=64 overflow; 0x800 fails.
     assert_eq!(machine.memory().io.timer_step(), before);
     assert_eq!(machine.cycles(), 63);
-    dma(machine.memory_mut(), 0x0e00_0000, RAM, 1);
+    dma(
+        machine.memory_mut(),
+        crate::memory::UNSUPPORTED_READ,
+        RAM,
+        1,
+    );
     assert!(machine.step().is_err());
     assert_eq!(machine.memory().io.timer_step(), before);
     machine.memory_mut().advance_cycles(1);

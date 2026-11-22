@@ -164,7 +164,7 @@ fn completed_units_and_priority_changes_use_access_order_not_channel_number() {
 fn failed_dma_and_failed_resumed_instruction_preserve_last_completed_dma_history() {
     for fail_destination in [false, true] {
         let (mut cpu, bus) = program(CODE, 0x680a);
-        cpu.registers[0] = 0x0e00_0000; // Buffered PROBE will fail on unsupported save memory.
+        cpu.registers[0] = crate::memory::UNSUPPORTED_READ; // Buffered PROBE will fail on unsupported save memory.
         let mut machine = Machine::new(cpu, bus);
         machine.step().unwrap();
         machine.memory_mut().write32(EWRAM, DATA).unwrap();
@@ -174,7 +174,11 @@ fn failed_dma_and_failed_resumed_instruction_preserve_last_completed_dma_history
         configure(
             machine.memory_mut(),
             3,
-            if fail_destination { IWRAM } else { 0x0e00_0000 },
+            if fail_destination {
+                IWRAM
+            } else {
+                crate::memory::UNSUPPORTED_READ
+            },
             if fail_destination { 0x0d00_0000 } else { IWRAM },
             1,
             true,

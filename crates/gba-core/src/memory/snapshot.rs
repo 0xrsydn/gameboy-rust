@@ -70,6 +70,7 @@ impl Snapshot for Memory {
             dma_units: _,  // Set only while a DMA unit writes.
             dma_bus,
             bios_prefetch,
+            strict_rom_padding: _, // Host option, kept across states.
             iwram_bus,
             scanline_capture,
             sprite_pipeline,
@@ -136,6 +137,7 @@ impl Snapshot for Memory {
             dma_units: _,
             dma_bus,
             bios_prefetch,
+            strict_rom_padding: _, // Host option, kept across states.
             iwram_bus,
             scanline_capture,
             sprite_pipeline,

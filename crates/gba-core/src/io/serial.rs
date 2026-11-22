@@ -114,12 +114,6 @@ impl Serial {
             let (at, value) = touches(RCNT..RCNT + 2).unwrap_or((address, bytes[0]));
             return Some((at, value, "GPIO serial interrupt with SI low"));
         }
-        // A UART data write with sending enabled would transmit to no partner.
-        if next.mode() == Mode::Uart && next.control & 0x400 != 0 {
-            if let Some((at, value)) = touches(SIODATA8..SIODATA8 + 2) {
-                return Some((at, value, "UART transmission"));
-            }
-        }
         // Clearing start always permits cancellation/reconfiguration. Other
         // live changes after a shifted bit lack an independently verified model.
         // Check the written start bit before mode-specific read-only masking.
@@ -241,7 +235,8 @@ impl Serial {
                     JOYSTAT if at & 1 == 0 => {
                         self.joy_status = (self.joy_status & 2) | (value & 0x30);
                     }
-                    // A UART data write fills the transmit buffer (diagnostic when sending).
+                    // Without a cable a UART byte goes nowhere, sent or not: the send buffer
+                    // reads not full and nothing is received, as in mGBA and Mesen 2.
                     SIODATA8 if mode != Mode::Uart => {
                         self.send = replace_byte(self.send, at, value);
                     }

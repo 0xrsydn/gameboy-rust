@@ -642,7 +642,7 @@ fn bios_stop_store_finishes_before_freezing_and_access_context_is_cleared() {
     assert_eq!(machine.step().unwrap(), StepKind::StopIdle);
     assert_eq!(machine.last_timing(), StepTiming::default());
     // A failed non-BIOS instruction must also clear its access context.
-    let mut machine = store_machine(ROM_START, 0xe581_0000, 0x0e00_0000, 0, true);
+    let mut machine = store_machine(ROM_START, 0xe581_0000, 0x0d00_0000, 0, true); // Read-only window.
     assert!(machine.step().is_err());
     machine.memory_mut().write8(POSTFLG, 1).unwrap();
     halt(&mut machine);
