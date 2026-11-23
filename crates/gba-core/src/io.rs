@@ -461,7 +461,8 @@ impl Io {
             WAITCNT => self.waitcnt = replace_byte(self.waitcnt, address, value) & 0x5fff,
             IF => self.pending &= !(u16::from(value) << ((address & 1) * 8)),
             IME if address & 1 == 0 => self.master_enable = value & 1 != 0,
-            POSTFLG if address == POSTFLG => self.postflg = value & 1 != 0,
+            // Set once, never cleared (NanoBoyAdvance's haltcnt hardware test; Mesen 2).
+            POSTFLG if address == POSTFLG => self.postflg |= value & 1 != 0,
             POSTFLG => {
                 // The bus has enforced BIOS-only CPU access. Low seven bits are ignored.
                 self.power = if value & 0x80 == 0 {

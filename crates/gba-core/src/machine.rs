@@ -290,6 +290,8 @@ impl Machine {
                 }
             }
         }
+        self.memory
+            .set_dma_from_bios(self.cpu.pc() < crate::memory::BIOS_SIZE as u32);
         if let Some((channel, timing)) = self.memory.step_dma().map_err(MachineError::Dma)? {
             self.last_timing = timing;
             return Ok(StepKind::Dma { channel });

@@ -357,9 +357,10 @@ fn dma_and_irq_each_consume_a_budget_step_and_dma_errors_fail() {
     assert_eq!(stats.irq_entries, 1);
     assert_eq!(stats.instructions, 0);
     let bus = machine.memory_mut();
-    // DMA0 masks cartridge addresses to BIOS; a power-control destination stays diagnostic.
-    bus.write32(DMA_BASE + 4, 0x0400_0300).unwrap(); // POSTFLG
-    bus.write32(DMA_BASE + 8, 0x8000_0001).unwrap();
+    // DMA3 reaches the cartridge window, whose read-only ROM stays a diagnostic.
+    bus.write32(DMA_BASE + 36, 0x0200_0000).unwrap();
+    bus.write32(DMA_BASE + 40, 0x0d00_0000).unwrap();
+    bus.write32(DMA_BASE + 44, 0x8000_0001).unwrap();
     let (stats, outcome) = run_to_checkpoint(&mut machine, &config);
     assert_eq!(stats.steps, 0);
     assert!(matches!(outcome, Outcome::EmulationError(_)));

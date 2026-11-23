@@ -497,9 +497,10 @@ fn dma_errors_return_a_diagnostic_without_consuming_a_step() {
     let mut machine = boot(&[0xeaff_fffe]);
     let bus = machine.memory_mut();
     bus.write32(DMA_BASE, 0x0200_0000).unwrap();
-    // DMA0 masks cartridge addresses to BIOS; a power-control destination stays diagnostic.
-    bus.write32(DMA_BASE + 4, 0x0400_0300).unwrap(); // POSTFLG
-    bus.write32(DMA_BASE + 8, 0x8000_0001).unwrap();
+    // DMA3 reaches the cartridge window, whose read-only ROM stays a diagnostic.
+    bus.write32(DMA_BASE + 36, 0x0200_0000).unwrap();
+    bus.write32(DMA_BASE + 40, 0x0d00_0000).unwrap();
+    bus.write32(DMA_BASE + 44, 0x8000_0001).unwrap();
     let report = run_bounded(&mut machine, 100);
     assert!(matches!(
         report.reason,

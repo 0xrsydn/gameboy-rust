@@ -66,8 +66,9 @@ impl Snapshot for Memory {
             #[cfg(test)]
                 quiet_steps: _, // Test counter.
             cpu_resume_nonsequential,
-            cpu_access: _, // Staged transaction; empty between steps.
-            dma_units: _,  // Set only while a DMA unit writes.
+            cpu_access: _,    // Staged transaction; empty between steps.
+            dma_units: _,     // Set only while a DMA unit writes.
+            dma_from_bios: _, // Set by the machine before each DMA unit.
             dma_bus,
             bios_prefetch,
             strict_rom_padding: _, // Host option, kept across states.
@@ -135,6 +136,7 @@ impl Snapshot for Memory {
             cpu_resume_nonsequential,
             cpu_access: _,
             dma_units: _,
+            dma_from_bios: _,
             dma_bus,
             bios_prefetch,
             strict_rom_padding: _, // Host option, kept across states.

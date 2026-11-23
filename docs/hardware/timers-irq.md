@@ -232,9 +232,14 @@ CPU writes to POSTFLG and HALTCNT take effect only when the executing instructio
 ARM and Thumb use the same rule. This is an instruction-address check, not a simulated prefetched PC signal.
 CPU writes from RAM or cartridge ROM are ignored, including STOP requests.
 Bare `Memory::write*` calls remain host/debug setup and can write these registers without a CPU access context.
-DMA writes to the power-control block return `DmaError::PowerControlDestination`; this hardware edge case is not modeled.
+A DMA unit that starts while the CPU executes the BIOS writes the power-control block like the BIOS: a transfer that
+BIOS `CpuSet` enables into POSTFLG halts the CPU through HALTCNT once the unit ends, as NanoBoyAdvance's `haltcnt`
+hardware test expects (Mesen 2 keys BIOS access on the last opcode fetch). A transfer started elsewhere still returns
+`DmaError::PowerControlDestination`; hardware presumably ignores it, but no test shows that yet.
 
-POSTFLG resets to zero and stores only bit 0. Setting it does not perform a BIOS boot or initialize RAM.
+POSTFLG resets to zero and stores only bit 0. Once set it stays set: writing zero does not clear it, as the same
+`haltcnt` test checks after a `CpuSet` stores a zero halfword there. Setting it does not perform a BIOS boot or
+initialize RAM.
 HALTCNT reads return zero as a placeholder, not hardware open-bus behavior.
 The reserved bytes at `0x04000302..0x04000303` read zero and ignore writes.
 Byte, halfword, and word writes are supported; a halfword/word at POSTFLG also writes HALTCNT.

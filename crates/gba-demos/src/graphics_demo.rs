@@ -406,10 +406,12 @@ mod tests {
         use gba_core::dma::DMA_BASE;
 
         let mut demo = GraphicsDemo::new().unwrap();
-        // An immediate transfer into power control (POSTFLG) fails before any CPU instruction.
+        // An immediate DMA3 transfer into the read-only cartridge window fails before any
+        // CPU instruction.
         let bus = demo.machine.memory_mut();
-        bus.write32(DMA_BASE + 4, gba_core::io::POSTFLG).unwrap();
-        bus.write16(DMA_BASE + 10, 0x8000).unwrap();
+        bus.write32(DMA_BASE + 36, 0x0200_0000).unwrap();
+        bus.write32(DMA_BASE + 40, 0x0d00_0000).unwrap();
+        bus.write16(DMA_BASE + 46, 0x8000).unwrap();
         let mut frame = Framebuffer::default();
         frame.clear(0x1f);
         assert!(matches!(

@@ -111,7 +111,8 @@ that channel at once, as a host write does, and a write to the running channel's
 without moving its internal pointers or count. Clearing its own enable stops it after the current unit, as destoer's
 `dma_priority` test notes for hardware ("appears to disable on hardware", test 5). Mesen 2 instead runs the block's
 whole count (`GbaDmaController::RunDma`), so the [GBA Eval](../gba-eval.md) copy of that test still differs from Mesen
-there. Transfers into the power-control registers remain `DmaError::PowerControlDestination`.
+there. Transfers into the power-control registers are allowed only when started from the BIOS; see
+[power control](timers-irq.md#halt-and-power-control-registers).
 Writes into the mapped 16 KiB BIOS [complete without changing its image](bios.md#writes-to-the-mapped-bios).
 Source reads, channel data, address progression, timing, and completion IRQs still apply to these ignored writes.
 DMA0–2 mask destination bit 27, so a programmed cartridge address can instead select the BIOS region.

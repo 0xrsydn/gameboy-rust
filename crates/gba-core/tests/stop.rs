@@ -1,10 +1,10 @@
 use gba_core::{
     cpu::{Cpu, InstructionSet},
     display::{CYCLES_PER_FRAME, VBLANK_START},
-    dma::{DmaError, DMA_BASE},
+    dma::DMA_BASE,
     input::Buttons,
     io::{DISPCNT, HALTCNT, IE, IF, IME, KEYCNT, POSTFLG, TIMER_BASE},
-    machine::{FrameRunError, Machine, MachineError, StepKind},
+    machine::{FrameRunError, Machine, StepKind},
     memory::{Memory, BIOS_SIZE, ROM_START},
     timing::StepTiming,
     video::Framebuffer,
@@ -210,7 +210,7 @@ fn dma_is_frozen_before_work_or_diagnostics_and_resumes_before_cpu_after_wake() 
         enable_keypad(m.memory_mut());
         m.memory_mut().write32(0x0200_0000, 0x1234_5678).unwrap();
         m.memory_mut().write32(DMA_BASE, 0x0200_0000).unwrap();
-        // A transfer into the power-control registers is a diagnostic.
+        // From the BIOS, a transfer into power control writes HALTCNT (0x56: halt).
         m.memory_mut()
             .write32(DMA_BASE + 4, if invalid { POSTFLG } else { 0x0300_0000 })
             .unwrap();
@@ -226,12 +226,11 @@ fn dma_is_frozen_before_work_or_diagnostics_and_resumes_before_cpu_after_wake() 
         assert_eq!(m.memory().read32(0x0300_0000).unwrap(), 0);
         press(m.memory_mut(), 1);
         if invalid {
-            assert_eq!(
-                m.step(),
-                Err(MachineError::Dma(DmaError::PowerControlDestination {
-                    channel: 0,
-                    address: POSTFLG
-                }))
+            assert_eq!(m.step().unwrap(), StepKind::Dma { channel: 0 });
+            assert_eq!(m.cpu(), &cpu);
+            assert!(
+                m.memory().halted(),
+                "the transfer's HALTCNT write halts the CPU"
             );
         } else {
             assert_eq!(m.step().unwrap(), StepKind::Dma { channel: 0 });

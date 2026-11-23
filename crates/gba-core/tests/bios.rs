@@ -745,3 +745,31 @@ fn supplying_an_image_is_optional_and_does_not_change_memory_new() {
         Err(MemoryError::Unmapped(BIOS_SIZE as u32))
     );
 }
+
+#[test]
+fn a_dma_started_from_the_bios_can_halt_through_haltcnt_but_not_clear_postflg() {
+    // CpuSet copies two halfwords into DMA0CNT from inside the BIOS, enabling an immediate
+    // halfword transfer of zero into POSTFLG/HALTCNT, as NanoBoyAdvance's haltcnt hardware
+    // test does: the CPU halts, and POSTFLG stays set.
+    let data = [0x01, 0x00, 0x00, 0x80]; // Count 1; enable, 16-bit, immediate.
+    let (mut machine, _) = call_status_data(0x0b, false, [ROM_DATA, 0x0400_00b8, 2], 0x1f, &data);
+    let memory = machine.memory_mut();
+    memory.write16(0x0200_0000, 0).unwrap();
+    memory
+        .write32(gba_core::dma::DMA_BASE, 0x0200_0000)
+        .unwrap();
+    memory
+        .write32(gba_core::dma::DMA_BASE + 4, POSTFLG)
+        .unwrap();
+    assert_eq!(machine.memory().read8(POSTFLG).unwrap(), 1);
+    let halted = (0..10_000).any(|_| {
+        machine.step().unwrap();
+        machine.memory().halted()
+    });
+    assert!(halted, "the DMA's HALTCNT write must halt the CPU");
+    assert!(
+        machine.cpu().pc() < BIOS_SIZE as u32,
+        "halted inside CpuSet"
+    );
+    assert_eq!(machine.memory().read8(POSTFLG).unwrap(), 1);
+}

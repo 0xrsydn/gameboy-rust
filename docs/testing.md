@@ -13,7 +13,8 @@ direnv exec . cargo run --locked --release -p gba-eval --example survey -- 3600 
 ```
 
 On 2026-11-23 all 39 local ROMs (the GBA Eval corpus's homebrew, Tonc demos, and sound and test ROMs, plus two local
-game dumps) ran 3,600 frames without stopping.
+game dumps) ran 3,600 frames without stopping, and so did all 45 public test ROMs available locally (armwrestler,
+fuzzarm, destoer, jsmolka, NanoBoyAdvance's `hw-test`, the mGBA suite and three of its `cinema` ROMs, the 240p suite).
 
 Run native macOS validation from the project directory:
 

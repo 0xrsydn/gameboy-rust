@@ -215,6 +215,9 @@ pub struct Memory {
     cpu_access: Option<CpuAccess>,
     /// Units left in the DMA transfer whose unit is being written, including it.
     dma_units: Option<u32>,
+    /// Whether the CPU was executing the BIOS when the current DMA unit started: its
+    /// power-control writes then count as the BIOS's. Set by `Machine` before each unit.
+    dma_from_bios: bool,
     // Data of the last DMA unit, until a CPU step consumes it.
     dma_bus: Option<u32>,
     bios_prefetch: Option<u32>,
@@ -275,6 +278,7 @@ impl Memory {
             cpu_resume_nonsequential: false,
             cpu_access: None,
             dma_units: None,
+            dma_from_bios: false,
             dma_bus: None,
             bios_prefetch: None,
             strict_rom_padding: false,
@@ -778,7 +782,11 @@ impl Memory {
             return Ok(None);
         };
         let channel = transfer.channel;
-        if (POSTFLG..=POSTFLG + 3).contains(&transfer.destination) {
+        // A transfer started from the BIOS (CpuSet into POSTFLG, as NanoBoyAdvance's haltcnt
+        // test does) writes power control like the BIOS; HALTCNT then halts the CPU once the
+        // transfer ends. Elsewhere hardware presumably ignores the write; that stays a
+        // diagnostic until a test shows it.
+        if (POSTFLG..=POSTFLG + 3).contains(&transfer.destination) && !self.dma_from_bios {
             return Err(DmaError::PowerControlDestination {
                 channel,
                 address: transfer.destination,
@@ -1071,9 +1079,18 @@ impl Memory {
     }
 
     fn can_write_power_control(&self) -> bool {
-        // Bare memory writes are host/debug setup. CPU code must execute in BIOS.
-        self.cpu_access
-            .is_none_or(|access| access.pc < BIOS_SIZE as u32)
+        // Bare memory writes are host/debug setup. CPU code must execute in BIOS, and a DMA
+        // unit must have started while it did (Mesen 2 keys this on the last opcode fetch).
+        match (self.cpu_access, self.dma_units) {
+            (Some(access), _) => access.pc < BIOS_SIZE as u32,
+            (None, Some(_)) => self.dma_from_bios,
+            (None, None) => true,
+        }
+    }
+
+    /// Record whether the CPU is executing the BIOS, for the DMA unit about to run.
+    pub(crate) fn set_dma_from_bios(&mut self, from_bios: bool) {
+        self.dma_from_bios = from_bios;
     }
 
     /// Current scanline position and frame/VBlank event counters.

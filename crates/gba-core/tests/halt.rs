@@ -104,7 +104,7 @@ fn reset_register_masks_widths_and_reserved_bytes() {
     assert_eq!(bus.read32(POSTFLG).unwrap(), 1);
     assert!(!bus.halted());
     bus.write8(POSTFLG, 0xfe).unwrap();
-    assert_eq!(bus.read8(POSTFLG).unwrap(), 0);
+    assert_eq!(bus.read8(POSTFLG).unwrap(), 1); // Set once; a zero does not clear it.
     bus.write16(POSTFLG + 2, 0xffff).unwrap();
     assert_eq!(bus.read16(POSTFLG + 2).unwrap(), 0);
     assert!(!bus.halted());
