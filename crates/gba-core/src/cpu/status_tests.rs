@@ -166,8 +166,6 @@ fn msr_spsr_accepts_thumb_and_preserves_unselected_fields() {
 fn invalid_status_transfers_preserve_all_banks() {
     for instruction in [
         0xe10f_f000, // MRS pc, CPSR
-        0xe14f_0000, // MRS r0, SPSR without an SPSR
-        0xe161_f000, // MSR SPSR_c, r0 without an SPSR
         0xe121_f00f, // MSR CPSR_c, pc: PC+8 selects invalid mode 0x18
         0xe321_f014, // Invalid mode 0x14
         0xe321_f03f, // Attempt to change T
@@ -179,6 +177,24 @@ fn invalid_status_transfers_preserve_all_banks() {
             "{instruction:08x}"
         );
         assert_eq!(cpu, before);
+    }
+}
+
+#[test]
+fn user_and_system_spsr_reads_give_the_cpsr_and_writes_are_ignored() {
+    // As jsmolka's and Alyosha's hardware tests expect, and Mesen 2 models.
+    for mode in [0x10, 0x1f] {
+        let mut cpu = Cpu::new(ROM_START);
+        cpu.step(&mut program(0xe321_f000 | mode)).unwrap(); // MSR CPSR_c, #mode
+        cpu.registers[15] = ROM_START;
+        cpu.registers[2] = 0xf000_00d3;
+        cpu.step(&mut program(0xe169_f002)).unwrap(); // MSR SPSR_fc, r2: ignored
+        assert_eq!(cpu.cpsr(), mode);
+        assert_eq!(cpu.spsr(), None);
+        cpu.registers[15] = ROM_START;
+        cpu.step(&mut program(0xe14f_0000)).unwrap(); // MRS r0, SPSR
+        assert_eq!(cpu.registers()[0], cpu.cpsr());
+        assert_eq!(cpu.pc(), ROM_START + 4);
     }
 }
 

@@ -58,6 +58,10 @@ operation. This emulator does the same; none of these is hardware-verified:
   `_ARMModeHasSPSR`). In User and System they set ordinary flags or act as a plain load.
 - In User mode, S-bit block transfers name the registers already in use; a user-bank `STM` with writeback writes
   back to the current mode's base register.
+- Where hardware tests decide against mGBA, they win, as Mesen 2 also models: in User and System mode an
+  `MRS` of the SPSR reads the CPSR and an `MSR` to it is ignored (jsmolka's and Alyosha's `arm`/`psr` tests; mGBA keeps
+  a shared slot), and Thumb `BX` with bit 7 set (ARMv5's `BLX`) is a plain `BX` that leaves lr alone (Alyosha's
+  `thumb/blx`; mGBA treats it as undefined).
 - A user-bank `LDM` with writeback (`LDM rn!,{list}^` without PC) follows Mesen 2 (`ArmBlockDataTransfer`), which
   armwrestler's LDM/STM page exercises: the loads go to the User registers, and the base is written back in the
   current mode's bank and, unless the list loads it there, in the User bank.
@@ -71,10 +75,8 @@ intentional trap in the replacement BIOS (mGBA's own handler returns to the same
 diagnostic at the faulting address is kept:
 
 - undefined ARM encodings (`TST`-space forms other than `MRS`/`MSR`/`BX`/`SWP`, ARMv5 `BLX`/`CLZ`/`BKPT`,
-  doubleword-style halfword stores, register-shifted load/store offsets) and Thumb condition 14, `0xe840`–`0xefff`,
-  and `BLX` (bit 7 of a hi-register `BX`);
+  doubleword-style halfword stores, register-shifted load/store offsets) and Thumb condition 14 and `0xe840`–`0xefff`;
 - `MRS` and `SWP` into PC, which mGBA executes without a pipeline refill;
-- SPSR access in User/System mode: mGBA keeps one shared slot there, which this core's save states do not hold;
 - CPSR writes that select an invalid mode or change the Thumb bit, and returns to an invalid saved mode;
 - `LDM`/`STM` with a written-back PC base, and S-bit empty lists.
 For subtraction, carry means no unsigned borrow occurred.

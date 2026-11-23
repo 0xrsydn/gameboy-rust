@@ -688,9 +688,22 @@ fn arm_thumb_arm_round_trip_fetches_the_correct_instruction_width() {
 }
 
 #[test]
+fn thumb_bx_with_the_armv5_blx_bit_is_a_plain_bx() {
+    // 0x4780: BLX r0 on ARMv5; ARM7TDMI branches and exchanges without writing lr.
+    let mut memory = program(&[0x4780]);
+    let mut cpu = thumb_cpu();
+    cpu.registers[0] = ROM_START + 0x100; // ARM target
+    cpu.registers[14] = 0x1234;
+    cpu.step(&mut memory).unwrap();
+    assert_eq!(cpu.pc(), ROM_START + 0x100);
+    assert_eq!(cpu.instruction_set(), InstructionSet::Arm);
+    assert_eq!(cpu.registers[14], 0x1234);
+}
+
+#[test]
 fn unsupported_thumb_instructions_preserve_registers_flags_and_state() {
     for instruction in [
-        0xde00, 0xdeff, 0xbe00, 0xe840, 0x4780, 0xb100, 0xb200, 0xb600, 0xbf00,
+        0xde00, 0xdeff, 0xbe00, 0xe840, 0xb100, 0xb200, 0xb600, 0xbf00,
     ] {
         let mut memory = program(&[instruction]);
         let mut cpu = thumb_cpu();

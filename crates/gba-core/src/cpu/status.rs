@@ -133,10 +133,12 @@ impl Cpu {
         if destination == 15 {
             return Err(self.unsupported(instruction));
         }
+        // User and System have no SPSR: reading it gives the CPSR, as jsmolka's and Alyosha's
+        // hardware tests expect and Mesen 2 models (mGBA instead keeps a shared slot).
         let value = if instruction & (1 << 22) == 0 {
             self.cpsr()
         } else {
-            self.spsr().ok_or_else(|| self.unsupported(instruction))?
+            self.spsr().unwrap_or_else(|| self.cpsr())
         };
         self.registers[destination] = value;
         self.registers[15] = self.pc().wrapping_add(4);
@@ -151,8 +153,13 @@ impl Cpu {
             self.operand_register((instruction & 15) as usize, 8)
         };
         let saved = instruction & (1 << 22) != 0;
+        if saved && self.spsr().is_none() {
+            // User and System have no SPSR: the write is ignored (the same tests; Mesen 2).
+            self.registers[15] = self.pc().wrapping_add(4);
+            return Ok(());
+        }
         let previous = if saved {
-            self.spsr().ok_or_else(|| self.unsupported(instruction))?
+            self.spsr().expect("an SPSR exists in this mode")
         } else {
             self.cpsr()
         };

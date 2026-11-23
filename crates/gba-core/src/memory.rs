@@ -852,8 +852,9 @@ impl Memory {
         self.dma_units = Some(transfer.remaining);
         let result = (|| {
             self.advance_timer_step(internal_cycles + source_cycles);
-            let data_latch = if transfer.source < 0x0200_0000 {
+            let data_latch = if transfer.source < 0x0200_0000 || Io::unused(transfer.source) {
                 // Blocked reads retain channel data, not firmware or another channel's value.
+                // Unused I/O has no port to answer a DMA read either (Alyosha's DMA bus tests).
                 // Before any transfer the value is unknown; read 0, mGBA 0.10.5's initial
                 // transfer latch (`dmaTransferRegister`). Not verified on hardware.
                 transfer.data_latch.unwrap_or(0)

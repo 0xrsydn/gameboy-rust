@@ -254,11 +254,9 @@ impl Cpu {
         let source = ((instruction >> 3) & 15) as usize;
         let destination = ((instruction & 7) | ((instruction >> 4) & 8)) as usize;
         if opcode == 3 {
-            // Bit 7 selects BLX on ARMv5 (undefined, as in mGBA). The low destination bits
-            // should be zero; mGBA 0.10.5 ignores them.
-            if instruction & 0x80 != 0 {
-                return Err(self.unsupported(instruction));
-            }
+            // Bit 7 selects BLX on ARMv5. ARM7TDMI ignores it and runs a plain BX without
+            // writing lr, as Alyosha's `thumb/blx` hardware test expects and Mesen 2 models
+            // (mGBA treats it as undefined). The low destination bits are ignored too.
             self.branch_exchange(self.operand_register(source, 4));
             return Ok(());
         }
