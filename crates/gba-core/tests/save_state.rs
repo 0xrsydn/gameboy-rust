@@ -117,11 +117,23 @@ fn flash_operation_in_flight_completes_identically_after_restore() {
         memory.write8(SAVE_START + 0x5555, byte).unwrap();
     };
     let mut original = configured(input_rom(), SaveDevice::Flash128);
+    // A program commits at once; the sector erase after it stays in flight.
     command(&mut original, 0xa0);
     original
         .memory_mut()
         .write8(SAVE_START + 0x123, 0x42)
         .unwrap();
+    assert_eq!(original.memory().save_image().unwrap()[0x123], 0x42);
+    command(&mut original, 0x80);
+    original
+        .memory_mut()
+        .write8(SAVE_START + 0x5555, 0xaa)
+        .unwrap();
+    original
+        .memory_mut()
+        .write8(SAVE_START + 0x2aaa, 0x55)
+        .unwrap();
+    original.memory_mut().write8(SAVE_START, 0x30).unwrap();
     for _ in 0..10 {
         original.step().unwrap();
     }
@@ -144,7 +156,7 @@ fn flash_operation_in_flight_completes_identically_after_restore() {
         original.memory().save_image(),
         restored.memory().save_image()
     );
-    assert_eq!(original.memory().save_image().unwrap()[0x123], 0x42);
+    assert_eq!(original.memory().save_image().unwrap()[0x123], 0xff); // Erased.
     assert!(restored.memory().save_modified());
     assert_eq!(
         original.save_state().unwrap(),

@@ -4,6 +4,8 @@
 //! `EEPROM_Vnnn`, `SRAM_Vnnn`, `SRAM_F_Vnnn`, `FLASH_Vnnn`, `FLASH512_Vnnn`, or `FLASH1M_Vnnn`,
 //! where `nnn` is the library version. Emulators commonly select the save chip from it.
 //! EEPROM IDs do not give the part size, so they select the size-from-first-request device.
+//! The version digits are not required: public save tests (jsmolka's and Alyosha's) carry the
+//! ID with spaces instead, and Mesen 2 selects from the ID alone. Alignment is still required.
 
 use super::SaveDevice;
 
@@ -17,17 +19,15 @@ const IDS: [(&[u8], SaveDevice); 6] = [
 ];
 
 impl SaveDevice {
-    /// The device named by the first word-aligned save-library ID followed by three
-    /// version digits, or `None` when the ROM carries none.
+    /// The device named by the first word-aligned save-library ID, or `None` when the ROM
+    /// carries none.
     pub fn detect(rom: &[u8]) -> SaveDevice {
         (0..rom.len())
             .step_by(4)
             .find_map(|offset| {
                 let rest = &rom[offset..];
-                IDS.iter().find_map(|&(id, device)| {
-                    let digits = rest.strip_prefix(id)?.get(..3)?;
-                    digits.iter().all(u8::is_ascii_digit).then_some(device)
-                })
+                IDS.iter()
+                    .find_map(|&(id, device)| rest.starts_with(id).then_some(device))
             })
             .unwrap_or_default()
     }
@@ -58,21 +58,25 @@ mod tests {
     }
 
     #[test]
-    fn unaligned_ids_ids_without_digits_and_plain_roms_select_nothing() {
+    fn unaligned_ids_and_plain_roms_select_nothing() {
         assert_eq!(
             SaveDevice::detect(&rom_with(b"SRAM_V113", 0xc1)),
             SaveDevice::None
         );
-        assert_eq!(
-            SaveDevice::detect(&rom_with(b"SRAM_V11", 248)), // Two digits, then the end.
-            SaveDevice::None
-        );
-        assert_eq!(
-            SaveDevice::detect(&rom_with(b"FLASH_Vxyz", 0)),
-            SaveDevice::None
-        );
         assert_eq!(SaveDevice::detect(&[]), SaveDevice::None);
         assert_eq!(SaveDevice::detect(&[0; 64]), SaveDevice::None);
+    }
+
+    #[test]
+    fn ids_without_version_digits_still_select_as_in_the_public_save_tests() {
+        for (id, device) in [
+            (&b"SRAM_V  "[..], SaveDevice::Sram),
+            (b"FLASH_V FLASH512_V  ", SaveDevice::Flash64),
+            (b"FLASH1M_V   ", SaveDevice::Flash128),
+            (b"SRAM_V11", SaveDevice::Sram),
+        ] {
+            assert_eq!(SaveDevice::detect(&rom_with(id, 0x40)), device, "{id:?}");
+        }
     }
 
     #[test]

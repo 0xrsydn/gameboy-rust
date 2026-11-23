@@ -167,10 +167,19 @@ fn id_mode_ignores_commands_other_than_exit() {
 }
 
 #[test]
-fn host_widths_and_aliases_remain_diagnostic() {
+fn host_widths_stay_diagnostic_and_the_window_mirrors_through_the_save_region() {
     let mut bus = memory(SaveDevice::Flash128);
-    for address in [SAVE_START - 1, SAVE_END + 1, 0x0f000000, 0x0eff5555] {
-        assert_eq!(bus.read8(address), Err(MemoryError::Unmapped(address)));
+    assert_eq!(
+        bus.read8(SAVE_START - 1),
+        Err(MemoryError::Unmapped(SAVE_START - 1))
+    );
+    // Only A0-A15 reach the chip (jsmolka's Flash "Mirror" tests).
+    for address in [SAVE_END + 1, 0x0f000000, 0x0eff5555, 0x0fff_ffff] {
+        assert_eq!(
+            bus.read8(address),
+            bus.read8(SAVE_START | (address & 0xffff)),
+            "{address:#x}"
+        );
     }
     assert!(bus
         .read16(SAVE_START)
@@ -370,7 +379,7 @@ fn cpu_wide_loads_repeat_the_addressed_flash_byte_then_rotate() {
 #[test]
 fn cpu_wide_stores_program_the_address_byte_lane() {
     let data = vec![0xff; SaveDevice::Flash64.capacity()];
-    let mut machine = run_program(
+    let machine = run_program(
         SaveDevice::Flash64,
         &data,
         &[HI, 0xaaaa, LO, 0x5555, 0xa0a0, SAVE_START + 6, 0x1234_5678],
@@ -381,10 +390,8 @@ fn cpu_wide_stores_program_the_address_byte_lane() {
             0xe585_6000, // STR r6,[r5]: lane 2 of the word
         ],
     );
-    assert!(machine.memory().save_write_pending());
-    machine
-        .memory_mut()
-        .advance_cycles(gba_core::cartridge::FLASH_PROGRAM_CYCLES);
+    // The program commits with the storing step, as mGBA applies it.
+    assert!(!machine.memory().save_write_pending());
     let saved = machine.memory().save_image().unwrap();
     assert_eq!(&saved[4..8], &[0xff, 0xff, 0x34, 0xff]);
     assert!(saved[..4].iter().chain(&saved[8..]).all(|&b| b == 0xff));

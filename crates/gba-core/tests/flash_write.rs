@@ -34,24 +34,20 @@ fn bank(m: &mut Memory, index: u8) {
     m.write8(BASE, index).unwrap();
 }
 #[test]
-fn every_byte_value_programs_after_delay_without_touching_neighbors_or_other_bank() {
+fn every_byte_value_programs_at_once_without_touching_neighbors_or_other_bank() {
+    // Programs complete with their store, as mGBA applies them; host stores commit at once.
     let mut m = bus(SaveDevice::Flash128);
     for b in 0..2 {
         bank(&mut m, b);
         for value in 0..=255 {
             let address = BASE + u32::from(value);
             program(&mut m, address, value);
-            assert!(m.save_write_pending());
-            assert_eq!(m.read8(address).unwrap(), (value ^ 0x80) & 0x80);
+            assert!(!m.save_write_pending());
+            assert_eq!(m.read8(address).unwrap(), value);
             assert_eq!(
                 m.save_image().unwrap()[usize::from(b) * 65536 + usize::from(value)],
-                255
+                value
             );
-            m.advance_cycles(PROGRAM - 1);
-            assert_eq!(m.read8(address).unwrap(), (value ^ 0x80) & 0x80);
-            m.advance_cycles(1);
-            assert_eq!(m.read8(address).unwrap(), value);
-            assert!(!m.save_write_pending());
         }
     }
     let image = m.save_image().unwrap();
@@ -95,37 +91,38 @@ fn data_at_unlock_address_is_not_mistaken_for_reset_and_programs_as_written() {
     assert_eq!(m.read8(HI).unwrap(), 0x80);
     // mGBA stores the byte as written, even where hardware would need an erase first.
     program(&mut m, HI, 0x7f);
-    assert_eq!(m.read8(HI).unwrap(), 0x80); // DQ7 polling still reports busy.
+    assert_eq!(m.read8(HI).unwrap(), 0x7f); // A programmed byte reads back at once.
     m.advance_cycles(PROGRAM);
     assert_eq!(m.read8(HI).unwrap(), 0x7f);
     assert_eq!(m.save_image().unwrap()[0x5555], 0x7f);
 }
 #[test]
-fn busy_reads_and_commands_follow_mgba_and_64_reset_cancels() {
+fn busy_erase_reads_and_commands_follow_mgba_and_64_reset_cancels() {
     for device in [SaveDevice::Flash64, SaveDevice::Flash128] {
         let mut m = bus(device);
-        program(&mut m, BASE + 123, 0x12);
-        // Away from the polling address, reads see the array (the target reads its new value).
-        assert_eq!(m.read8(BASE + 124).unwrap(), 255);
+        m.load_save_image(&vec![0; device.capacity()]).unwrap();
+        erase(&mut m, BASE + 0x1000, 0x30);
+        // Outside the erasing sector reads see the array; inside, mGBA's busy value.
+        assert_eq!(m.read8(BASE + 0x2000).unwrap(), 0);
+        assert_eq!(m.read8(BASE + 0x1001).unwrap(), 0x5f);
         if device == SaveDevice::Flash64 {
-            // GBATEK's direct reset cancels the busy program.
+            // GBATEK's direct reset cancels the busy erase.
             m.write8(HI, 0xf0).unwrap();
-            m.advance_cycles(PROGRAM);
-            assert_eq!(m.read8(BASE + 123).unwrap(), 255);
+            m.advance_cycles(ERASE);
+            assert_eq!(m.read8(BASE + 0x1001).unwrap(), 0);
             assert!(!m.save_modified());
         } else {
-            // Writes run the command state machine; a second program waits for the commit.
+            // Writes run the command state machine; a program waits for the erase to commit.
             command(&mut m, 0xa0);
-            let error = m.write8(BASE + 7, 0).unwrap_err();
+            let error = m.write8(BASE + 7, 0x12).unwrap_err();
             assert!(error
                 .to_string()
                 .contains("before the previous one committed"));
-            assert_eq!(m.write8(BASE + 7, 0), Err(error));
-            m.advance_cycles(PROGRAM);
-            assert_eq!(m.read8(BASE + 123).unwrap(), 0x12);
-            m.write8(BASE + 7, 0).unwrap(); // The armed program now proceeds.
-            m.advance_cycles(PROGRAM);
-            assert_eq!(m.read8(BASE + 7).unwrap(), 0);
+            assert_eq!(m.write8(BASE + 7, 0x12), Err(error));
+            m.advance_cycles(ERASE);
+            assert_eq!(m.read8(BASE + 0x1001).unwrap(), 0xff);
+            m.write8(BASE + 7, 0x12).unwrap(); // The armed program now proceeds.
+            assert_eq!(m.read8(BASE + 7).unwrap(), 0x12);
         }
     }
 }
@@ -181,17 +178,18 @@ fn invalid_erase_confirmations_are_ignored_or_stay_armed_as_mgba_does() {
 #[test]
 fn halt_clocks_nominal_operations_stop_freezes_them_and_setup_resets_dirty_state() {
     let mut m = bus(SaveDevice::Flash128);
-    program(&mut m, BASE, 0);
+    m.load_save_image(&vec![0; 131072]).unwrap();
+    erase(&mut m, BASE, 0x30);
     m.write8(HALTCNT, 0).unwrap();
-    m.advance_cycles(PROGRAM);
+    m.advance_cycles(ERASE);
     assert!(m.save_modified());
-    assert_eq!(m.read8(BASE).unwrap(), 0);
-    m.load_save_image(&vec![255; 131072]).unwrap();
+    assert_eq!(m.read8(BASE).unwrap(), 0xff);
+    m.load_save_image(&vec![0; 131072]).unwrap();
     assert!(!m.save_modified());
-    program(&mut m, BASE, 1);
+    erase(&mut m, BASE, 0x30);
     m.write8(HALTCNT, 0x80).unwrap();
-    m.advance_cycles(PROGRAM);
+    m.advance_cycles(ERASE);
     assert!(m.save_write_pending());
     assert!(!m.save_modified());
-    assert_eq!(m.read8(BASE).unwrap(), 0x80);
+    assert_eq!(m.read8(BASE + 1).unwrap(), 0x5f); // Frozen mid-erase.
 }

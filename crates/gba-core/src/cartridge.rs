@@ -101,9 +101,15 @@ impl Cartridge {
 
     pub(crate) fn save_mapped(&self, address: u32) -> bool {
         // SRAM repeats through both save regions (the mGBA suite's "SRAM mirror" tests
-        // expect 0x0f000000 to match 0x0e000000); Flash keeps the 64 KiB window.
-        (self.flash.is_some() && (SAVE_START..=SAVE_END).contains(&address))
-            || (self.sram.is_some() && (SAVE_START..=SRAM_MIRROR_END).contains(&address))
+        // expect 0x0f000000 to match 0x0e000000). Flash decodes only A0-A15, so its 64 KiB
+        // window repeats there too (jsmolka's Flash tests, "Mirror 1" and "Mirror 2").
+        (self.flash.is_some() || self.sram.is_some())
+            && (SAVE_START..=SRAM_MIRROR_END).contains(&address)
+    }
+
+    /// The Flash window address a save-region address selects: only A0-A15 reach the chip.
+    fn flash_address(address: u32) -> u32 {
+        SAVE_START | (address & 0xffff)
     }
 
     /// The Flash window, which accepts byte accesses only.
@@ -142,7 +148,9 @@ impl Cartridge {
         if let Some(sram) = self.sram {
             return Ok(sram.read(address, image));
         }
-        self.flash.expect("mapped save device").read(address, image)
+        self.flash
+            .expect("mapped save device")
+            .read(Self::flash_address(address), image)
     }
 
     pub(crate) fn rtc_datetime(&self) -> Option<RtcDateTime> {
@@ -233,7 +241,11 @@ impl Cartridge {
             if let Some(sram) = self.sram.as_mut() {
                 return sram.write(address, bytes[0]);
             }
-            return self.flash.as_mut().unwrap().write(address, bytes[0]);
+            return self
+                .flash
+                .as_mut()
+                .unwrap()
+                .write(Self::flash_address(address), bytes[0]);
         }
         let fail = |at, value, operation| MemoryError::UnsupportedIo {
             address: at,

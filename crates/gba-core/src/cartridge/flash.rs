@@ -142,7 +142,9 @@ impl Flash {
         let index = usize::from(self.bank) * 0x10000 + offset;
         if let Some(pending) = self.pending {
             let range = pending.mutation.start..pending.mutation.end;
-            if pending.remaining != 0 {
+            // A programmed byte reads back at once, as in mGBA 0.10.5 and Mesen 2, and as
+            // jsmolka's and Alyosha's Flash tests expect; only erases report busy.
+            if pending.remaining != 0 && range.len() > 1 {
                 if address == pending.poll {
                     // Bounded DQ7-only data polling. Toggle/error bits are not modeled.
                     return Ok((pending.mutation.value ^ 0x80) & 0x80);
@@ -269,7 +271,10 @@ impl Flash {
                             end: index + 1,
                             value,
                         },
-                        remaining: FLASH_PROGRAM_CYCLES,
+                        // Programs complete with the storing step, as mGBA 0.10.5 applies them
+                        // at once: back-to-back programs (jsmolka's and Alyosha's Flash tests)
+                        // then never meet a busy slot. Erases keep their nominal delay.
+                        remaining: 0,
                         poll: address,
                     });
                     Phase::Ready

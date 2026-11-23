@@ -1,7 +1,9 @@
 # Cartridge Flash, SRAM, EEPROM, and save files
 
 The core supports explicit Macronix Flash selection, identification, bank selection, byte programming, and sector/chip erase.
-Operations complete after nominal delays and expose bounded data polling. They do not complete immediately on the command write.
+Operations complete after nominal delays; erases expose bounded data polling, while a programmed byte reads back at
+once. The 64 KiB Flash window repeats through the whole `0x0e000000`–`0x0fffffff` save region, as only A0–A15 reach
+the chip (jsmolka's Flash "Mirror" tests).
 The desktop can load and persist raw images through explicit `--save-file PATH` selection.
 Original ROM tests verify save/restart/load across processes. Saving in an external game remains unverified.
 The core also supports 32 KiB SRAM and 512-byte or 8 KiB serial EEPROM; see [SRAM](#sram) and [EEPROM](#eeprom).
@@ -171,18 +173,22 @@ unlock prefix like any other malformed write. Flash128 needs the unlocked ID exi
 
 ## Nominal completion and transactions
 
-Byte programming takes 650 nominal cycles. Sector and chip erase each take 30,000 nominal cycles.
+Byte programming completes with the instruction (or host store) that supplies the byte, as mGBA 0.10.5 applies it,
+so back-to-back programs never find the controller busy; jsmolka's and Alyosha's Flash tests program again within a
+few instructions. Sector and chip erase each take 30,000 nominal cycles.
 These are simulation constants, not measured Macronix timings. Chip erase duration is deliberately not capacity-dependent.
 GBATEK leaves average Macronix operation times unknown. The constants match the pinned mGBA timing approximation below.
 No matching manufacturer datasheet or physical timing measurement establishes these values.
 
-While busy, each operation has a polling address:
+A programmed byte therefore reads back at once, as in mGBA and Mesen 2. A real chip would report DQ7 status for
+tens of microseconds, but games poll until the byte matches either way.
 
-- Program: the target byte.
+While an erase is busy, it has a polling address:
+
 - Sector erase: the selected sector base.
 - Chip erase: `0x0e000000`.
 
-Busy reads return the complement of the final data's bit 7 (DQ7), with other bits zero.
+Busy erase reads there return the complement of the final data's bit 7 (DQ7), with other bits zero.
 Toggle/error bits, protection, wear, queued sector erase, and suspend/resume are not modeled.
 Other busy reads follow mGBA: bytes in a sector still being erased read `0x5f`, and other bytes read as if the
 operation had finished. Busy writes run the command sequence. Starting another program or erase before the previous
