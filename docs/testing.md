@@ -16,6 +16,19 @@ On 2026-11-23 all 39 local ROMs (the GBA Eval corpus's homebrew, Tonc demos, and
 game dumps) ran 3,600 frames without stopping, and so did all 45 public test ROMs available locally (armwrestler,
 fuzzarm, destoer, jsmolka, NanoBoyAdvance's `hw-test`, the mGBA suite and three of its `cinema` ROMs, the 240p suite).
 
+Public hardware-test ROMs (destoer's, NanoBoyAdvance's `hw-test`, jsmolka's, and Alyosha's, 183 in all, each under its
+own MIT or BSD license) come from pinned archives (`tools/public-test-roms.lock.json`), never the repository:
+
+```sh
+direnv exec . python3 tools/prepare_public_test_roms.py roms/public-tests
+direnv exec . cargo run --locked --release -p gba-eval --example survey -- 1800 $(find roms/public-tests -name '*.gba')
+```
+
+On 2026-11-23, 179 of the 183 run without stopping. The four `irq/IRQ_sub*` tests jump to `0x138`, an address inside
+Nintendo's BIOS (its IRQ return), so they only work with that firmware. Judged by their own pass screens through
+`gba-diff` against Mesen 2 (both on this emulator's firmware), this emulator passes 54 of jsmolka's and Alyosha's 146
+and Mesen 80; the gap is mostly Alyosha's LDM, prefetcher, FIFO, and IRQ timing tests.
+
 Run native macOS validation from the project directory:
 
 ```sh

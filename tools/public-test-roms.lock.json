@@ -1,0 +1,40 @@
+{
+  "suites": [
+    {
+      "name": "destoer",
+      "project": "destoer/gba_tests",
+      "license": "MIT",
+      "commit": "d714cda49375b84183f8437b35848adb80c19562",
+      "url": "https://github.com/destoer/gba_tests/archive/d714cda49375b84183f8437b35848adb80c19562.tar.gz",
+      "bytes": 3686900,
+      "sha256": "b71a2f7228269b8b2ecb72da117908b06257d2e53ecfe2ed84528dbd543ff7c2"
+    },
+    {
+      "name": "nba-hw-test",
+      "project": "nba-emu/hw-test",
+      "license": "BSD-3-Clause",
+      "commit": "3932a0e54dbb5d94b84798d2d5e462e080b95599",
+      "url": "https://github.com/nba-emu/hw-test/archive/3932a0e54dbb5d94b84798d2d5e462e080b95599.tar.gz",
+      "bytes": 45007256,
+      "sha256": "e0dffeb583763532ec199319677ebb34262ee57dd1125049c3af207fd2435a89"
+    },
+    {
+      "name": "jsmolka",
+      "project": "jsmolka/gba-tests",
+      "license": "MIT",
+      "commit": "a7113b67e63f83a9b321696ddd7042ccfad6c881",
+      "url": "https://github.com/jsmolka/gba-tests/archive/a7113b67e63f83a9b321696ddd7042ccfad6c881.tar.gz",
+      "bytes": 33499,
+      "sha256": "b9373ef18700c48ccab0940ec480517fba47accc86516df5fd43ed9ec6cdf082"
+    },
+    {
+      "name": "alyosha",
+      "project": "alyosha-tas/gba-tests",
+      "license": "MIT",
+      "commit": "66f5f1d60cd7030b600606886c76f5c821ecaf9d",
+      "url": "https://github.com/alyosha-tas/gba-tests/archive/66f5f1d60cd7030b600606886c76f5c821ecaf9d.tar.gz",
+      "bytes": 89368,
+      "sha256": "dfe884db251d9981e224f1f134fcebeb9afe280623c488efedca90e3fb66e507"
+    }
+  ]
+}

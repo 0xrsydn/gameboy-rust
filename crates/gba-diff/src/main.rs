@@ -30,7 +30,7 @@ const DISPCNT: u32 = 0x0400_0000;
 /// Machine steps allowed between VBlanks before the run is reported as stuck.
 const FRAME_STEP_LIMIT: usize = 2_000_000;
 
-const USAGE: &str = "usage: gba-diff --reference MGBA_REF|MESEN_REF --rom ROM [--frames N] [--save-type sram|flash64|flash128|eeprom|eeprom512|eeprom8k] [--rtc UNIX_SECONDS] [--input FRAME:BUTTON:HOLD[,...]] [--ignore START-END[,...]] [--max-report N] [--out DIR] [--images FRAME[,...]] [--detail-frame FRAME[,...]] [--no-align] [--trace INSTRUCTIONS] [--bios IMAGE] [--eval [--replay FILE]]";
+const USAGE: &str = "usage: gba-diff --reference MGBA_REF|MESEN_REF --rom ROM [--frames N] [--save-type sram|flash64|flash128|eeprom|eeprom512|eeprom8k|none] [--rtc UNIX_SECONDS] [--input FRAME:BUTTON:HOLD[,...]] [--ignore START-END[,...]] [--max-report N] [--out DIR] [--images FRAME[,...]] [--detail-frame FRAME[,...]] [--no-align] [--trace INSTRUCTIONS] [--bios IMAGE] [--eval [--replay FILE]]";
 
 /// Memory compared every frame. Video memory is compared after both frames render.
 const REGIONS: [(&str, u32, usize); 5] = [
@@ -97,7 +97,8 @@ struct Options {
     reference: PathBuf,
     rom: PathBuf,
     frames: u64,
-    save: SaveDevice,
+    /// The save device; detected from the ROM's save-library ID when not given.
+    save: Option<SaveDevice>,
     rtc: Option<u64>,
     inputs: Vec<(u64, Button, u64)>,
     ignore: Vec<(u32, u32)>,
@@ -144,7 +145,7 @@ fn parse(args: &[String]) -> Result<Options, String> {
         reference: PathBuf::new(),
         rom: PathBuf::new(),
         frames: 600,
-        save: SaveDevice::None,
+        save: None,
         rtc: None,
         inputs: Vec::new(),
         ignore: Vec::new(),
@@ -175,15 +176,16 @@ fn parse(args: &[String]) -> Result<Options, String> {
             "--max-report" => options.max_report = number(&value()?)? as usize,
             "--out" => options.out = Some(value()?.into()),
             "--save-type" => {
-                options.save = match value()?.as_str() {
+                options.save = Some(match value()?.as_str() {
                     "sram" => SaveDevice::Sram,
                     "flash64" => SaveDevice::Flash64,
                     "flash128" => SaveDevice::Flash128,
                     "eeprom" => SaveDevice::Eeprom,
                     "eeprom512" => SaveDevice::Eeprom512,
                     "eeprom8k" => SaveDevice::Eeprom8k,
+                    "none" => SaveDevice::None,
                     other => return Err(format!("unknown save type: {other}")),
-                }
+                })
             }
             "--rtc" => {
                 let unix = number(&value()?)?;
@@ -783,7 +785,9 @@ fn run(options: Options) -> Result<bool, String> {
         }
         None => None,
     };
-    let mut local = Local::boot(rom, firmware.clone(), options.save, options.rtc)?;
+    // As the desktop app does, the ROM's save-library ID picks the device unless one is given.
+    let save = options.save.unwrap_or_else(|| SaveDevice::detect(&rom));
+    let mut local = Local::boot(rom, firmware.clone(), save, options.rtc)?;
     let mut reference = Reference::spawn(&options.reference).map_err(|error| error.to_string())?;
     let report = |error: io::Error| error.to_string();
     let label = reference.label();
@@ -969,7 +973,7 @@ mod tests {
         ))
         .unwrap();
         assert_eq!(options.frames, 16);
-        assert_eq!(options.save, SaveDevice::Sram);
+        assert_eq!(options.save, Some(SaveDevice::Sram));
         assert_eq!(options.rtc, Some(1_767_225_600));
         assert_eq!(
             options.inputs,

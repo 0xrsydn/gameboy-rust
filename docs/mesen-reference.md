@@ -72,7 +72,7 @@ Differences from the mGBA path:
 - `--rtc` is rejected. Mesen's RTC follows the host clock, so `mesen-ref` disables it for reproducible runs; RTC games
   such as Emerald run without one on both sides when `--rtc` is not given.
 - Mesen chooses its save type from the ROM's library markers (`SRAM_V`, `EEPROM_V`, `FLASH1M_V`, ...), falling back to
-  SRAM. As with mGBA, `--save-type` applies only to this emulator.
+  SRAM. Without `--save-type`, `gba-diff` gives this emulator the device its own detection picks (`none` forces none).
 - `--no-align` has no effect.
 
 ## Shim details
